@@ -70,6 +70,8 @@ autoUpdater.logger = log;
 autoUpdater.logger.transports.file.level = 'info';
 autoUpdater.autoDownload = false;
 
+require('./AgentApi').installAgentApi({ app, ipcMain, BrowserWindow, log });
+
 // Keep a global reference of the window objects, if you don't, the windows will
 // be closed automatically when the JavaScript object is garbage collected.
 let mainWindows = new Set();
@@ -97,7 +99,7 @@ const isCliRunCommand = !!args['run-command'];
 const gotTheLock =
   isCliRunCommand && !isCliProjectAlreadyOpenElsewhere(args)
     ? true
-    : app.requestSingleInstanceLock({ args });
+    : app.requestSingleInstanceLock();
 
 if (!gotTheLock) {
   // Second instance attempted - quit immediately

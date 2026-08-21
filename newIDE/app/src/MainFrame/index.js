@@ -172,6 +172,7 @@ import useForceUpdate from '../Utils/UseForceUpdate';
 import useStateWithCallback from '../Utils/UseSetStateWithCallback';
 import { useKeyboardShortcuts, useShortcutMap } from '../KeyboardShortcuts';
 import useMainFrameCommands from './MainFrameCommands';
+import useAgentApi from '../AgentApi/useAgentApi';
 import {
   installCliInPath,
   isCliInPathInstallSupported,
@@ -5633,6 +5634,27 @@ const MainFrame = (props: Props): React.MixedElement => {
       resourceCustomPropertyConfigs,
     ]
   );
+
+  useAgentApi({
+    project: state.currentProject,
+    fileIdentifier,
+    i18n,
+    resourceManagementProps,
+    saveProject,
+    triggerUnsavedChanges,
+    forceUpdate,
+    onOpenLayout: openLayout,
+    onSceneEventsModifiedOutsideEditor,
+    onInstancesModifiedOutsideEditor,
+    onObjectsModifiedOutsideEditor,
+    onObjectGroupsModifiedOutsideEditor,
+    onProjectItemRenamedOutsideEditor,
+    onWillDeleteScene,
+    onWillDeleteGameplayTest,
+    onWillDeleteObject,
+    onWillInstallExtension,
+    onExtensionInstalled,
+  });
 
   const projectScopedContainersAccessor: ProjectScopedContainersAccessor | null = React.useMemo(
     () =>
