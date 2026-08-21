@@ -4,10 +4,24 @@ import { type I18n as I18nType } from '@lingui/core';
 import optionalRequire from '../Utils/OptionalRequire';
 import {
   editorFunctions,
+  editorFunctionsWithoutProject,
   type EditorCallbacks,
   type EditorFunctionCall,
 } from '../EditorFunctions';
 import { processEditorFunctionCalls } from '../EditorFunctions/EditorFunctionCallRunner';
+import { listAllExamples } from '../Utils/GDevelopServices/Example';
+import UrlStorageProvider from '../ProjectsStorage/UrlStorageProvider';
+import LocalFileStorageProvider from '../ProjectsStorage/LocalFileStorageProvider';
+import {
+  createNewResource,
+  allResourceKindsAndMetadata,
+  type ResourceManagementProps,
+} from '../ResourcesList/ResourceSource';
+import {
+  applyResourceDefaults,
+  copyAllToProjectFolder,
+} from '../ResourcesList/ResourceUtils';
+import { exportLocalHtml5Headless } from '../ExportAndShare/Headless/ExportLocalHtml5Headless';
 import {
   type SceneEventsOutsideEditorChanges,
   type InstancesOutsideEditorChanges,
@@ -25,11 +39,12 @@ import { useSearchAndInstallResource } from '../AiGeneration/UseSearchAndInstall
 import { ObjectStoreContext } from '../AssetStore/ObjectStoreContext';
 import { ExtensionStoreContext } from '../AssetStore/ExtensionStore/ExtensionStoreContext';
 import { enumerateObjectTypes } from '../ObjectsList/EnumerateObjects';
-import { type ResourceManagementProps } from '../ResourcesList/ResourceSource';
 import { type FileMetadata } from '../ProjectsStorage';
 
 const electron = optionalRequire('electron');
 const ipcRenderer = electron ? electron.ipcRenderer : null;
+const fs = optionalRequire('fs');
+const path = optionalRequire('path');
 
 const makeCallId = (index: number): string =>
   `agent-api-${Date.now()}-${index}-${Math.random()
@@ -50,6 +65,19 @@ type Props = {|
   saveProject: (options?: {|
     skipNewVersionWarning: boolean,
   |}) => Promise<?FileMetadata>,
+  saveProjectAsWithStorageProvider: (options?: any) => Promise<?FileMetadata>,
+  openFromFileMetadataWithStorageProvider: (
+    fileMetadataAndStorageProviderName: any,
+    options?: any
+  ) => Promise<void>,
+  closeProject: () => Promise<void>,
+  hasUnsavedChanges: boolean,
+  createEmptyProject: (newProjectSetup: any) => Promise<any>,
+  createProjectFromExample: (exampleProjectSetup: any) => Promise<any>,
+  launchNewPreview: (options?: any) => Promise<void>,
+  launchHotReloadPreview: () => Promise<void>,
+  closeAllPreviews: () => void,
+  previewDebuggerServer: ?any,
   triggerUnsavedChanges: () => void,
   forceUpdate: () => void,
   onOpenLayout: (
@@ -88,13 +116,60 @@ type Props = {|
   onExtensionInstalled: (extensionNames: Array<string>) => void,
 |};
 
-const getFunctions = () =>
-  Object.keys(editorFunctions)
-    .sort()
-    .map(name => ({
+const getFunctions = () => {
+  const projectFunctions = Object.keys(editorFunctions).map(name => ({
+    name,
+    modifiesProject: !!editorFunctions[name].modifiesProject,
+    requiresProject: true,
+  }));
+  const projectlessFunctions = Object.keys(editorFunctionsWithoutProject).map(
+    name => ({
       name,
-      modifiesProject: !!editorFunctions[name].modifiesProject,
-    }));
+      modifiesProject: !!editorFunctionsWithoutProject[name].modifiesProject,
+      requiresProject: false,
+    })
+  );
+  return [...projectFunctions, ...projectlessFunctions].sort((a, b) =>
+    a.name.localeCompare(b.name)
+  );
+};
+
+const inferResourceKind = (filePath: string): ?string => {
+  if (!path) return null;
+  const extension = path
+    .extname(filePath)
+    .replace(/^\./, '')
+    .toLowerCase();
+  if (!extension) return null;
+  const matches = allResourceKindsAndMetadata.filter(metadata =>
+    metadata.fileExtensions.includes(extension)
+  );
+  if (matches.length === 1) return matches[0].kind;
+  if (extension === 'json') return 'json';
+  return matches.length ? matches[0].kind : null;
+};
+
+const getPreviewStatus = (previewDebuggerServer: ?any) => {
+  if (!previewDebuggerServer) {
+    return {
+      available: false,
+      serverState: null,
+      debuggerIds: [],
+      running: false,
+    };
+  }
+  const debuggerIds = previewDebuggerServer.getExistingDebuggerIds
+    ? previewDebuggerServer.getExistingDebuggerIds()
+    : [];
+  return {
+    available: true,
+    serverState: previewDebuggerServer.getServerState
+      ? previewDebuggerServer.getServerState()
+      : null,
+    debuggerIds,
+    running: debuggerIds.length > 0,
+  };
+};
 
 export default function useAgentApi({
   project,
@@ -102,6 +177,16 @@ export default function useAgentApi({
   i18n,
   resourceManagementProps,
   saveProject,
+  saveProjectAsWithStorageProvider,
+  openFromFileMetadataWithStorageProvider,
+  closeProject,
+  hasUnsavedChanges,
+  createEmptyProject,
+  createProjectFromExample,
+  launchNewPreview,
+  launchHotReloadPreview,
+  closeAllPreviews,
+  previewDebuggerServer,
   triggerUnsavedChanges,
   forceUpdate,
   onOpenLayout,
@@ -163,26 +248,57 @@ export default function useAgentApi({
     [project, translatedObjectShortHeadersByType]
   );
 
+  const createProjectForAgent = React.useCallback(
+    async ({ name, exampleSlug }: { name: string, exampleSlug: ?string }) => {
+      const newProjectSetup = {
+        projectName: name,
+        storageProvider: UrlStorageProvider,
+        saveAsLocation: null,
+        creationSource: 'ai-agent-request',
+      };
+
+      if (exampleSlug) {
+        const { exampleShortHeaders } = await listAllExamples();
+        const exampleShortHeader = exampleShortHeaders.find(
+          header => header.slug === exampleSlug
+        );
+        if (exampleShortHeader) {
+          const { createdProject } = await createProjectFromExample({
+            exampleShortHeader,
+            newProjectSetup,
+            i18n,
+          });
+          return { exampleSlug, createdProject };
+        }
+      }
+
+      const { createdProject } = await createEmptyProject(newProjectSetup);
+      return { exampleSlug: null, createdProject };
+    },
+    [createEmptyProject, createProjectFromExample, i18n]
+  );
+
   const editorCallbacks: EditorCallbacks = React.useMemo(
     () => ({
       onOpenLayout,
-      // The embedded API is intentionally scoped to the project currently open
-      // in this renderer. Project creation stays with the regular editor flow.
-      onCreateProject: async () => ({
-        createdProject: null,
-        exampleSlug: null,
-      }),
+      onCreateProject: createProjectForAgent,
     }),
-    [onOpenLayout]
+    [onOpenLayout, createProjectForAgent]
   );
 
   React.useEffect(
     () => {
       if (!ipcRenderer) return;
-      ipcRenderer.send('gdevelop-agent-api:register', { fileIdentifier });
+      // Keep this renderer registered even when no project is open, so callers
+      // can invoke projectless functions such as initialize_project.
+      ipcRenderer.send('gdevelop-agent-api:register', {
+        fileIdentifier,
+        active: true,
+      });
       return () => {
         ipcRenderer.send('gdevelop-agent-api:register', {
           fileIdentifier: null,
+          active: false,
         });
       };
     },
@@ -197,7 +313,6 @@ export default function useAgentApi({
         calls: Array<AgentFunctionCall>,
         shouldSave: boolean
       ) => {
-        if (!project) throw new Error('no_project_open');
         if (calls.length === 0) throw new Error('no_function_calls');
         if (calls.length > 100) throw new Error('too_many_function_calls');
 
@@ -218,37 +333,39 @@ export default function useAgentApi({
           }
         );
 
-        const { results, createdSceneNames } = await processEditorFunctionCalls(
-          {
-            project,
-            functionCalls,
-            i18n,
-            editorCallbacks,
-            toolOptions: { includeEventsJson: true },
-            toolsVersion: 'v12',
-            runScriptReadOnly: false,
-            relatedAiRequestId: null,
-            getRelatedAiRequestLastMessages: () => ({
-              lastUserMessage: null,
-              lastAssistantMessages: [],
-            }),
-            generateEvents,
-            onSceneEventsModifiedOutsideEditor,
-            onInstancesModifiedOutsideEditor,
-            onObjectsModifiedOutsideEditor,
-            onObjectGroupsModifiedOutsideEditor,
-            onProjectItemRenamedOutsideEditor,
-            onWillDeleteScene,
-            onWillDeleteGameplayTest,
-            onWillDeleteObject,
-            ensureExtensionInstalled,
-            onWillInstallExtension,
-            onExtensionInstalled,
-            searchAndInstallAsset,
-            searchAndInstallResources,
-            getAssetStoreTagForNewObject,
-          }
-        );
+        const {
+          results,
+          createdSceneNames,
+          createdProject,
+        } = await processEditorFunctionCalls({
+          project,
+          functionCalls,
+          i18n,
+          editorCallbacks,
+          toolOptions: { includeEventsJson: true },
+          toolsVersion: 'v12',
+          runScriptReadOnly: false,
+          relatedAiRequestId: null,
+          getRelatedAiRequestLastMessages: () => ({
+            lastUserMessage: null,
+            lastAssistantMessages: [],
+          }),
+          generateEvents,
+          onSceneEventsModifiedOutsideEditor,
+          onInstancesModifiedOutsideEditor,
+          onObjectsModifiedOutsideEditor,
+          onObjectGroupsModifiedOutsideEditor,
+          onProjectItemRenamedOutsideEditor,
+          onWillDeleteScene,
+          onWillDeleteGameplayTest,
+          onWillDeleteObject,
+          ensureExtensionInstalled,
+          onWillInstallExtension,
+          onExtensionInstalled,
+          searchAndInstallAsset,
+          searchAndInstallResources,
+          getAssetStoreTagForNewObject,
+        });
 
         const didModifyProject = results.some(
           result => result.status === 'finished' && result.didModifyProject
@@ -260,6 +377,8 @@ export default function useAgentApi({
 
         let saved = false;
         if (shouldSave) {
+          if (!project)
+            throw new Error('save_after_creation_requires_followup');
           const fileMetadata = await saveProject({
             skipNewVersionWarning: true,
           });
@@ -272,7 +391,97 @@ export default function useAgentApi({
           createdSceneNames,
           didModifyProject,
           saved,
+          createdProject: createdProject
+            ? {
+                name: createdProject.getName(),
+                uuid: createdProject.getProjectUuid(),
+              }
+            : null,
         };
+      };
+
+      const importLocalResource = async (request: any) => {
+        if (!project) throw new Error('no_project_open');
+        if (!fs || !path) throw new Error('local_filesystem_unavailable');
+        if (!request.filePath || typeof request.filePath !== 'string') {
+          throw new Error('missing_resource_file_path');
+        }
+
+        const sourcePath = path.resolve(request.filePath);
+        if (!fs.existsSync(sourcePath) || !fs.statSync(sourcePath).isFile()) {
+          throw new Error('resource_file_not_found');
+        }
+
+        const kind =
+          (typeof request.kind === 'string' && request.kind) ||
+          inferResourceKind(sourcePath);
+        if (!kind) throw new Error('unable_to_infer_resource_kind');
+        const newResource = createNewResource(kind);
+        if (!newResource) throw new Error(`unsupported_resource_kind:${kind}`);
+
+        const resourcesManager = project.getResourcesManager();
+        const projectFile = project.getProjectFile();
+        const projectFolder = projectFile ? path.dirname(projectFile) : null;
+        let finalPath = sourcePath;
+
+        if (projectFolder && request.copyToProject !== false) {
+          const copied = await copyAllToProjectFolder(
+            project,
+            [sourcePath],
+            new Map()
+          );
+          if (copied.length) finalPath = copied[0];
+        }
+
+        const storedFilePath = projectFolder
+          ? path.relative(projectFolder, finalPath).replace(/\\/g, '/')
+          : finalPath;
+        const resourceName =
+          (typeof request.resourceName === 'string' && request.resourceName) ||
+          path.basename(storedFilePath);
+
+        if (resourcesManager.hasResource(resourceName)) {
+          if (!request.overwrite) {
+            newResource.delete();
+            throw new Error(`resource_already_exists:${resourceName}`);
+          }
+          resourcesManager.removeResource(resourceName);
+        }
+
+        newResource.setName(resourceName);
+        newResource.setFile(storedFilePath);
+        applyResourceDefaults(project, newResource);
+        resourcesManager.addResource(newResource);
+        newResource.delete();
+
+        resourceManagementProps.onNewResourcesAdded();
+        triggerUnsavedChanges();
+        forceUpdate();
+
+        return {
+          imported: true,
+          kind,
+          resourceName,
+          file: storedFilePath,
+        };
+      };
+
+      const controlPreview = (request: any) => {
+        if (!previewDebuggerServer)
+          throw new Error('preview_debugger_unavailable');
+        const action = request.action;
+        if (!['play', 'pause', 'refresh'].includes(action)) {
+          throw new Error(`unsupported_preview_action:${String(action)}`);
+        }
+        const debuggerIds = previewDebuggerServer.getExistingDebuggerIds();
+        const targetIds = request.debuggerId
+          ? debuggerIds.filter(id => id === request.debuggerId)
+          : debuggerIds;
+        if (!targetIds.length) throw new Error('preview_not_running');
+        targetIds.forEach(id =>
+          previewDebuggerServer.sendMessage(id, { command: action })
+        );
+        return { action, debuggerIds: targetIds };
       };
 
       const onRequest = async (
@@ -299,6 +508,8 @@ export default function useAgentApi({
                       (_, index) => project.getLayoutAt(index).getName()
                     )
                   : [],
+                hasUnsavedChanges,
+                preview: getPreviewStatus(previewDebuggerServer),
               },
             });
             return;
@@ -317,9 +528,115 @@ export default function useAgentApi({
             return;
           }
 
-          if (!project) throw new Error('no_project_open');
+          if (request.type === 'capabilities') {
+            ipcRenderer.send('gdevelop-agent-api:response', {
+              requestId,
+              ok: true,
+              result: {
+                version: 2,
+                projectLifecycle: [
+                  'create',
+                  'open-local',
+                  'close',
+                  'save',
+                  'save-as-local',
+                ],
+                authoring: [
+                  'editor-functions',
+                  'batch-editor-functions',
+                  'local-resource-import',
+                  'asset-store-search-install',
+                  'resource-store-search-install',
+                ],
+                runtime: [
+                  'preview-start',
+                  'preview-hot-reload',
+                  'preview-play-pause-refresh',
+                  'preview-close-all',
+                  'gameplay-tests',
+                  'editor-function-tests',
+                ],
+                output: ['html5-export'],
+                editorUi: ['open-scene', 'open-events'],
+              },
+            });
+            return;
+          }
+
+          if (request.type === 'create-project') {
+            if (project) throw new Error('project_already_open');
+            if (!request.name || typeof request.name !== 'string') {
+              throw new Error('missing_project_name');
+            }
+            const { createdProject, exampleSlug } = await createProjectForAgent(
+              {
+                name: request.name,
+                exampleSlug:
+                  typeof request.templateSlug === 'string'
+                    ? request.templateSlug
+                    : null,
+              }
+            );
+            if (!createdProject) throw new Error('project_creation_failed');
+            ipcRenderer.send('gdevelop-agent-api:response', {
+              requestId,
+              ok: true,
+              result: {
+                created: true,
+                projectName: createdProject.getName(),
+                projectUuid: createdProject.getProjectUuid(),
+                templateSlug: exampleSlug,
+                needsSaveAs: true,
+              },
+            });
+            return;
+          }
+
+          if (request.type === 'open-project') {
+            if (!request.filePath || typeof request.filePath !== 'string') {
+              throw new Error('missing_project_file_path');
+            }
+            if (hasUnsavedChanges && !request.discardUnsavedChanges) {
+              throw new Error('unsaved_changes_require_explicit_discard');
+            }
+            await openFromFileMetadataWithStorageProvider(
+              {
+                storageProviderName: LocalFileStorageProvider.internalName,
+                fileMetadata: { fileIdentifier: request.filePath },
+              },
+              { ignoreUnsavedChanges: !!request.discardUnsavedChanges }
+            );
+            ipcRenderer.send('gdevelop-agent-api:response', {
+              requestId,
+              ok: true,
+              result: { opened: true, filePath: request.filePath },
+            });
+            return;
+          }
+
+          if (request.type === 'close-project') {
+            if (!project) {
+              ipcRenderer.send('gdevelop-agent-api:response', {
+                requestId,
+                ok: true,
+                result: { closed: false, reason: 'no_project_open' },
+              });
+              return;
+            }
+            if (hasUnsavedChanges && !request.discardUnsavedChanges) {
+              throw new Error('unsaved_changes_require_explicit_discard');
+            }
+            await closeProject();
+            ipcRenderer.send('gdevelop-agent-api:response', {
+              requestId,
+              ok: true,
+              result: { closed: true },
+            });
+            return;
+          }
 
           if (request.type === 'save-project') {
+            if (!project) throw new Error('no_project_open');
             const fileMetadata = await saveProject({
               skipNewVersionWarning: true,
             });
@@ -328,6 +645,139 @@ export default function useAgentApi({
               requestId,
               ok: true,
               result: { saved: true, fileIdentifier },
+            });
+            return;
+          }
+
+          if (request.type === 'save-project-as') {
+            if (!project) throw new Error('no_project_open');
+            if (!path) throw new Error('local_filesystem_unavailable');
+            if (!request.filePath || typeof request.filePath !== 'string') {
+              throw new Error('missing_project_file_path');
+            }
+            const filePath = path.resolve(request.filePath);
+            const fileMetadata = await saveProjectAsWithStorageProvider({
+              requestedStorageProvider: LocalFileStorageProvider,
+              forcedSavedAsLocation: {
+                name:
+                  (typeof request.name === 'string' && request.name) ||
+                  project.getName(),
+                fileIdentifier: filePath,
+              },
+            });
+            if (!fileMetadata) throw new Error('project_save_as_failed');
+            ipcRenderer.send('gdevelop-agent-api:response', {
+              requestId,
+              ok: true,
+              result: { saved: true, fileMetadata },
+            });
+            return;
+          }
+
+          if (request.type === 'preview-status') {
+            ipcRenderer.send('gdevelop-agent-api:response', {
+              requestId,
+              ok: true,
+              result: getPreviewStatus(previewDebuggerServer),
+            });
+            return;
+          }
+
+          if (request.type === 'preview-start') {
+            if (!project) throw new Error('no_project_open');
+            await launchNewPreview({
+              numberOfWindows:
+                Number.isInteger(request.numberOfWindows) &&
+                request.numberOfWindows > 0
+                  ? request.numberOfWindows
+                  : 1,
+            });
+            ipcRenderer.send('gdevelop-agent-api:response', {
+              requestId,
+              ok: true,
+              result: { started: true },
+            });
+            return;
+          }
+
+          if (request.type === 'preview-hot-reload') {
+            if (!project) throw new Error('no_project_open');
+            await launchHotReloadPreview();
+            ipcRenderer.send('gdevelop-agent-api:response', {
+              requestId,
+              ok: true,
+              result: { hotReloaded: true },
+            });
+            return;
+          }
+
+          if (request.type === 'preview-control') {
+            const result = controlPreview(request);
+            ipcRenderer.send('gdevelop-agent-api:response', {
+              requestId,
+              ok: true,
+              result,
+            });
+            return;
+          }
+
+          if (request.type === 'preview-close-all') {
+            closeAllPreviews();
+            ipcRenderer.send('gdevelop-agent-api:response', {
+              requestId,
+              ok: true,
+              result: { closed: true },
+            });
+            return;
+          }
+
+          if (request.type === 'open-scene') {
+            if (!project) throw new Error('no_project_open');
+            if (
+              !request.sceneName ||
+              !project.hasLayoutNamed(request.sceneName)
+            ) {
+              throw new Error('scene_not_found');
+            }
+            const mode = request.mode || 'scene';
+            onOpenLayout(request.sceneName, {
+              openEventsEditor: mode === 'events' || mode === 'both',
+              openSceneEditor: mode !== 'events',
+              focusWhenOpened: mode === 'events' ? 'events' : 'scene',
+            });
+            ipcRenderer.send('gdevelop-agent-api:response', {
+              requestId,
+              ok: true,
+              result: { opened: true, sceneName: request.sceneName, mode },
+            });
+            return;
+          }
+
+          if (request.type === 'import-local-resource') {
+            const result = await importLocalResource(request);
+            ipcRenderer.send('gdevelop-agent-api:response', {
+              requestId,
+              ok: true,
+              result,
+            });
+            return;
+          }
+
+          if (request.type === 'export-html5') {
+            if (!project) throw new Error('no_project_open');
+            const result = await exportLocalHtml5Headless({
+              project,
+              i18n,
+              outputDir:
+                typeof request.outputDir === 'string'
+                  ? request.outputDir
+                  : undefined,
+            });
+            triggerUnsavedChanges();
+            ipcRenderer.send('gdevelop-agent-api:response', {
+              requestId,
+              ok: true,
+              result,
             });
             return;
           }
@@ -399,6 +849,17 @@ export default function useAgentApi({
       searchAndInstallResources,
       getAssetStoreTagForNewObject,
       saveProject,
+      saveProjectAsWithStorageProvider,
+      openFromFileMetadataWithStorageProvider,
+      closeProject,
+      hasUnsavedChanges,
+      createProjectForAgent,
+      launchNewPreview,
+      launchHotReloadPreview,
+      closeAllPreviews,
+      previewDebuggerServer,
+      resourceManagementProps,
+      onOpenLayout,
       triggerUnsavedChanges,
       forceUpdate,
     ]

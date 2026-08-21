@@ -1,50 +1,80 @@
 # Embedded Agent API
 
-This module exposes the currently running GDevelop desktop editor through a loopback-only HTTP API.
+This module exposes the running GDevelop desktop editor through a loopback-only HTTP API so an agent can build, test and export a game without editing the project JSON behind the editor's back.
 
-The implementation is intentionally isolated:
+The implementation stays isolated:
 
-- `newIDE/electron-app/app/AgentApi/index.js`: HTTP server, authentication, window targeting and IPC transport.
-- `newIDE/app/src/AgentApi/useAgentApi.js`: renderer adapter that executes the existing GDevelop `EditorFunctions` against the project already loaded in memory.
+- `newIDE/electron-app/app/AgentApi/index.js`: HTTP, authentication, window discovery/capture and IPC transport.
+- `newIDE/app/src/AgentApi/useAgentApi.js`: project lifecycle, preview/export helpers and the adapter to GDevelop's existing `EditorFunctions`.
 
-Only two small hooks are required outside these folders:
+Only small hooks live outside these folders: `electron-app/app/main.js` installs the service and `app/src/MainFrame/index.js` passes callbacks already owned by the editor.
 
-- `electron-app/app/main.js` starts/stops the HTTP server.
-- `app/src/MainFrame/index.js` mounts the renderer adapter with the editor callbacks it already owns.
+## Discovery and security
 
-## Discovery
+At startup the desktop app writes `agent-api.json` in Electron's `userData` directory. It contains `host`, `port`, `pid`, `version` and a fresh random token. The default endpoint is `http://127.0.0.1:38473`.
 
-At startup the desktop app writes `agent-api.json` in Electron's `userData` directory. It contains the loopback host, port, process id and a per-process random token.
+`GET /health` is unauthenticated. Every `/v1/*` request requires `X-GDevelop-Agent-Token`. The server binds only to `127.0.0.1`.
 
-Default endpoint: `http://127.0.0.1:38473`.
+## Core endpoints
 
-`GET /health` does not require authentication. All `/v1/*` routes require the token in the `X-GDevelop-Agent-Token` header.
+- `GET /health` — process/service health.
+- `GET /v1/status` — registered editor windows and project paths.
+- `GET /v1/project` — live project/editor/preview state.
+- `GET /v1/functions` — native GDevelop editor functions, including projectless functions such as `initialize_project`.
+- `GET /v1/capabilities` — high-level end-to-end capabilities.
+- `GET /v1/windows` — editor and preview Electron windows.
+- `GET /v1/capture?windowId=<id>` — PNG capture of an editor or preview window.
+- `POST /v1/call` — execute one native `EditorFunction`.
+- `POST /v1/calls` — execute native `EditorFunction`s in a batch.
+- `POST /v1/action` — execute one high-level embedded-agent action.
+- `POST /v1/save` — compatibility shortcut for saving the current project.
 
-## API
+Target a renderer with `projectPath` or `windowId`. With neither, the focused registered editor is preferred, then the only registered editor. Editor windows remain registered even with no project open so a client can create/open a project.
 
-- `GET /health`
-- `GET /v1/status`
-- `GET /v1/project`
-- `GET /v1/functions`
-- `POST /v1/call`
-- `POST /v1/calls`
-- `POST /v1/save`
+## High-level actions
 
-Calls can target an open project with `projectPath` or a specific registered Electron `windowId`. If neither is supplied, the focused registered window is used; if there is exactly one registered window it is used as a fallback.
+Send these to `POST /v1/action` with a `type` field:
 
-Example request body for `/v1/call`:
+- `create-project`: `{ "type":"create-project", "name":"Game", "templateSlug":null }`
+- `open-project`: `{ "type":"open-project", "filePath":"C:\\games\\game.json", "discardUnsavedChanges":false }`
+- `close-project`: `{ "type":"close-project", "discardUnsavedChanges":true }`
+- `save-project`
+- `save-project-as`: `{ "type":"save-project-as", "filePath":"C:\\games\\game.json" }`
+- `import-local-resource`: `{ "type":"import-local-resource", "filePath":"C:\\art\\player.png", "kind":"image", "resourceName":"player.png" }`
+- `open-scene`: `{ "type":"open-scene", "sceneName":"Level1", "mode":"scene" }` (`scene`, `events` or `both`)
+- `preview-status`
+- `preview-start`: `{ "type":"preview-start", "numberOfWindows":1 }`
+- `preview-hot-reload`
+- `preview-control`: `{ "type":"preview-control", "action":"pause" }` (`play`, `pause`, `refresh`)
+- `preview-close-all`
+- `export-html5`: `{ "type":"export-html5", "outputDir":"C:\\games\\build" }`
+
+Opening or closing a project with unsaved changes is rejected unless `discardUnsavedChanges:true` is explicit.
+
+## Native authoring surface
+
+The primary mutation API is still GDevelop's own `EditorFunctions`, not a parallel language. This covers scenes, objects, behaviors, variables, events, 2D/3D instances, project settings/resources, asset/resource store installation, docs/search, scripts, gameplay tests and editor-function tests.
+
+Example:
 
 ```json
 {
-  "projectPath": "C:\\path\\game.json",
-  "name": "add_instance",
-  "arguments": {},
+  "projectPath": "C:\\games\\game.json",
+  "name": "put_3d_instances",
+  "arguments": {
+    "scene_name": "Level1",
+    "object_name": "Coin",
+    "layer_name": "",
+    "brush_kind": "point",
+    "brush_position": "320,240,30",
+    "new_instances_count": 1
+  },
   "save": false
 }
 ```
 
-The `name` is an existing GDevelop `EditorFunction`. This module deliberately does not implement a second mutation language: it reuses the same editor-function engine and outside-editor notifications used by GDevelop's built-in AI tooling, so scene/editor state is updated in memory.
+Projectless `initialize_project` is also available through `/v1/call` when the target editor has no project open. `/v1/action` `create-project` is the simpler lifecycle wrapper.
 
-## Security
+## Recommended end-to-end workflow
 
-The server binds only to `127.0.0.1`. A new random 256-bit token is generated for each desktop process. The token is never returned by an HTTP endpoint; local clients discover it from `agent-api.json`.
+Create/open a project, save-as to a local `.json`, import/install resources, author using native EditorFunctions, run `run_tests`/`run_gameplay_test`, launch and visually inspect a preview with `/v1/windows` + `/v1/capture`, iterate/hot-reload, save, then export HTML5 headlessly.

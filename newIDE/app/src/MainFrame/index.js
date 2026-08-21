@@ -5635,12 +5635,33 @@ const MainFrame = (props: Props): React.MixedElement => {
     ]
   );
 
+  const closeAllPreviewsForAgentApi = React.useCallback(
+    () => {
+      const previewLauncher = _previewLauncher.current;
+      if (previewLauncher && previewLauncher.closeAllPreviews) {
+        previewLauncher.closeAllPreviews();
+      }
+      if (previewDebuggerServer) previewDebuggerServer.closeAllConnections();
+    },
+    [previewDebuggerServer]
+  );
+
   useAgentApi({
     project: state.currentProject,
     fileIdentifier,
     i18n,
     resourceManagementProps,
     saveProject,
+    saveProjectAsWithStorageProvider,
+    openFromFileMetadataWithStorageProvider,
+    closeProject,
+    hasUnsavedChanges,
+    createEmptyProject,
+    createProjectFromExample,
+    launchNewPreview,
+    launchHotReloadPreview,
+    closeAllPreviews: closeAllPreviewsForAgentApi,
+    previewDebuggerServer,
     triggerUnsavedChanges,
     forceUpdate,
     onOpenLayout: openLayout,

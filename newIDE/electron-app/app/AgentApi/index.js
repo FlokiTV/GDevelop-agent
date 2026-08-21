@@ -35,6 +35,16 @@ const json = (response, statusCode, payload) => {
   response.end(body);
 };
 
+const png = (response, imageBuffer) => {
+  response.writeHead(200, {
+    'Content-Type': 'image/png',
+    'Content-Length': imageBuffer.length,
+    'Cache-Control': 'no-store',
+    'X-Content-Type-Options': 'nosniff',
+  });
+  response.end(imageBuffer);
+};
+
 const readJsonBody = request =>
   new Promise((resolve, reject) => {
     let size = 0;
@@ -177,7 +187,7 @@ const createConfig = app => {
     port,
     token,
     pid: process.pid,
-    version: 1,
+    version: 2,
   };
   try {
     fs.writeFileSync(configPath, JSON.stringify(nextConfig, null, 2), 'utf8');
@@ -189,9 +199,14 @@ const installIpcHandlers = ({ ipcMain, BrowserWindow }) => {
   const onRegister = (event, payload = {}) => {
     const window = BrowserWindow.fromWebContents(event.sender);
     if (!window) return;
+    if (payload.active === false) {
+      windowProjects.delete(window.id);
+      return;
+    }
     const normalized = normalizeFileIdentifier(payload.fileIdentifier);
-    if (normalized) windowProjects.set(window.id, normalized);
-    else windowProjects.delete(window.id);
+    // A registered editor window remains targetable even when no project is
+    // open. This is required for initialize_project and project-open actions.
+    windowProjects.set(window.id, normalized);
   };
 
   const onResponse = (event, payload = {}) => {
@@ -279,6 +294,51 @@ const startAgentApi = ({ app, ipcMain, BrowserWindow, log }) => {
         return;
       }
 
+      if (request.method === 'GET' && url.pathname === '/v1/windows') {
+        pruneWindowProjects(BrowserWindow);
+        json(response, 200, {
+          ok: true,
+          windows: BrowserWindow.getAllWindows().map(window => ({
+            windowId: window.id,
+            title: window.getTitle(),
+            url: window.webContents.getURL(),
+            bounds: window.getBounds(),
+            visible: window.isVisible(),
+            focused: window.isFocused(),
+            editorWindow: windowProjects.has(window.id),
+            projectPath: windowProjects.has(window.id)
+              ? windowProjects.get(window.id)
+              : null,
+          })),
+        });
+        return;
+      }
+
+      if (request.method === 'GET' && url.pathname === '/v1/capture') {
+        const requestedWindowId = url.searchParams.get('windowId');
+        const targetWindow = requestedWindowId
+          ? BrowserWindow.fromId(Number(requestedWindowId))
+          : BrowserWindow.getFocusedWindow();
+        if (!targetWindow || targetWindow.isDestroyed()) {
+          json(response, 404, { ok: false, error: 'window_not_found' });
+          return;
+        }
+        const image = await targetWindow.webContents.capturePage();
+        png(response, image.toPNG());
+        return;
+      }
+
+      if (request.method === 'GET' && url.pathname === '/v1/capabilities') {
+        const result = await dispatchToRenderer({
+          BrowserWindow,
+          projectPath: url.searchParams.get('projectPath'),
+          windowId: url.searchParams.get('windowId'),
+          request: { type: 'capabilities' },
+        });
+        json(response, 200, { ok: true, result });
+        return;
+      }
+
       if (request.method === 'GET' && url.pathname === '/v1/project') {
         const result = await dispatchToRenderer({
           BrowserWindow,
@@ -296,6 +356,22 @@ const startAgentApi = ({ app, ipcMain, BrowserWindow, log }) => {
           projectPath: url.searchParams.get('projectPath'),
           windowId: url.searchParams.get('windowId'),
           request: { type: 'list-functions' },
+        });
+        json(response, 200, { ok: true, result });
+        return;
+      }
+
+      if (request.method === 'POST' && url.pathname === '/v1/action') {
+        const body = await readJsonBody(request);
+        if (!body || typeof body.type !== 'string' || !body.type) {
+          json(response, 400, { ok: false, error: 'missing_action_type' });
+          return;
+        }
+        const targeting = getTargeting(request, body);
+        const result = await dispatchToRenderer({
+          BrowserWindow,
+          ...targeting,
+          request: body,
         });
         json(response, 200, { ok: true, result });
         return;
