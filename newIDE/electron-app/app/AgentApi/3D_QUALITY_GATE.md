@@ -30,9 +30,9 @@ Do not assume a model should be scaled uniformly. A mesh can be authored with it
 
 ### Concrete lesson from the Ripe Skirt starter
 
-The starter coin model has nominal dimensions `31 x 31 x 31`, while reference instances use `rotationY = 90` and do not apply arbitrary uniform instance scaling. Creating new coins at `40-44 x 40-44 x 40-44` made them read as thick cylinders.
+The starter coin model has nominal dimensions `31 x 31 x 31`, while reference instances use `rotationY = 90` and `customSize = false`. Creating new coins at `40-44 x 40-44 x 40-44` made them read as thick cylinders. A later attempt to force a `10 x 31 x 31` custom size also produced an artificial look.
 
-For the Skyline Trial quality pass, `rotationY = 90` was restored and the thickness axis was reduced independently (`10 x 31 x 31`). This is a project-specific example, not a universal coin size. The reusable rule is: **derive orientation and thickness axis from the reference, then alter only the dimension that needs visual adjustment.**
+The correct Skyline Trial redesign therefore returned to the starter contract: recreate Coin instances without `instances_size` so they keep the native model dimensions, and set only the reference rotation (`rotationY = 90`). The reusable rule is: **when a trusted reference exists, preserve its native instance sizing before inventing a corrective scale.**
 
 ## 2. Inspect composition, not just instance data
 
@@ -123,7 +123,30 @@ Rules for agents:
 - never overwrite the user's original project merely to bypass this limitation;
 - track the missing deterministic event-authoring path as an Agent API gap to fix.
 
-## 7. Finish with a clean, reviewable state
+## 7. Validate level mechanics before decorating
+
+A 3D level is not a pile of visually distinct objects. Before adding or moving geometry, identify what each object actually does at runtime and preserve that role.
+
+For each gameplay-relevant object:
+
+- inspect its behaviors and physics body type;
+- distinguish static navigation geometry from dynamic interactable objects;
+- read movement values such as jump height, stair height and max speed before choosing platform heights or gaps;
+- derive challenge thresholds from those values instead of eyeballing a staircase;
+- calculate AABB intersections for solids and collectibles after placement; unexplained solid-solid intersections are a failed quality gate;
+- inspect the player camera settings and leave enough space behind/around the spawn for that camera to work.
+
+### Concrete lesson from Ripe Skirt
+
+The pre-agent starter establishes clear roles: `Ground` and `Obstacle` use Static Physics3D bodies, while `PushableBox` is a heavy Dynamic body with high friction/damping. The Player has `jumpHeight = 100` and a third-person camera distance of `600`.
+
+The original level encodes a deliberate vertical progression: the pushable box top is at `64`, a low obstacle top at `128`, a high obstacle top at `192`, and elevated coins at roughly `226`. Ground-to-128 is not a direct 100-pixel jump, while the subsequent `64`-pixel steps are reachable. This makes the box mechanically necessary.
+
+A bad Skyline Trial revision ignored those roles: it used roughly 60-pixel platform increments (making the box unnecessary), placed dynamic boxes inside static obstacles, clipped a coin almost entirely inside collision geometry, and spawned the player too close to a rear wall for a 600-distance camera. The corrected redesign was accepted structurally only after solid-solid intersections and coin-solid intersections both reached zero and the progression was rebuilt around the real jump threshold.
+
+The general rule is: **first reproduce the relationship between mechanics and geometry, then change the visual layout.** A distinct level can use a different route while preserving the game's mechanical grammar.
+
+## 8. Finish with a clean, reviewable state
 
 Before calling the scene ready:
 
