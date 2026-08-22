@@ -61,7 +61,14 @@ Send these to `POST /v1/action` with a `type` field:
 - `preview-gamepad`: connect/update/disconnect/reset a virtual gamepad with `axes` and `buttons` arrays.
 - `preview-runtime-status` / `preview-runtime-reset` — install/inspect/reset the isolated preview runtime.
 - `preview-close-all`
+- `runtime-status`: `{ "type":"runtime-status", "debuggerId":"<optional>" }` — native debugger pause/scene status.
+- `runtime-snapshot`: `{ "type":"runtime-snapshot", "maxInstances":200, "objectNames":["Player","Enemy"] }` — scene/time/FPS approximation, variables, object counts, instances and behavior state from the native debugger dump.
+- `runtime-logs`: `{ "type":"runtime-logs", "limit":50 }` — bounded console/error history captured from the debugger protocol.
+- `runtime-assert`: `{ "type":"runtime-assert", "condition":{"path":"objects.Player.count","operator":"gte","value":1} }`.
+- `runtime-wait-for`: `{ "type":"runtime-wait-for", "condition":{"path":"scene.name","operator":"equals","value":"Win"}, "timeoutMs":5000, "intervalMs":250 }` — repeatedly refreshes the native debugger dump until the condition matches or times out.
 - `export-html5`: `{ "type":"export-html5", "outputDir":"C:\\games\\build" }`
+
+Runtime assertion paths address the returned snapshot (`scene.name`, `scene.variables.Score.value`, `objects.Player.count`, `objects.Player.instances.0.x`, etc.). Supported operators are `equals`/`eq`, `notEquals`/`neq`, `gt`, `gte`, `lt`, `lte`, `contains`, `exists`, `not-exists`, `truthy` and `falsy`. Snapshot payloads are bounded; `maxInstances` defaults to 200 and is capped at 1000.
 
 Opening or closing a project with unsaved changes is rejected unless `discardUnsavedChanges:true` is explicit.
 

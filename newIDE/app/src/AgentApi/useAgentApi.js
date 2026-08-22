@@ -26,6 +26,7 @@ import {
   listCheckpoints,
   prepareTransactionRollback,
 } from './CheckpointTools';
+import { createRuntimeTelemetry } from './RuntimeTelemetry';
 import { exportLocalHtml5Headless } from '../ExportAndShare/Headless/ExportLocalHtml5Headless';
 import {
   type SceneEventsOutsideEditorChanges,
@@ -314,6 +315,9 @@ export default function useAgentApi({
             forceUpdate,
           })
         : null;
+      const runtimeTelemetry = previewDebuggerServer
+        ? createRuntimeTelemetry(previewDebuggerServer)
+        : null;
 
       const restoreProjectCheckpoint = async (checkpoint: any) => {
         const serializedProject = gd.Serializer.fromJSObject(
@@ -538,6 +542,9 @@ export default function useAgentApi({
                   'preview-touch-input',
                   'preview-virtual-gamepad',
                   'preview-input-sequences',
+                  'runtime-status-snapshot',
+                  'runtime-console-errors',
+                  'runtime-assertions-wait-for',
                   'gameplay-tests',
                   'editor-function-tests',
                 ],
@@ -812,6 +819,65 @@ export default function useAgentApi({
             return;
           }
 
+          if (request.type === 'runtime-status') {
+            if (!runtimeTelemetry)
+              throw new Error('preview_debugger_unavailable');
+            const result = await runtimeTelemetry.getStatus(request);
+            ipcRenderer.send('gdevelop-agent-api:response', {
+              requestId,
+              ok: true,
+              result,
+            });
+            return;
+          }
+
+          if (request.type === 'runtime-snapshot') {
+            if (!runtimeTelemetry)
+              throw new Error('preview_debugger_unavailable');
+            const result = await runtimeTelemetry.getSnapshot(request);
+            ipcRenderer.send('gdevelop-agent-api:response', {
+              requestId,
+              ok: true,
+              result,
+            });
+            return;
+          }
+
+          if (request.type === 'runtime-logs') {
+            if (!runtimeTelemetry)
+              throw new Error('preview_debugger_unavailable');
+            ipcRenderer.send('gdevelop-agent-api:response', {
+              requestId,
+              ok: true,
+              result: runtimeTelemetry.getLogs(request),
+            });
+            return;
+          }
+
+          if (request.type === 'runtime-assert') {
+            if (!runtimeTelemetry)
+              throw new Error('preview_debugger_unavailable');
+            const result = await runtimeTelemetry.assertRuntime(request);
+            ipcRenderer.send('gdevelop-agent-api:response', {
+              requestId,
+              ok: true,
+              result,
+            });
+            return;
+          }
+
+          if (request.type === 'runtime-wait-for') {
+            if (!runtimeTelemetry)
+              throw new Error('preview_debugger_unavailable');
+            const result = await runtimeTelemetry.waitFor(request);
+            ipcRenderer.send('gdevelop-agent-api:response', {
+              requestId,
+              ok: true,
+              result,
+            });
+            return;
+          }
+
           if (request.type === 'preview-status') {
             ipcRenderer.send('gdevelop-agent-api:response', {
               requestId,
@@ -1024,6 +1090,7 @@ export default function useAgentApi({
       ipcRenderer.on('gdevelop-agent-api:request', onRequest);
       return () => {
         ipcRenderer.removeListener('gdevelop-agent-api:request', onRequest);
+        if (runtimeTelemetry) runtimeTelemetry.dispose();
       };
     },
     [
