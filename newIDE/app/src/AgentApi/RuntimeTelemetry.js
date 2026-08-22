@@ -429,9 +429,38 @@ export const createRuntimeTelemetry = (previewDebuggerServer: any): any => {
     });
   };
 
+  const requestMessageWithRetry = async (
+    debuggerId: string,
+    command: string,
+    expectedCommand: string,
+    timeoutMs: number
+  ): Promise<any> => {
+    let lastError = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        return await requestMessage(
+          debuggerId,
+          command,
+          expectedCommand,
+          timeoutMs
+        );
+      } catch (error) {
+        lastError = error;
+        const code = String(
+          (error && error.code) || (error && error.message) || error || ''
+        );
+        if (!code.startsWith('runtime_telemetry_timeout:') || attempt === 1) {
+          throw error;
+        }
+        await sleep(150);
+      }
+    }
+    throw lastError || makeError('runtime_telemetry_failed');
+  };
+
   const getStatus = async (request: any = {}): Promise<any> => {
     const debuggerId = selectDebuggerId(request.debuggerId);
-    const status = await requestMessage(
+    const status = await requestMessageWithRetry(
       debuggerId,
       'getStatus',
       'status',
@@ -442,7 +471,7 @@ export const createRuntimeTelemetry = (previewDebuggerServer: any): any => {
 
   const getSnapshot = async (request: any = {}): Promise<any> => {
     const debuggerId = selectDebuggerId(request.debuggerId);
-    const dump = await requestMessage(
+    const dump = await requestMessageWithRetry(
       debuggerId,
       'refresh',
       'dump',

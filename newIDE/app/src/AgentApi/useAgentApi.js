@@ -619,9 +619,9 @@ export default function useAgentApi({
                   typeof exportOptions.outputDir === 'string'
                     ? exportOptions.outputDir
                     : undefined,
+                persistOutputDirectory: false,
               }),
             };
-            triggerUnsavedChanges();
             steps.push({ name: 'html5-export', ok: true });
           } catch (error) {
             exportResult = {
@@ -1342,8 +1342,8 @@ export default function useAgentApi({
                 typeof request.outputDir === 'string'
                   ? request.outputDir
                   : undefined,
+              persistOutputDirectory: false,
             });
-            triggerUnsavedChanges();
             ipcRenderer.send('gdevelop-agent-api:response', {
               requestId,
               ok: true,

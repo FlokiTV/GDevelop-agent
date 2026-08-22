@@ -12,9 +12,11 @@ const cloneDump = () => JSON.parse(JSON.stringify(debuggerDump));
 const createDebuggerServer = ({
   dump = debuggerDump,
   onRefresh,
+  dropFirstRefresh = false,
 }: {|
   dump?: any,
   onRefresh?: number => any,
+  dropFirstRefresh?: boolean,
 |} = {}) => {
   let callbacks = null;
   let refreshCount = 0;
@@ -44,6 +46,7 @@ const createDebuggerServer = ({
           });
         } else if (message.command === 'refresh') {
           refreshCount += 1;
+          if (dropFirstRefresh && refreshCount === 1) return;
           callbacks.onHandleParsedMessage({
             id,
             parsedMessage: {
@@ -156,6 +159,20 @@ describe('AgentApi RuntimeTelemetry', () => {
     expect(logs.warnings).toBe(1);
     expect(logs.logs[0].message).toBe('watch this');
 
+    telemetry.dispose();
+  });
+
+  it('retries one transient debugger dump timeout', async () => {
+    const server = createDebuggerServer({ dropFirstRefresh: true });
+    const telemetry = createRuntimeTelemetry(server);
+
+    const snapshot = await telemetry.getSnapshot({
+      requestTimeoutMs: 250,
+      maxInstances: 1,
+    });
+
+    expect(snapshot.scene.name).toBe('New scene');
+    expect(server.sendMessage).toHaveBeenCalledTimes(2);
     telemetry.dispose();
   });
 

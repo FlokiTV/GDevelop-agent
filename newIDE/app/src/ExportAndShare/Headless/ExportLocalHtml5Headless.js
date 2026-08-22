@@ -29,6 +29,7 @@ type Options = {|
   project: gdProject,
   i18n: I18nType,
   outputDir?: string,
+  persistOutputDirectory?: boolean,
 |};
 
 type Result = {| outputDir: string |};
@@ -38,8 +39,10 @@ export const exportLocalHtml5Headless = async ({
   project,
   i18n,
   outputDir,
+  persistOutputDirectory = true,
 }: Options): Promise<Result> => {
   const resolvedOutputDir = outputDir || resolveHtml5OutputDir(project);
+  const previousOutputDir = project.getLastCompilationDirectory();
   project.setLastCompilationDirectory(resolvedOutputDir);
 
   const context = {
@@ -49,22 +52,28 @@ export const exportLocalHtml5Headless = async ({
     i18n,
   };
 
-  const preparedExporter = await localHTML5ExportPipeline.prepareExporter(
-    context
-  );
-  const exportOutput = await localHTML5ExportPipeline.launchExport(
-    context,
-    preparedExporter,
-    null
-  );
-  const resourcesDownloadOutput = await localHTML5ExportPipeline.launchResourcesDownload(
-    context,
-    exportOutput
-  );
-  await localHTML5ExportPipeline.launchCompression(
-    context,
-    resourcesDownloadOutput
-  );
+  try {
+    const preparedExporter = await localHTML5ExportPipeline.prepareExporter(
+      context
+    );
+    const exportOutput = await localHTML5ExportPipeline.launchExport(
+      context,
+      preparedExporter,
+      null
+    );
+    const resourcesDownloadOutput = await localHTML5ExportPipeline.launchResourcesDownload(
+      context,
+      exportOutput
+    );
+    await localHTML5ExportPipeline.launchCompression(
+      context,
+      resourcesDownloadOutput
+    );
+  } finally {
+    if (!persistOutputDirectory) {
+      project.setLastCompilationDirectory(previousOutputDir);
+    }
+  }
 
   return { outputDir: resolvedOutputDir };
 };

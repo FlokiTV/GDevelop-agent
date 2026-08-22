@@ -86,6 +86,17 @@ describe('AgentApi AssetTools', () => {
     project.delete();
   });
 
+  it('ignores empty resource references exposed by objects or behaviors', () => {
+    const project = gd.ProjectHelper.createNewGDJSProject();
+    addImageToSpriteObject(project, 'EmptySprite', '');
+    const { tools } = makeTools(project);
+
+    const result = tools.listResources();
+    expect(result.unregisteredReferences).toEqual([]);
+    expect(result.summary.unregisteredReferences).toBe(0);
+    project.delete();
+  });
+
   it('renames a resource and updates object references', () => {
     const project = gd.ProjectHelper.createNewGDJSProject();
     addImageResource(project, 'old.png');

@@ -130,7 +130,15 @@ const getUsedResourceNames = (project: gdProject): Set<string> => {
   const resourcesManager = project.getResourcesManager();
   const resourcesInUse = new gd.ResourcesInUseHelper(resourcesManager);
   gd.ResourceExposer.exposeWholeProjectResources(project, resourcesInUse);
-  const names = new Set(resourcesInUse.getAllResources().toJSArray());
+  const names = new Set(
+    resourcesInUse
+      .getAllResources()
+      .toJSArray()
+      .filter(
+        resourceName =>
+          typeof resourceName === 'string' && resourceName.trim().length > 0
+      )
+  );
   resourcesInUse.delete();
   return names;
 };
