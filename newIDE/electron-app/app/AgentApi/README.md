@@ -113,3 +113,5 @@ Projectless `initialize_project` is also available through `/v1/call` when the t
 ## Recommended end-to-end workflow
 
 Create/open a project, save-as to a local `.json`, create a checkpoint, import/install resources, author using native EditorFunctions, run `/v1/diagnostics`, launch and visually inspect a preview with `/v1/windows` + `/v1/capture`, automate gameplay with preview input + runtime assertions, iterate/hot-reload, then call `/v1/validate` with the checkpoint and requested tests/export. Save only after the validation report is acceptable.
+
+For any 3D scene creation or material 3D edit, the validation report is only one part of acceptance. Follow [`3D_QUALITY_GATE.md`](./3D_QUALITY_GATE.md): ground object scale/orientation in a reference scene or asset, inspect real editor and player-camera captures, and prove important interactions by an observable runtime state change before calling the work finished.
