@@ -91,6 +91,14 @@ const openPreviewWindow = ({
   }
 };
 
+const isPreviewWindow = windowId =>
+  previewWindows.some(
+    entry =>
+      entry.previewWindow &&
+      !entry.previewWindow.isDestroyed() &&
+      entry.previewWindow.id === windowId
+  );
+
 const closePreviewWindow = windowId => {
   const entry = previewWindows.find(
     entry => entry.previewWindow.id === windowId
@@ -128,6 +136,7 @@ const closeAllPreviewWindows = () => {
 };
 
 module.exports = {
+  isPreviewWindow,
   openPreviewWindow,
   closePreviewWindow,
   closePreviewWindowsForParent,

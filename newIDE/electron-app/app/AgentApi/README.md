@@ -55,6 +55,11 @@ Send these to `POST /v1/action` with a `type` field:
 - `preview-start`: `{ "type":"preview-start", "numberOfWindows":1 }`
 - `preview-hot-reload`
 - `preview-control`: `{ "type":"preview-control", "action":"pause" }` (`play`, `pause`, `refresh`)
+- `preview-input`: `{ "type":"preview-input", "previewWindowId":12, "event":{"type":"keyDown","keyCode":"ArrowRight"} }` — keyboard/mouse input sent directly by Electron.
+- `preview-input-sequence`: timed keyboard/mouse steps, followed by `preview-input-reset` when needed.
+- `preview-touch`: `{ "type":"preview-touch", "previewWindowId":12, "action":"start", "identifier":0, "x":120, "y":240 }` (`start`, `move`, `end`, `cancel`).
+- `preview-gamepad`: connect/update/disconnect/reset a virtual gamepad with `axes` and `buttons` arrays.
+- `preview-runtime-status` / `preview-runtime-reset` — install/inspect/reset the isolated preview runtime.
 - `preview-close-all`
 - `export-html5`: `{ "type":"export-html5", "outputDir":"C:\\games\\build" }`
 

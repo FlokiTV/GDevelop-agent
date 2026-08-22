@@ -2,6 +2,9 @@ const http = require('http');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const { createPreviewInputTools } = require('./PreviewInputTools');
+const { createAgentPreviewRuntime } = require('./AgentPreviewRuntime');
+const { isPreviewWindow } = require('../PreviewWindow');
 
 const DEFAULT_PORT = 38473;
 const REQUEST_TIMEOUT_MS = 30000;
@@ -13,6 +16,8 @@ let config = null;
 let windowProjects = new Map();
 let pendingRequests = new Map();
 let ipcHandlers = null;
+let previewInputTools = null;
+let agentPreviewRuntime = null;
 
 const normalizeFileIdentifier = fileIdentifier => {
   if (!fileIdentifier || typeof fileIdentifier !== 'string') return null;
@@ -258,6 +263,16 @@ const startAgentApi = ({ app, ipcMain, BrowserWindow, log }) => {
   started = true;
   config = createConfig(app);
   installIpcHandlers({ ipcMain, BrowserWindow });
+  previewInputTools = createPreviewInputTools({
+    BrowserWindow,
+    isEditorWindow: windowId => windowProjects.has(windowId),
+    isRegisteredPreviewWindow: isPreviewWindow,
+  });
+  agentPreviewRuntime = createAgentPreviewRuntime({
+    BrowserWindow,
+    isEditorWindow: windowId => windowProjects.has(windowId),
+    isRegisteredPreviewWindow: isPreviewWindow,
+  });
 
   server = http.createServer(async (request, response) => {
     try {
@@ -306,6 +321,7 @@ const startAgentApi = ({ app, ipcMain, BrowserWindow, log }) => {
             visible: window.isVisible(),
             focused: window.isFocused(),
             editorWindow: windowProjects.has(window.id),
+            previewWindow: isPreviewWindow(window.id),
             projectPath: windowProjects.has(window.id)
               ? windowProjects.get(window.id)
               : null,
@@ -365,6 +381,19 @@ const startAgentApi = ({ app, ipcMain, BrowserWindow, log }) => {
         const body = await readJsonBody(request);
         if (!body || typeof body.type !== 'string' || !body.type) {
           json(response, 400, { ok: false, error: 'missing_action_type' });
+          return;
+        }
+        if (previewInputTools && previewInputTools.canHandleAction(body.type)) {
+          const result = await previewInputTools.handleAction(body);
+          json(response, 200, { ok: true, result });
+          return;
+        }
+        if (
+          agentPreviewRuntime &&
+          agentPreviewRuntime.canHandleAction(body.type)
+        ) {
+          const result = await agentPreviewRuntime.handleAction(body);
+          json(response, 200, { ok: true, result });
           return;
         }
         const targeting = getTargeting(request, body);
@@ -436,16 +465,26 @@ const startAgentApi = ({ app, ipcMain, BrowserWindow, log }) => {
 
       json(response, 404, { ok: false, error: 'not_found' });
     } catch (error) {
-      const code = error && error.code ? error.code : 'agent_api_error';
+      const code = error && error.code ? String(error.code) : 'agent_api_error';
       const statusCode =
         code === 'target_window_not_found'
           ? 409
+          : code === 'preview_window_not_found'
+          ? 404
           : code === 'renderer_request_timeout'
           ? 504
-          : code === 'invalid_json'
-          ? 400
           : code === 'request_body_too_large'
           ? 413
+          : code === 'invalid_json' ||
+            code.startsWith('invalid_input') ||
+            code.startsWith('invalid_touch') ||
+            code.startsWith('invalid_gamepad') ||
+            code.startsWith('missing_input') ||
+            code.startsWith('missing_preview') ||
+            code.startsWith('unsupported_input') ||
+            code === 'too_many_input_sequence_steps' ||
+            code === 'input_sequence_too_long'
+          ? 400
           : 500;
       json(response, statusCode, {
         ok: false,
@@ -492,6 +531,8 @@ const stopAgentApi = () => {
   }
   server = null;
   config = null;
+  previewInputTools = null;
+  agentPreviewRuntime = null;
   started = false;
 };
 
