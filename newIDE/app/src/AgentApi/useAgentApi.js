@@ -27,6 +27,7 @@ import {
   prepareTransactionRollback,
 } from './CheckpointTools';
 import { createRuntimeTelemetry } from './RuntimeTelemetry';
+import { createEditorVisualTools } from './EditorVisualTools';
 import { exportLocalHtml5Headless } from '../ExportAndShare/Headless/ExportLocalHtml5Headless';
 import {
   type SceneEventsOutsideEditorChanges,
@@ -65,6 +66,7 @@ type AgentFunctionCall = {|
 
 type Props = {|
   project: ?gdProject,
+  editorTabs: any,
   fileIdentifier: ?string,
   fileMetadata: ?FileMetadata,
   loadFromSerializedProject: (
@@ -169,6 +171,7 @@ const getPreviewStatus = (previewDebuggerServer: ?any) => {
 
 export default function useAgentApi({
   project,
+  editorTabs,
   fileIdentifier,
   fileMetadata,
   loadFromSerializedProject,
@@ -317,6 +320,9 @@ export default function useAgentApi({
         : null;
       const runtimeTelemetry = previewDebuggerServer
         ? createRuntimeTelemetry(previewDebuggerServer)
+        : null;
+      const editorVisualTools = project
+        ? createEditorVisualTools({ project, editorTabs })
         : null;
 
       const restoreProjectCheckpoint = async (checkpoint: any) => {
@@ -555,7 +561,13 @@ export default function useAgentApi({
                   'transaction-begin-commit-rollback',
                 ],
                 output: ['html5-export'],
-                editorUi: ['open-scene', 'open-events'],
+                editorUi: [
+                  'open-scene',
+                  'open-events',
+                  'select-scene-instances',
+                  'focus-scene-selection',
+                  'capture-editor-preview-windows',
+                ],
               },
             });
             return;
@@ -935,6 +947,39 @@ export default function useAgentApi({
             return;
           }
 
+          if (request.type === 'editor-visual-status') {
+            if (!editorVisualTools) throw new Error('no_project_open');
+            ipcRenderer.send('gdevelop-agent-api:response', {
+              requestId,
+              ok: true,
+              result: {
+                openSceneEditors: editorVisualTools.listOpenSceneEditors(),
+                capture: 'GET /v1/capture?windowId=<id>',
+              },
+            });
+            return;
+          }
+
+          if (request.type === 'editor-select-instances') {
+            if (!editorVisualTools) throw new Error('no_project_open');
+            ipcRenderer.send('gdevelop-agent-api:response', {
+              requestId,
+              ok: true,
+              result: editorVisualTools.selectInstances(request),
+            });
+            return;
+          }
+
+          if (request.type === 'editor-focus-selection') {
+            if (!editorVisualTools) throw new Error('no_project_open');
+            ipcRenderer.send('gdevelop-agent-api:response', {
+              requestId,
+              ok: true,
+              result: editorVisualTools.focusSelection(request),
+            });
+            return;
+          }
+
           if (request.type === 'open-scene') {
             if (!project) throw new Error('no_project_open');
             if (
@@ -1095,6 +1140,7 @@ export default function useAgentApi({
     },
     [
       project,
+      editorTabs,
       fileIdentifier,
       fileMetadata,
       loadFromSerializedProject,

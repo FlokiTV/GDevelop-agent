@@ -8,6 +8,8 @@ The implementation stays isolated:
 - `newIDE/app/src/AgentApi/useAgentApi.js`: project lifecycle, preview/export helpers and the adapter to GDevelop's existing `EditorFunctions`.
 - `newIDE/app/src/AgentApi/AssetTools.js`: safe local resource lifecycle and diagnostics.
 - `newIDE/app/src/AgentApi/CheckpointTools.js`: in-memory checkpoints, structural diffs and transactions.
+- `newIDE/app/src/AgentApi/RuntimeTelemetry.js`: bounded runtime snapshots, logs, assertions and wait conditions backed by GDevelop's native debugger protocol.
+- `newIDE/app/src/AgentApi/EditorVisualTools.js`: scene-editor instance selection and native focus/fit controls for visual inspection.
 
 Only small hooks live outside these folders: `electron-app/app/main.js` installs the service and `app/src/MainFrame/index.js` passes callbacks already owned by the editor.
 
@@ -51,6 +53,9 @@ Send these to `POST /v1/action` with a `type` field:
 - `checkpoint-create`, `checkpoint-list`, `checkpoint-diff`, `checkpoint-delete`, `checkpoint-restore` — in-memory project snapshots and structural diffs.
 - `transaction-begin`, `transaction-status`, `transaction-commit`, `transaction-rollback` — protected mutation batches with safe internal project restore on rollback.
 - `open-scene`: `{ "type":"open-scene", "sceneName":"Level1", "mode":"scene" }` (`scene`, `events` or `both`)
+- `editor-visual-status` — lists currently mounted scene editors and points callers to the shared `/v1/capture` endpoint.
+- `editor-select-instances`: `{ "type":"editor-select-instances", "sceneName":"Level1", "objectName":"Player", "focusMode":"fit" }` — selects all matching instances by object name, or one instance with `instanceId` using the same shortened persistent UUID returned by `describe_instances`; focus mode is `center`, `fit` or `none`.
+- `editor-focus-selection`: `{ "type":"editor-focus-selection", "sceneName":"Level1", "mode":"center" }` — centers or fits the current native SceneEditor selection without mutating the project.
 - `preview-status`
 - `preview-start`: `{ "type":"preview-start", "numberOfWindows":1 }`
 - `preview-hot-reload`

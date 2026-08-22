@@ -5648,6 +5648,7 @@ const MainFrame = (props: Props): React.MixedElement => {
 
   useAgentApi({
     project: state.currentProject,
+    editorTabs: state.editorTabs,
     fileIdentifier,
     fileMetadata: currentFileMetadata,
     loadFromSerializedProject,
