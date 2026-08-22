@@ -57,14 +57,20 @@ test('serves searchable function listing and per-function metadata routes', asyn
     send: (channel, payload) => {
       if (channel !== 'gdevelop-agent-api:request') return;
       rendererRequests.push(payload.request);
-      const result =
-        payload.request.type === 'describe-function'
-          ? { function: { name: payload.request.name } }
-          : {
-              functions: [],
-              query: payload.request.query || null,
-              executableOnly: !!payload.request.executableOnly,
-            };
+      let result;
+      if (payload.request.type === 'describe-function') {
+        result = { function: { name: payload.request.name } };
+      } else if (payload.request.type === 'diagnostics-project') {
+        result = { summary: { ok: true, errors: 0, warnings: 0 } };
+      } else if (payload.request.type === 'validation-report') {
+        result = { ok: true, summary: { checksRun: 0, checksFailed: 0 } };
+      } else {
+        result = {
+          functions: [],
+          query: payload.request.query || null,
+          executableOnly: !!payload.request.executableOnly,
+        };
+      }
       setImmediate(() => {
         ipcMain.emit(
           'gdevelop-agent-api:response',
@@ -131,6 +137,32 @@ test('serves searchable function listing and per-function metadata routes', asyn
     assert.deepEqual(rendererRequests[1], {
       type: 'describe-function',
       name: 'put_2d_instances',
+    });
+
+    const diagnosticsResponse = await fetch(
+      `${base}/v1/diagnostics?includeAssets=false&includeNativeReport=false`,
+      { headers }
+    );
+    assert.equal(diagnosticsResponse.status, 200);
+    const diagnosticsBody = await diagnosticsResponse.json();
+    assert.equal(diagnosticsBody.result.summary.ok, true);
+    assert.deepEqual(rendererRequests[2], {
+      type: 'diagnostics-project',
+      includeAssets: false,
+      includeNativeReport: false,
+    });
+
+    const validateResponse = await fetch(`${base}/v1/validate`, {
+      method: 'POST',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ checkpointId: 'cp-1' }),
+    });
+    assert.equal(validateResponse.status, 200);
+    const validateBody = await validateResponse.json();
+    assert.equal(validateBody.result.ok, true);
+    assert.deepEqual(rendererRequests[3], {
+      checkpointId: 'cp-1',
+      type: 'validation-report',
     });
   } finally {
     stopAgentApi();

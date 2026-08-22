@@ -26,6 +26,7 @@ import {
 } from './CheckpointTools';
 import { createRuntimeTelemetry } from './RuntimeTelemetry';
 import { createEditorVisualTools } from './EditorVisualTools';
+import { createDiagnosticsTools } from './DiagnosticsTools';
 import {
   getFunctionMetadata,
   getFunctionMetadataStats,
@@ -309,6 +310,9 @@ export default function useAgentApi({
       const editorVisualTools = project
         ? createEditorVisualTools({ project, editorTabs })
         : null;
+      const diagnosticsTools = project
+        ? createDiagnosticsTools({ project, i18n, assetTools })
+        : null;
 
       const restoreProjectCheckpoint = async (checkpoint: any) => {
         const serializedProject = gd.Serializer.fromJSObject(
@@ -455,6 +459,210 @@ export default function useAgentApi({
         return { action, debuggerIds: targetIds };
       };
 
+      const runValidationReport = async (request: any) => {
+        if (!project || !diagnosticsTools) throw new Error('no_project_open');
+
+        const steps = [];
+        let checkpointDiff = null;
+        if (typeof request.checkpointId === 'string' && request.checkpointId) {
+          try {
+            checkpointDiff = diffCheckpointToProject(
+              project,
+              request.checkpointId
+            );
+            steps.push({ name: 'checkpoint-diff', ok: true });
+          } catch (error) {
+            steps.push({
+              name: 'checkpoint-diff',
+              ok: false,
+              error: error && error.message ? error.message : String(error),
+            });
+          }
+        }
+
+        const gameplayTests = [];
+        const requestedGameplayTests = Array.isArray(request.gameplayTests)
+          ? request.gameplayTests
+          : [];
+        if (requestedGameplayTests.length > 20) {
+          throw new Error('too_many_validation_gameplay_tests');
+        }
+        for (const gameplayTest of requestedGameplayTests) {
+          const argumentsForTest =
+            gameplayTest && typeof gameplayTest === 'object'
+              ? { ...gameplayTest }
+              : {};
+          if (
+            typeof argumentsForTest.source === 'string' &&
+            argumentsForTest.persist === undefined
+          ) {
+            argumentsForTest.persist = false;
+          }
+          try {
+            const callResult = await runFunctionCalls(
+              [
+                {
+                  name: 'run_gameplay_test',
+                  arguments: argumentsForTest,
+                },
+              ],
+              false
+            );
+            const finishedResult = callResult.results[0] || null;
+            const passed = !!(
+              finishedResult &&
+              finishedResult.status === 'finished' &&
+              finishedResult.success
+            );
+            gameplayTests.push({
+              testName: argumentsForTest.test_name || null,
+              ok: passed,
+              result: finishedResult,
+            });
+            steps.push({
+              name: `gameplay-test:${String(
+                argumentsForTest.test_name || gameplayTests.length
+              )}`,
+              ok: passed,
+            });
+          } catch (error) {
+            const message =
+              error && error.message ? error.message : String(error);
+            gameplayTests.push({
+              testName: argumentsForTest.test_name || null,
+              ok: false,
+              error: message,
+            });
+            steps.push({
+              name: `gameplay-test:${String(
+                argumentsForTest.test_name || gameplayTests.length
+              )}`,
+              ok: false,
+              error: message,
+            });
+          }
+        }
+
+        const runtimeAssertions = [];
+        const requestedRuntimeAssertions = Array.isArray(
+          request.runtimeAssertions
+        )
+          ? request.runtimeAssertions
+          : [];
+        if (requestedRuntimeAssertions.length > 50) {
+          throw new Error('too_many_runtime_assertions');
+        }
+        for (const runtimeAssertion of requestedRuntimeAssertions) {
+          try {
+            if (!runtimeTelemetry)
+              throw new Error('preview_debugger_unavailable');
+            const result = await runtimeTelemetry.assertRuntime({
+              ...(runtimeAssertion || {}),
+              debuggerId:
+                (runtimeAssertion && runtimeAssertion.debuggerId) ||
+                request.debuggerId,
+            });
+            runtimeAssertions.push({ ok: !!result.passed, result });
+            steps.push({ name: 'runtime-assertion', ok: !!result.passed });
+          } catch (error) {
+            const message =
+              error && error.message ? error.message : String(error);
+            runtimeAssertions.push({ ok: false, error: message });
+            steps.push({
+              name: 'runtime-assertion',
+              ok: false,
+              error: message,
+            });
+          }
+        }
+
+        let runtimeLogs = null;
+        if (request.includeRuntimeLogs) {
+          try {
+            if (!runtimeTelemetry)
+              throw new Error('preview_debugger_unavailable');
+            runtimeLogs = runtimeTelemetry.getLogs({
+              debuggerId: request.debuggerId,
+              limit: request.runtimeLogLimit,
+            });
+            steps.push({
+              name: 'runtime-logs',
+              ok: runtimeLogs.errors === 0,
+              errors: runtimeLogs.errors,
+              warnings: runtimeLogs.warnings,
+            });
+          } catch (error) {
+            runtimeLogs = {
+              error: error && error.message ? error.message : String(error),
+            };
+            steps.push({
+              name: 'runtime-logs',
+              ok: false,
+              error: runtimeLogs.error,
+            });
+          }
+        }
+
+        let exportResult = null;
+        if (request.export) {
+          try {
+            const exportOptions =
+              request.export && typeof request.export === 'object'
+                ? request.export
+                : {};
+            exportResult = {
+              ok: true,
+              result: await exportLocalHtml5Headless({
+                project,
+                i18n,
+                outputDir:
+                  typeof exportOptions.outputDir === 'string'
+                    ? exportOptions.outputDir
+                    : undefined,
+              }),
+            };
+            triggerUnsavedChanges();
+            steps.push({ name: 'html5-export', ok: true });
+          } catch (error) {
+            exportResult = {
+              ok: false,
+              error: error && error.message ? error.message : String(error),
+            };
+            steps.push({
+              name: 'html5-export',
+              ok: false,
+              error: exportResult.error,
+            });
+          }
+        }
+
+        // Re-scan after optional gameplay probes/export. HTML5 export refreshes
+        // GDevelop's native code-generation diagnostic report, so this final
+        // snapshot is more authoritative than a pre-validation scan.
+        const diagnostics = diagnosticsTools.inspect(request);
+        const failedSteps = steps.filter(step => step.ok === false);
+        return {
+          ok: diagnostics.summary.ok && failedSteps.length === 0,
+          generatedAt: new Date().toISOString(),
+          projectName: project.getName(),
+          projectUuid: project.getProjectUuid(),
+          diagnostics,
+          checkpointDiff,
+          preview: getPreviewStatus(previewDebuggerServer),
+          gameplayTests,
+          runtimeAssertions,
+          runtimeLogs,
+          export: exportResult,
+          steps,
+          summary: {
+            diagnosticErrors: diagnostics.summary.errors,
+            diagnosticWarnings: diagnostics.summary.warnings,
+            checksRun: steps.length,
+            checksFailed: failedSteps.length,
+          },
+        };
+      };
+
       const onRequest = async (
         event,
         { requestId, request }: { requestId: string, request: any }
@@ -582,6 +790,16 @@ export default function useAgentApi({
                   'checkpoint-diff',
                   'checkpoint-restore',
                   'transaction-begin-commit-rollback',
+                ],
+                validation: [
+                  'project-diagnostics',
+                  'events-validation',
+                  'resource-health',
+                  'required-behavior-validation',
+                  'checkpoint-diff-report',
+                  'gameplay-test-report',
+                  'runtime-assertion-report',
+                  'html5-export-validation',
                 ],
                 output: ['html5-export'],
                 editorUi: [
@@ -850,6 +1068,26 @@ export default function useAgentApi({
               requestId,
               ok: true,
               result: { rolledBack: true, ...restored, diff },
+            });
+            return;
+          }
+
+          if (request.type === 'diagnostics-project') {
+            if (!diagnosticsTools) throw new Error('no_project_open');
+            ipcRenderer.send('gdevelop-agent-api:response', {
+              requestId,
+              ok: true,
+              result: diagnosticsTools.inspect(request),
+            });
+            return;
+          }
+
+          if (request.type === 'validation-report') {
+            const result = await runValidationReport(request);
+            ipcRenderer.send('gdevelop-agent-api:response', {
+              requestId,
+              ok: true,
+              result,
             });
             return;
           }

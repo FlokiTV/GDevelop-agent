@@ -11,6 +11,7 @@ The implementation stays isolated:
 - `newIDE/app/src/AgentApi/FunctionMetadata.js`: searchable EditorFunction schemas derived from native source by `generateFunctionMetadata.js`.
 - `newIDE/app/src/AgentApi/RuntimeTelemetry.js`: bounded runtime snapshots, logs, assertions and wait conditions backed by GDevelop's native debugger protocol.
 - `newIDE/app/src/AgentApi/EditorVisualTools.js`: scene-editor instance selection and native focus/fit controls for visual inspection.
+- `newIDE/app/src/AgentApi/DiagnosticsTools.js`: aggregated project/event/resource/behavior diagnostics and validation summaries.
 
 Only small hooks live outside these folders: `electron-app/app/main.js` installs the service and `app/src/MainFrame/index.js` passes callbacks already owned by the editor.
 
@@ -27,6 +28,8 @@ At startup the desktop app writes `agent-api.json` in Electron's `userData` dire
 - `GET /v1/project` — live project/editor/preview state.
 - `GET /v1/functions` — native GDevelop editor functions with generated argument metadata. Use `?q=instance+opacity` for capability search and `?executableOnly=true` to hide generation-service-only tools.
 - `GET /v1/functions/<name>` — complete metadata for one function: description, arguments, input schema, mutation mode, project requirement, source location and examples.
+- `GET /v1/diagnostics` — aggregated fresh project/event/resource/behavior diagnostics plus the latest native code-generation report. Use `includeAssets=false` or `includeNativeReport=false` to skip sections.
+- `POST /v1/validate` — aggregate diagnostics with optional checkpoint diff, gameplay tests, runtime assertions/logs and HTML5 export into one report.
 - `GET /v1/capabilities` — high-level end-to-end capabilities.
 - `GET /v1/windows` — editor and preview Electron windows.
 - `GET /v1/capture?windowId=<id>` — PNG capture of an editor or preview window.
@@ -73,6 +76,8 @@ Send these to `POST /v1/action` with a `type` field:
 - `runtime-logs`: `{ "type":"runtime-logs", "limit":50 }` — bounded console/error history captured from the debugger protocol.
 - `runtime-assert`: `{ "type":"runtime-assert", "condition":{"path":"objects.Player.count","operator":"gte","value":1} }`.
 - `runtime-wait-for`: `{ "type":"runtime-wait-for", "condition":{"path":"scene.name","operator":"equals","value":"Win"}, "timeoutMs":5000, "intervalMs":250 }` — repeatedly refreshes the native debugger dump until the condition matches or times out.
+- `diagnostics-project` — same aggregated project diagnostics as `GET /v1/diagnostics`.
+- `validation-report`: optional `checkpointId`, `gameplayTests`, `runtimeAssertions`, `includeRuntimeLogs`, `debuggerId` and `export`. Gameplay-test source probes default to `persist:false` unless explicitly requested. The response contains one pass/fail summary and per-step results.
 - `export-html5`: `{ "type":"export-html5", "outputDir":"C:\\games\\build" }`
 
 Runtime assertion paths address the returned snapshot (`scene.name`, `scene.variables.Score.value`, `objects.Player.count`, `objects.Player.instances.0.x`, etc.). Supported operators are `equals`/`eq`, `notEquals`/`neq`, `gt`, `gte`, `lt`, `lte`, `contains`, `exists`, `not-exists`, `truthy` and `falsy`. Snapshot payloads are bounded; `maxInstances` defaults to 200 and is capped at 1000.
@@ -107,4 +112,4 @@ Projectless `initialize_project` is also available through `/v1/call` when the t
 
 ## Recommended end-to-end workflow
 
-Create/open a project, save-as to a local `.json`, import/install resources, author using native EditorFunctions, run `run_tests`/`run_gameplay_test`, launch and visually inspect a preview with `/v1/windows` + `/v1/capture`, iterate/hot-reload, save, then export HTML5 headlessly.
+Create/open a project, save-as to a local `.json`, create a checkpoint, import/install resources, author using native EditorFunctions, run `/v1/diagnostics`, launch and visually inspect a preview with `/v1/windows` + `/v1/capture`, automate gameplay with preview input + runtime assertions, iterate/hot-reload, then call `/v1/validate` with the checkpoint and requested tests/export. Save only after the validation report is acceptable.

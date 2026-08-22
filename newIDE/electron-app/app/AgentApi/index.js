@@ -366,6 +366,27 @@ const startAgentApi = ({ app, ipcMain, BrowserWindow, log }) => {
         return;
       }
 
+      if (request.method === 'GET' && url.pathname === '/v1/diagnostics') {
+        const result = await dispatchToRenderer({
+          BrowserWindow,
+          projectPath: url.searchParams.get('projectPath'),
+          windowId: url.searchParams.get('windowId'),
+          request: {
+            type: 'diagnostics-project',
+            includeAssets: !['0', 'false'].includes(
+              String(url.searchParams.get('includeAssets') || '').toLowerCase()
+            ),
+            includeNativeReport: !['0', 'false'].includes(
+              String(
+                url.searchParams.get('includeNativeReport') || ''
+              ).toLowerCase()
+            ),
+          },
+        });
+        json(response, 200, { ok: true, result });
+        return;
+      }
+
       if (request.method === 'GET' && url.pathname === '/v1/functions') {
         const result = await dispatchToRenderer({
           BrowserWindow,
@@ -393,6 +414,18 @@ const startAgentApi = ({ app, ipcMain, BrowserWindow, log }) => {
           projectPath: url.searchParams.get('projectPath'),
           windowId: url.searchParams.get('windowId'),
           request: { type: 'describe-function', name: functionName },
+        });
+        json(response, 200, { ok: true, result });
+        return;
+      }
+
+      if (request.method === 'POST' && url.pathname === '/v1/validate') {
+        const body = await readJsonBody(request);
+        const targeting = getTargeting(request, body);
+        const result = await dispatchToRenderer({
+          BrowserWindow,
+          ...targeting,
+          request: { ...body, type: 'validation-report' },
         });
         json(response, 200, { ok: true, result });
         return;
@@ -504,7 +537,9 @@ const startAgentApi = ({ app, ipcMain, BrowserWindow, log }) => {
             code.startsWith('missing_preview') ||
             code.startsWith('unsupported_input') ||
             code === 'too_many_input_sequence_steps' ||
-            code === 'input_sequence_too_long'
+            code === 'input_sequence_too_long' ||
+            code === 'too_many_validation_gameplay_tests' ||
+            code === 'too_many_runtime_assertions'
           ? 400
           : 500;
       json(response, statusCode, {
