@@ -114,4 +114,9 @@ Projectless `initialize_project` is also available through `/v1/call` when the t
 
 Create/open a project, save-as to a local `.json`, create a checkpoint, import/install resources, author using native EditorFunctions, run `/v1/diagnostics`, launch and visually inspect a preview with `/v1/windows` + `/v1/capture`, automate gameplay with preview input + runtime assertions, iterate/hot-reload, then call `/v1/validate` with the checkpoint and requested tests/export. Save only after the validation report is acceptable.
 
-For any 3D scene creation or material 3D edit, the validation report is only one part of acceptance. Follow [`3D_QUALITY_GATE.md`](./3D_QUALITY_GATE.md): ground object scale/orientation in a reference scene or asset, inspect real editor and player-camera captures, and prove important interactions by an observable runtime state change before calling the work finished.
+For any 3D scene creation or material 3D edit, use the dedicated workflow docs instead of treating the validation report as sufficient:
+
+- [`MAP_BUILDER.md`](./MAP_BUILDER.md) — mechanics-first map construction: study the reference scene, reconstruct object/physics/control roles, derive reachability and camera constraints, design the route/puzzles, then build incrementally.
+- [`3D_QUALITY_GATE.md`](./3D_QUALITY_GATE.md) — acceptance gate: inspect real editor/player-camera captures, validate AABBs and reachability, exercise movement/jump/camera/interactions, and require observable gameplay evidence before calling the work finished.
+
+A new scene that copied Player behaviors but omitted its reference EventScript control contract is not considered playable; camera pointer-lock/mouse events, movement, jump and interactions must be accounted for explicitly.

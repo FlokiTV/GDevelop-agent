@@ -14,6 +14,7 @@ Do not mark a 3D task complete until all of these are true:
 4. A real preview from the player camera has been captured and inspected.
 5. Important interactions have been proven by an observable state change.
 6. Temporary probes have been restored and the intended project state has been saved only after validation.
+7. The controls required by the scene — movement, jump, camera, interaction/collection and any reset/recovery flow — have been exercised in the real preview.
 
 If any one of these is missing, report the task as partially validated rather than complete.
 
@@ -178,7 +179,38 @@ The Skyline Trial refinement uses two examples: the central box starts laterally
 
 If synthetic keyboard automation sends events but produces no visible movement, record the input validation as **inconclusive**. Do not use coin animation or changing frames as proof that the Player or box moved; require a measured/runtime position change, an obvious before/after transform, or a manual playtest.
 
-## 8. Finish with a clean, reviewable state
+## 8. Validate the complete control contract
+
+A scene can contain the correct behaviors and still be unplayable because the events that drive those behaviors were not carried over. Treat controls as part of the map contract, not as an unrelated implementation detail.
+
+Before accepting a new scene, compare its event source with a known-working reference scene and identify every control path the map depends on. At minimum verify:
+
+- movement reaches the expected directions and speeds;
+- jump works at the height assumptions used by the level design;
+- the player camera can be controlled as intended;
+- interaction/collection triggers execute and produce an observable result;
+- pointer lock, cursor capture or touch/gamepad activation happens when required;
+- movement does not unexpectedly reset a manually controlled camera;
+- any recovery/reset path needed by movable-object puzzles is usable.
+
+### Concrete lesson from Ripe Skirt: ThirdPersonCamera is not enough
+
+The first Skyline Trial copied the Player object with its `ThirdPersonCamera` behavior, but copied none of the reference camera events. The result looked structurally correct while the mouse could not rotate the camera.
+
+The working reference scene uses two distinct pieces that must both exist:
+
+1. a pointer-lock request after the appropriate click/touch input;
+2. events that read `MousePointerLock::MovementX()` and `MovementY()` while locked and apply those values to `ThirdPersonCamera` rotation/elevation.
+
+It also maintains an `IsCameraLocked` scene variable so the third-person auto-rotation does not immediately fight manual camera input.
+
+Reusable rule: **duplicating an object/behavior does not duplicate the event contract that makes it usable.** Whenever a scene is created from scratch, read the reference EventScript before building and explicitly account for movement, jump, camera and interaction events.
+
+For mouse-camera validation, do not accept only “input events were sent.” Capture a before/after preview or measure a camera/player transform that proves the viewing angle actually changed. If pointer lock requires a click, include that click in the test sequence.
+
+For a construction-oriented workflow, read [`MAP_BUILDER.md`](./MAP_BUILDER.md) before creating or materially redesigning a map.
+
+## 9. Finish with a clean, reviewable state
 
 Before calling the scene ready:
 
