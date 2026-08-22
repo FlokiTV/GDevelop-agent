@@ -8,6 +8,7 @@ The implementation stays isolated:
 - `newIDE/app/src/AgentApi/useAgentApi.js`: project lifecycle, preview/export helpers and the adapter to GDevelop's existing `EditorFunctions`.
 - `newIDE/app/src/AgentApi/AssetTools.js`: safe local resource lifecycle and diagnostics.
 - `newIDE/app/src/AgentApi/CheckpointTools.js`: in-memory checkpoints, structural diffs and transactions.
+- `newIDE/app/src/AgentApi/FunctionMetadata.js`: searchable EditorFunction schemas derived from native source by `generateFunctionMetadata.js`.
 - `newIDE/app/src/AgentApi/RuntimeTelemetry.js`: bounded runtime snapshots, logs, assertions and wait conditions backed by GDevelop's native debugger protocol.
 - `newIDE/app/src/AgentApi/EditorVisualTools.js`: scene-editor instance selection and native focus/fit controls for visual inspection.
 
@@ -24,7 +25,8 @@ At startup the desktop app writes `agent-api.json` in Electron's `userData` dire
 - `GET /health` — process/service health.
 - `GET /v1/status` — registered editor windows and project paths.
 - `GET /v1/project` — live project/editor/preview state.
-- `GET /v1/functions` — native GDevelop editor functions, including projectless functions such as `initialize_project`.
+- `GET /v1/functions` — native GDevelop editor functions with generated argument metadata. Use `?q=instance+opacity` for capability search and `?executableOnly=true` to hide generation-service-only tools.
+- `GET /v1/functions/<name>` — complete metadata for one function: description, arguments, input schema, mutation mode, project requirement, source location and examples.
 - `GET /v1/capabilities` — high-level end-to-end capabilities.
 - `GET /v1/windows` — editor and preview Electron windows.
 - `GET /v1/capture?windowId=<id>` — PNG capture of an editor or preview window.
@@ -80,6 +82,8 @@ Opening or closing a project with unsaved changes is rejected unless `discardUns
 ## Native authoring surface
 
 The primary mutation API is still GDevelop's own `EditorFunctions`, not a parallel language. This covers scenes, objects, behaviors, variables, events, 2D/3D instances, project settings/resources, asset/resource store installation, docs/search, scripts, gameplay tests and editor-function tests.
+
+Function metadata is generated from `EditorFunctions/index.js` and imported helper implementations instead of being manually duplicated. After native EditorFunctions change, run `node src/AgentApi/generateFunctionMetadata.js` from `newIDE/app`; `--check` fails when the committed generated catalog is stale. Flags such as `requiresProject`, `modifiesProject` and argument-dependent mutation behavior are reconciled against the live native function objects at runtime.
 
 Example:
 

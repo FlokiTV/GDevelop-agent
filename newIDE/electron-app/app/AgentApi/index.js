@@ -371,7 +371,28 @@ const startAgentApi = ({ app, ipcMain, BrowserWindow, log }) => {
           BrowserWindow,
           projectPath: url.searchParams.get('projectPath'),
           windowId: url.searchParams.get('windowId'),
-          request: { type: 'list-functions' },
+          request: {
+            type: 'list-functions',
+            query: url.searchParams.get('q') || url.searchParams.get('query'),
+            executableOnly: ['1', 'true'].includes(
+              String(url.searchParams.get('executableOnly') || '').toLowerCase()
+            ),
+          },
+        });
+        json(response, 200, { ok: true, result });
+        return;
+      }
+
+      const functionPathMatch = url.pathname.match(
+        /^\/v1\/functions\/([^/]+)$/
+      );
+      if (request.method === 'GET' && functionPathMatch) {
+        const functionName = decodeURIComponent(functionPathMatch[1]);
+        const result = await dispatchToRenderer({
+          BrowserWindow,
+          projectPath: url.searchParams.get('projectPath'),
+          windowId: url.searchParams.get('windowId'),
+          request: { type: 'describe-function', name: functionName },
         });
         json(response, 200, { ok: true, result });
         return;
@@ -469,7 +490,7 @@ const startAgentApi = ({ app, ipcMain, BrowserWindow, log }) => {
       const statusCode =
         code === 'target_window_not_found'
           ? 409
-          : code === 'preview_window_not_found'
+          : code === 'preview_window_not_found' || code === 'function_not_found'
           ? 404
           : code === 'renderer_request_timeout'
           ? 504

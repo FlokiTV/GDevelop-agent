@@ -3,8 +3,6 @@ import * as React from 'react';
 import { type I18n as I18nType } from '@lingui/core';
 import optionalRequire from '../Utils/OptionalRequire';
 import {
-  editorFunctions,
-  editorFunctionsWithoutProject,
   type EditorCallbacks,
   type EditorFunctionCall,
 } from '../EditorFunctions';
@@ -28,6 +26,11 @@ import {
 } from './CheckpointTools';
 import { createRuntimeTelemetry } from './RuntimeTelemetry';
 import { createEditorVisualTools } from './EditorVisualTools';
+import {
+  getFunctionMetadata,
+  getFunctionMetadataStats,
+  listFunctionMetadata,
+} from './FunctionMetadata';
 import { exportLocalHtml5Headless } from '../ExportAndShare/Headless/ExportLocalHtml5Headless';
 import {
   type SceneEventsOutsideEditorChanges,
@@ -128,24 +131,6 @@ type Props = {|
   onWillInstallExtension: (extensionNames: Array<string>) => void,
   onExtensionInstalled: (extensionNames: Array<string>) => void,
 |};
-
-const getFunctions = () => {
-  const projectFunctions = Object.keys(editorFunctions).map(name => ({
-    name,
-    modifiesProject: !!editorFunctions[name].modifiesProject,
-    requiresProject: true,
-  }));
-  const projectlessFunctions = Object.keys(editorFunctionsWithoutProject).map(
-    name => ({
-      name,
-      modifiesProject: !!editorFunctionsWithoutProject[name].modifiesProject,
-      requiresProject: false,
-    })
-  );
-  return [...projectFunctions, ...projectlessFunctions].sort((a, b) =>
-    a.name.localeCompare(b.name)
-  );
-};
 
 const getPreviewStatus = (previewDebuggerServer: ?any) => {
   if (!previewDebuggerServer) {
@@ -502,13 +487,49 @@ export default function useAgentApi({
           }
 
           if (request.type === 'list-functions') {
+            const functions = listFunctionMetadata({
+              query:
+                typeof request.query === 'string' && request.query
+                  ? request.query
+                  : null,
+              executableOnly: !!request.executableOnly,
+            });
             ipcRenderer.send('gdevelop-agent-api:response', {
               requestId,
               ok: true,
               result: {
                 projectOpen: !!project,
                 fileIdentifier,
-                functions: getFunctions(),
+                query:
+                  typeof request.query === 'string' && request.query
+                    ? request.query
+                    : null,
+                stats: getFunctionMetadataStats(),
+                functions,
+              },
+            });
+            return;
+          }
+
+          if (request.type === 'describe-function') {
+            if (!request.name || typeof request.name !== 'string') {
+              const error: any = new Error('missing_function_name');
+              error.code = 'missing_function_name';
+              throw error;
+            }
+            const functionMetadata = getFunctionMetadata(request.name);
+            if (!functionMetadata) {
+              const error: any = new Error('function_not_found');
+              error.code = 'function_not_found';
+              throw error;
+            }
+            ipcRenderer.send('gdevelop-agent-api:response', {
+              requestId,
+              ok: true,
+              result: {
+                projectOpen: !!project,
+                fileIdentifier,
+                function: functionMetadata,
               },
             });
             return;
@@ -530,6 +551,8 @@ export default function useAgentApi({
                 authoring: [
                   'editor-functions',
                   'batch-editor-functions',
+                  'editor-function-schema-inspection',
+                  'editor-function-capability-search',
                   'resource-list-inspect',
                   'local-resource-import',
                   'local-resource-replace',
@@ -1128,6 +1151,7 @@ export default function useAgentApi({
             requestId,
             ok: false,
             error: error && error.message ? error.message : String(error),
+            code: error && error.code ? String(error.code) : undefined,
           });
         }
       };
