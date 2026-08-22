@@ -12,15 +12,8 @@ import { processEditorFunctionCalls } from '../EditorFunctions/EditorFunctionCal
 import { listAllExamples } from '../Utils/GDevelopServices/Example';
 import UrlStorageProvider from '../ProjectsStorage/UrlStorageProvider';
 import LocalFileStorageProvider from '../ProjectsStorage/LocalFileStorageProvider';
-import {
-  createNewResource,
-  allResourceKindsAndMetadata,
-  type ResourceManagementProps,
-} from '../ResourcesList/ResourceSource';
-import {
-  applyResourceDefaults,
-  copyAllToProjectFolder,
-} from '../ResourcesList/ResourceUtils';
+import { type ResourceManagementProps } from '../ResourcesList/ResourceSource';
+import { createAssetTools } from './AssetTools';
 import { exportLocalHtml5Headless } from '../ExportAndShare/Headless/ExportLocalHtml5Headless';
 import {
   type SceneEventsOutsideEditorChanges,
@@ -43,7 +36,6 @@ import { type FileMetadata } from '../ProjectsStorage';
 
 const electron = optionalRequire('electron');
 const ipcRenderer = electron ? electron.ipcRenderer : null;
-const fs = optionalRequire('fs');
 const path = optionalRequire('path');
 
 const makeCallId = (index: number): string =>
@@ -132,21 +124,6 @@ const getFunctions = () => {
   return [...projectFunctions, ...projectlessFunctions].sort((a, b) =>
     a.name.localeCompare(b.name)
   );
-};
-
-const inferResourceKind = (filePath: string): ?string => {
-  if (!path) return null;
-  const extension = path
-    .extname(filePath)
-    .replace(/^\./, '')
-    .toLowerCase();
-  if (!extension) return null;
-  const matches = allResourceKindsAndMetadata.filter(metadata =>
-    metadata.fileExtensions.includes(extension)
-  );
-  if (matches.length === 1) return matches[0].kind;
-  if (extension === 'json') return 'json';
-  return matches.length ? matches[0].kind : null;
 };
 
 const getPreviewStatus = (previewDebuggerServer: ?any) => {
@@ -309,6 +286,15 @@ export default function useAgentApi({
     () => {
       if (!ipcRenderer) return;
 
+      const assetTools = project
+        ? createAssetTools({
+            project,
+            resourceManagementProps,
+            triggerUnsavedChanges,
+            forceUpdate,
+          })
+        : null;
+
       const runFunctionCalls = async (
         calls: Array<AgentFunctionCall>,
         shouldSave: boolean
@@ -400,72 +386,6 @@ export default function useAgentApi({
         };
       };
 
-      const importLocalResource = async (request: any) => {
-        if (!project) throw new Error('no_project_open');
-        if (!fs || !path) throw new Error('local_filesystem_unavailable');
-        if (!request.filePath || typeof request.filePath !== 'string') {
-          throw new Error('missing_resource_file_path');
-        }
-
-        const sourcePath = path.resolve(request.filePath);
-        if (!fs.existsSync(sourcePath) || !fs.statSync(sourcePath).isFile()) {
-          throw new Error('resource_file_not_found');
-        }
-
-        const kind =
-          (typeof request.kind === 'string' && request.kind) ||
-          inferResourceKind(sourcePath);
-        if (!kind) throw new Error('unable_to_infer_resource_kind');
-        const newResource = createNewResource(kind);
-        if (!newResource) throw new Error(`unsupported_resource_kind:${kind}`);
-
-        const resourcesManager = project.getResourcesManager();
-        const projectFile = project.getProjectFile();
-        const projectFolder = projectFile ? path.dirname(projectFile) : null;
-        let finalPath = sourcePath;
-
-        if (projectFolder && request.copyToProject !== false) {
-          const copied = await copyAllToProjectFolder(
-            project,
-            [sourcePath],
-            new Map()
-          );
-          if (copied.length) finalPath = copied[0];
-        }
-
-        const storedFilePath = projectFolder
-          ? path.relative(projectFolder, finalPath).replace(/\\/g, '/')
-          : finalPath;
-        const resourceName =
-          (typeof request.resourceName === 'string' && request.resourceName) ||
-          path.basename(storedFilePath);
-
-        if (resourcesManager.hasResource(resourceName)) {
-          if (!request.overwrite) {
-            newResource.delete();
-            throw new Error(`resource_already_exists:${resourceName}`);
-          }
-          resourcesManager.removeResource(resourceName);
-        }
-
-        newResource.setName(resourceName);
-        newResource.setFile(storedFilePath);
-        applyResourceDefaults(project, newResource);
-        resourcesManager.addResource(newResource);
-        newResource.delete();
-
-        resourceManagementProps.onNewResourcesAdded();
-        triggerUnsavedChanges();
-        forceUpdate();
-
-        return {
-          imported: true,
-          kind,
-          resourceName,
-          file: storedFilePath,
-        };
-      };
-
       const controlPreview = (request: any) => {
         if (!previewDebuggerServer)
           throw new Error('preview_debugger_unavailable');
@@ -544,7 +464,12 @@ export default function useAgentApi({
                 authoring: [
                   'editor-functions',
                   'batch-editor-functions',
+                  'resource-list-inspect',
                   'local-resource-import',
+                  'local-resource-replace',
+                  'resource-rename',
+                  'resource-remove-safe',
+                  'resource-health-scan',
                   'asset-store-search-install',
                   'resource-store-search-install',
                 ],
@@ -753,8 +678,68 @@ export default function useAgentApi({
             return;
           }
 
+          if (request.type === 'list-resources') {
+            if (!assetTools) throw new Error('no_project_open');
+            ipcRenderer.send('gdevelop-agent-api:response', {
+              requestId,
+              ok: true,
+              result: assetTools.listResources(),
+            });
+            return;
+          }
+
+          if (request.type === 'inspect-resource') {
+            if (!assetTools) throw new Error('no_project_open');
+            if (
+              !request.resourceName ||
+              typeof request.resourceName !== 'string'
+            ) {
+              throw new Error('missing_resource_name');
+            }
+            ipcRenderer.send('gdevelop-agent-api:response', {
+              requestId,
+              ok: true,
+              result: assetTools.inspectResource(request.resourceName),
+            });
+            return;
+          }
+
           if (request.type === 'import-local-resource') {
-            const result = await importLocalResource(request);
+            if (!assetTools) throw new Error('no_project_open');
+            const result = await assetTools.importLocalResource(request);
+            ipcRenderer.send('gdevelop-agent-api:response', {
+              requestId,
+              ok: true,
+              result,
+            });
+            return;
+          }
+
+          if (request.type === 'replace-local-resource') {
+            if (!assetTools) throw new Error('no_project_open');
+            const result = await assetTools.replaceLocalResource(request);
+            ipcRenderer.send('gdevelop-agent-api:response', {
+              requestId,
+              ok: true,
+              result,
+            });
+            return;
+          }
+
+          if (request.type === 'rename-resource') {
+            if (!assetTools) throw new Error('no_project_open');
+            const result = assetTools.renameResource(request);
+            ipcRenderer.send('gdevelop-agent-api:response', {
+              requestId,
+              ok: true,
+              result,
+            });
+            return;
+          }
+
+          if (request.type === 'remove-resource') {
+            if (!assetTools) throw new Error('no_project_open');
+            const result = assetTools.removeResource(request);
             ipcRenderer.send('gdevelop-agent-api:response', {
               requestId,
               ok: true,

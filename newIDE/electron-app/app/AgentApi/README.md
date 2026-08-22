@@ -6,6 +6,7 @@ The implementation stays isolated:
 
 - `newIDE/electron-app/app/AgentApi/index.js`: HTTP, authentication, window discovery/capture and IPC transport.
 - `newIDE/app/src/AgentApi/useAgentApi.js`: project lifecycle, preview/export helpers and the adapter to GDevelop's existing `EditorFunctions`.
+- `newIDE/app/src/AgentApi/AssetTools.js`: safe resource inspection/import/replace/rename/removal and local-file housekeeping.
 
 Only small hooks live outside these folders: `electron-app/app/main.js` installs the service and `app/src/MainFrame/index.js` passes callbacks already owned by the editor.
 
@@ -40,7 +41,12 @@ Send these to `POST /v1/action` with a `type` field:
 - `close-project`: `{ "type":"close-project", "discardUnsavedChanges":true }`
 - `save-project`
 - `save-project-as`: `{ "type":"save-project-as", "filePath":"C:\\games\\game.json" }`
-- `import-local-resource`: `{ "type":"import-local-resource", "filePath":"C:\\art\\player.png", "kind":"image", "resourceName":"player.png" }`
+- `list-resources` — list resources with usage, missing-file/outside-project status and unregistered references.
+- `inspect-resource`: `{ "type":"inspect-resource", "resourceName":"player.png" }` — includes object usage and shared-file information.
+- `import-local-resource`: `{ "type":"import-local-resource", "filePath":"C:\\art\\player.png", "kind":"image", "resourceName":"player.png" }`.
+- `replace-local-resource`: `{ "type":"replace-local-resource", "resourceName":"player.png", "filePath":"C:\\art\\player-v2.png" }` — preserves resource-specific settings and can optionally delete the previous local file when safe.
+- `rename-resource`: `{ "type":"rename-resource", "resourceName":"player.png", "newResourceName":"hero.png" }` — updates project references through GDevelop's native resource renamer.
+- `remove-resource`: `{ "type":"remove-resource", "resourceName":"unused.png", "deleteFile":true }` — refuses removal while referenced; physical deletion is allowed only for an unshared local file inside the project folder.
 - `open-scene`: `{ "type":"open-scene", "sceneName":"Level1", "mode":"scene" }` (`scene`, `events` or `both`)
 - `preview-status`
 - `preview-start`: `{ "type":"preview-start", "numberOfWindows":1 }`
