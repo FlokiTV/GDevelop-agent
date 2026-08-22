@@ -146,6 +146,38 @@ A bad Skyline Trial revision ignored those roles: it used roughly 60-pixel platf
 
 The general rule is: **first reproduce the relationship between mechanics and geometry, then change the visual layout.** A distinct level can use a different route while preserving the game's mechanical grammar.
 
+### Designing puzzles with static and pushable blocks
+
+When a project has both static and dynamic block types, do not treat them as interchangeable art variants. Give each one a stable gameplay role and make the level communicate that role consistently.
+
+For Ripe Skirt specifically:
+
+- `Obstacle` is the dark/black navigation geometry and has `Physics3D.bodyType = Static`;
+- `PushableBox` is the gray movable puzzle piece and has `Physics3D.bodyType = Dynamic`, density `10`, friction `2.75` and high linear/angular damping;
+- the starter reference size for a pushable box is `256 x 128 x 64`;
+- the Player has `jumpHeight = 100`, so a `128`-high static ledge is intentionally unreachable from the ground but reachable from the top of a `64`-high pushable box.
+
+A useful push-block micro-puzzle should have four explicit parts:
+
+1. **Start position** — where the movable box begins. For non-tutorial puzzles, avoid spawning it already aligned with the goal.
+2. **Maneuver** — at least one meaningful repositioning step, such as moving sideways or around a static blocker before the final push.
+3. **Goal position** — a clear staging position where the box creates a reachable step or route.
+4. **Reward** — collectibles or progression placed beyond the threshold that cannot be reached directly from the ground.
+
+Before accepting the puzzle:
+
+- prove numerically that the direct route is blocked (`requiredHeight > jumpHeight`) and the box-assisted route is reachable;
+- calculate AABB intersections for every initial solid and collectible;
+- leave enough floor space around the box for the player to get behind the intended push directions;
+- avoid narrow dead ends where a box can be pushed against a wall and become impossible to recover without restarting;
+- ensure a static blocker actually changes the required box route instead of merely adding visual clutter;
+- keep easy/tutorial collectibles separate from the elevated reward cluster so collecting everything requires solving the puzzle;
+- inspect the puzzle from both editor/top view and the real player camera.
+
+The Skyline Trial refinement uses two examples: the central box starts laterally offset from its `128 -> 192 -> 256` staircase, while the side puzzle uses a second box whose straight route is blocked. Its initial AABB requires the box to move at least `176` pixels sideways before it can pass the blocker and be pushed toward the `128 -> 192` reward route.
+
+If synthetic keyboard automation sends events but produces no visible movement, record the input validation as **inconclusive**. Do not use coin animation or changing frames as proof that the Player or box moved; require a measured/runtime position change, an obvious before/after transform, or a manual playtest.
+
 ## 8. Finish with a clean, reviewable state
 
 Before calling the scene ready:
