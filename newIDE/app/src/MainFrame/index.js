@@ -5649,6 +5649,8 @@ const MainFrame = (props: Props): React.MixedElement => {
   useAgentApi({
     project: state.currentProject,
     fileIdentifier,
+    fileMetadata: currentFileMetadata,
+    loadFromSerializedProject,
     i18n,
     resourceManagementProps,
     saveProject,

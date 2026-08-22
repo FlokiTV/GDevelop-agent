@@ -6,7 +6,8 @@ The implementation stays isolated:
 
 - `newIDE/electron-app/app/AgentApi/index.js`: HTTP, authentication, window discovery/capture and IPC transport.
 - `newIDE/app/src/AgentApi/useAgentApi.js`: project lifecycle, preview/export helpers and the adapter to GDevelop's existing `EditorFunctions`.
-- `newIDE/app/src/AgentApi/AssetTools.js`: safe resource inspection/import/replace/rename/removal and local-file housekeeping.
+- `newIDE/app/src/AgentApi/AssetTools.js`: safe local resource lifecycle and diagnostics.
+- `newIDE/app/src/AgentApi/CheckpointTools.js`: in-memory checkpoints, structural diffs and transactions.
 
 Only small hooks live outside these folders: `electron-app/app/main.js` installs the service and `app/src/MainFrame/index.js` passes callbacks already owned by the editor.
 
@@ -47,6 +48,8 @@ Send these to `POST /v1/action` with a `type` field:
 - `replace-local-resource`: `{ "type":"replace-local-resource", "resourceName":"player.png", "filePath":"C:\\art\\player-v2.png" }` — preserves resource-specific settings and can optionally delete the previous local file when safe.
 - `rename-resource`: `{ "type":"rename-resource", "resourceName":"player.png", "newResourceName":"hero.png" }` — updates project references through GDevelop's native resource renamer.
 - `remove-resource`: `{ "type":"remove-resource", "resourceName":"unused.png", "deleteFile":true }` — refuses removal while referenced; physical deletion is allowed only for an unshared local file inside the project folder.
+- `checkpoint-create`, `checkpoint-list`, `checkpoint-diff`, `checkpoint-delete`, `checkpoint-restore` — in-memory project snapshots and structural diffs.
+- `transaction-begin`, `transaction-status`, `transaction-commit`, `transaction-rollback` — protected mutation batches with safe internal project restore on rollback.
 - `open-scene`: `{ "type":"open-scene", "sceneName":"Level1", "mode":"scene" }` (`scene`, `events` or `both`)
 - `preview-status`
 - `preview-start`: `{ "type":"preview-start", "numberOfWindows":1 }`

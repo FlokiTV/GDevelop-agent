@@ -14,6 +14,18 @@ import UrlStorageProvider from '../ProjectsStorage/UrlStorageProvider';
 import LocalFileStorageProvider from '../ProjectsStorage/LocalFileStorageProvider';
 import { type ResourceManagementProps } from '../ResourcesList/ResourceSource';
 import { createAssetTools } from './AssetTools';
+import {
+  beginTransaction,
+  commitTransaction,
+  completeTransactionRollback,
+  createCheckpoint,
+  deleteCheckpoint,
+  diffCheckpointToProject,
+  getCheckpoint,
+  getTransactionStatus,
+  listCheckpoints,
+  prepareTransactionRollback,
+} from './CheckpointTools';
 import { exportLocalHtml5Headless } from '../ExportAndShare/Headless/ExportLocalHtml5Headless';
 import {
   type SceneEventsOutsideEditorChanges,
@@ -34,6 +46,7 @@ import { ExtensionStoreContext } from '../AssetStore/ExtensionStore/ExtensionSto
 import { enumerateObjectTypes } from '../ObjectsList/EnumerateObjects';
 import { type FileMetadata } from '../ProjectsStorage';
 
+const gd: libGDevelop = global.gd;
 const electron = optionalRequire('electron');
 const ipcRenderer = electron ? electron.ipcRenderer : null;
 const path = optionalRequire('path');
@@ -52,6 +65,11 @@ type AgentFunctionCall = {|
 type Props = {|
   project: ?gdProject,
   fileIdentifier: ?string,
+  fileMetadata: ?FileMetadata,
+  loadFromSerializedProject: (
+    serializedProject: gdSerializerElement,
+    fileMetadata: ?FileMetadata
+  ) => Promise<any>,
   i18n: I18nType,
   resourceManagementProps: ResourceManagementProps,
   saveProject: (options?: {|
@@ -151,6 +169,8 @@ const getPreviewStatus = (previewDebuggerServer: ?any) => {
 export default function useAgentApi({
   project,
   fileIdentifier,
+  fileMetadata,
+  loadFromSerializedProject,
   i18n,
   resourceManagementProps,
   saveProject,
@@ -294,6 +314,42 @@ export default function useAgentApi({
             forceUpdate,
           })
         : null;
+
+      const restoreProjectCheckpoint = async (checkpoint: any) => {
+        const serializedProject = gd.Serializer.fromJSObject(
+          checkpoint.snapshot
+        );
+        let restoredState;
+        try {
+          restoredState = await loadFromSerializedProject(
+            serializedProject,
+            fileMetadata
+          );
+        } finally {
+          serializedProject.delete();
+        }
+
+        // loadFromSerializedProject safely replaces the whole project and seals
+        // unsaved changes as part of the normal open lifecycle. Restore the
+        // checkpoint's previous dirty state after the new project is mounted.
+        if (checkpoint.hadUnsavedChanges) triggerUnsavedChanges();
+
+        const restoredProject = restoredState && restoredState.currentProject;
+        return {
+          restored: true,
+          checkpointId: checkpoint.id,
+          projectName: restoredProject ? restoredProject.getName() : null,
+          projectUuid: restoredProject
+            ? restoredProject.getProjectUuid()
+            : null,
+          fileIdentifier:
+            restoredState && restoredState.currentFileMetadata
+              ? restoredState.currentFileMetadata.fileIdentifier
+              : null,
+          hasUnsavedChanges: checkpoint.hadUnsavedChanges,
+          restoreStrategy: 'safe-project-reload',
+        };
+      };
 
       const runFunctionCalls = async (
         calls: Array<AgentFunctionCall>,
@@ -481,6 +537,12 @@ export default function useAgentApi({
                   'gameplay-tests',
                   'editor-function-tests',
                 ],
+                safety: [
+                  'checkpoint-create-list-delete',
+                  'checkpoint-diff',
+                  'checkpoint-restore',
+                  'transaction-begin-commit-rollback',
+                ],
                 output: ['html5-export'],
                 editorUi: ['open-scene', 'open-events'],
               },
@@ -595,6 +657,153 @@ export default function useAgentApi({
               requestId,
               ok: true,
               result: { saved: true, fileMetadata },
+            });
+            return;
+          }
+
+          if (request.type === 'checkpoint-create') {
+            if (!project) throw new Error('no_project_open');
+            const checkpoint = createCheckpoint({
+              project,
+              fileIdentifier: fileIdentifier || null,
+              label:
+                typeof request.label === 'string' && request.label
+                  ? request.label
+                  : null,
+              hadUnsavedChanges: hasUnsavedChanges,
+            });
+            ipcRenderer.send('gdevelop-agent-api:response', {
+              requestId,
+              ok: true,
+              result: { created: true, checkpoint },
+            });
+            return;
+          }
+
+          if (request.type === 'checkpoint-list') {
+            if (!project) throw new Error('no_project_open');
+            ipcRenderer.send('gdevelop-agent-api:response', {
+              requestId,
+              ok: true,
+              result: listCheckpoints(project),
+            });
+            return;
+          }
+
+          if (request.type === 'checkpoint-diff') {
+            if (!project) throw new Error('no_project_open');
+            if (
+              !request.checkpointId ||
+              typeof request.checkpointId !== 'string'
+            ) {
+              throw new Error('missing_checkpoint_id');
+            }
+            ipcRenderer.send('gdevelop-agent-api:response', {
+              requestId,
+              ok: true,
+              result: {
+                checkpointId: request.checkpointId,
+                diff: diffCheckpointToProject(project, request.checkpointId),
+              },
+            });
+            return;
+          }
+
+          if (request.type === 'checkpoint-delete') {
+            if (!project) throw new Error('no_project_open');
+            if (
+              !request.checkpointId ||
+              typeof request.checkpointId !== 'string'
+            ) {
+              throw new Error('missing_checkpoint_id');
+            }
+            const checkpoint = deleteCheckpoint(project, request.checkpointId);
+            ipcRenderer.send('gdevelop-agent-api:response', {
+              requestId,
+              ok: true,
+              result: { deleted: true, checkpoint },
+            });
+            return;
+          }
+
+          if (request.type === 'checkpoint-restore') {
+            if (!project) throw new Error('no_project_open');
+            if (
+              !request.checkpointId ||
+              typeof request.checkpointId !== 'string'
+            ) {
+              throw new Error('missing_checkpoint_id');
+            }
+            const transaction = getTransactionStatus(project);
+            if (
+              transaction.active &&
+              transaction.checkpoint &&
+              transaction.checkpoint.id !== request.checkpointId
+            ) {
+              throw new Error(
+                'cannot_restore_other_checkpoint_during_transaction'
+              );
+            }
+            const checkpoint = getCheckpoint(project, request.checkpointId);
+            const diff = diffCheckpointToProject(project, request.checkpointId);
+            const restored = await restoreProjectCheckpoint(checkpoint);
+            ipcRenderer.send('gdevelop-agent-api:response', {
+              requestId,
+              ok: true,
+              result: { ...restored, diff },
+            });
+            return;
+          }
+
+          if (request.type === 'transaction-status') {
+            if (!project) throw new Error('no_project_open');
+            ipcRenderer.send('gdevelop-agent-api:response', {
+              requestId,
+              ok: true,
+              result: getTransactionStatus(project),
+            });
+            return;
+          }
+
+          if (request.type === 'transaction-begin') {
+            if (!project) throw new Error('no_project_open');
+            const checkpoint = beginTransaction({
+              project,
+              fileIdentifier: fileIdentifier || null,
+              label:
+                typeof request.label === 'string' && request.label
+                  ? request.label
+                  : null,
+              hadUnsavedChanges: hasUnsavedChanges,
+            });
+            ipcRenderer.send('gdevelop-agent-api:response', {
+              requestId,
+              ok: true,
+              result: { begun: true, checkpoint },
+            });
+            return;
+          }
+
+          if (request.type === 'transaction-commit') {
+            if (!project) throw new Error('no_project_open');
+            ipcRenderer.send('gdevelop-agent-api:response', {
+              requestId,
+              ok: true,
+              result: commitTransaction(project),
+            });
+            return;
+          }
+
+          if (request.type === 'transaction-rollback') {
+            if (!project) throw new Error('no_project_open');
+            const projectUuid = project.getProjectUuid();
+            const { checkpoint, diff } = prepareTransactionRollback(project);
+            const restored = await restoreProjectCheckpoint(checkpoint);
+            completeTransactionRollback(projectUuid, checkpoint.id);
+            ipcRenderer.send('gdevelop-agent-api:response', {
+              requestId,
+              ok: true,
+              result: { rolledBack: true, ...restored, diff },
             });
             return;
           }
@@ -816,6 +1025,8 @@ export default function useAgentApi({
     [
       project,
       fileIdentifier,
+      fileMetadata,
+      loadFromSerializedProject,
       i18n,
       editorCallbacks,
       generateEvents,
