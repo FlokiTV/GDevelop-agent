@@ -7,13 +7,23 @@ const {
   runArchitectureGuard,
 } = require('./ArchitectureGuard');
 
-test('allows AgentApi-owned files and the three explicit upstream hooks', () => {
+test('allows agent-owned files and the three explicit upstream hooks', () => {
   assert.equal(
     isAllowedAgentChange('newIDE/app/src/AgentApi/ExportTools.js'),
     true
   );
   assert.equal(
     isAllowedAgentChange('newIDE/electron-app/app/AgentApi/index.js'),
+    true
+  );
+  assert.equal(
+    isAllowedAgentChange('newIDE/app/src/AgentIntegration/core/AgentHost.js'),
+    true
+  );
+  assert.equal(
+    isAllowedAgentChange(
+      'newIDE/electron-app/app/AgentIntegration/mcp/server.js'
+    ),
     true
   );
   assert.equal(isAllowedAgentChange('newIDE/app/src/MainFrame/index.js'), true);

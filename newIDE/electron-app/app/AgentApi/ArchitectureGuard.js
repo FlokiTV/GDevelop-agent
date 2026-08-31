@@ -4,6 +4,8 @@ const path = require('path');
 const ALLOWED_PREFIXES = [
   'newIDE/app/src/AgentApi/',
   'newIDE/electron-app/app/AgentApi/',
+  'newIDE/app/src/AgentIntegration/',
+  'newIDE/electron-app/app/AgentIntegration/',
 ];
 
 const ALLOWED_UPSTREAM_HOOKS = new Set([
