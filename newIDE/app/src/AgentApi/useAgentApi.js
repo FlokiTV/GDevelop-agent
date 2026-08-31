@@ -59,6 +59,8 @@ import { ExtensionStoreContext } from '../AssetStore/ExtensionStore/ExtensionSto
 import { enumerateObjectTypes } from '../ObjectsList/EnumerateObjects';
 import { type FileMetadata } from '../ProjectsStorage';
 import { createEditorFunctionService } from '../AgentIntegration/editor/EditorFunctionService';
+import { createRendererAgentHost } from '../AgentIntegration/RendererAgentHost';
+import { attachRendererAgentHostToIpc } from '../AgentIntegration/RendererCommandAdapter';
 
 const gd: libGDevelop = global.gd;
 const electron = optionalRequire('electron');
@@ -409,6 +411,33 @@ export default function useAgentApi({
       });
       const runFunctionCalls = (calls, shouldSave) =>
         editorFunctionService.run({ calls, save: shouldSave });
+
+      const rendererAgentHost = createRendererAgentHost({
+        environment: {
+          project,
+          fileIdentifier,
+          hasUnsavedChanges,
+          getProjectStatus: () => ({
+            projectOpen: !!project,
+            fileIdentifier,
+            projectName: project ? project.getName() : null,
+            projectUuid: project ? project.getProjectUuid() : null,
+            sceneNames: project
+              ? Array.from(
+                  { length: project.getLayoutsCount() },
+                  (_, index) => project.getLayoutAt(index).getName()
+                )
+              : [],
+            hasUnsavedChanges,
+            preview: getPreviewStatus(previewDebuggerServer),
+          }),
+        },
+        editorFunctionService,
+      });
+      const detachRendererAgentHost = attachRendererAgentHostToIpc({
+        ipcRenderer,
+        agentHost: rendererAgentHost,
+      });
 
       const controlPreview = (request: any) => {
         if (!previewDebuggerServer)
@@ -1385,6 +1414,7 @@ export default function useAgentApi({
 
       ipcRenderer.on('gdevelop-agent-api:request', onRequest);
       return () => {
+        detachRendererAgentHost();
         ipcRenderer.removeListener('gdevelop-agent-api:request', onRequest);
       };
     },

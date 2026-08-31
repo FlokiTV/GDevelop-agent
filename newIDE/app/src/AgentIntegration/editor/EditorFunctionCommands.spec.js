@@ -1,0 +1,99 @@
+// @flow
+import { AgentHost } from '../core/AgentHost';
+import { createEditorFunctionCommandDescriptors } from './EditorFunctionCommands';
+
+const makeHost = ({ project = {}, run = jest.fn(async options => options) } = {}) => ({
+  host: new AgentHost({
+    environment: { project },
+    descriptors: createEditorFunctionCommandDescriptors({
+      editorFunctionService: { run },
+    }),
+  }),
+  run,
+});
+
+describe('EditorFunctionCommands', () => {
+  test('lists executable editor functions with generated schemas', async () => {
+    const { host } = makeHost();
+    const result = await host.execute('editor.functions.list', {
+      query: 'variable',
+    });
+
+    expect(result.data.functions.length).toBeGreaterThan(0);
+    expect(
+      result.data.functions.every(entry => entry.executableInEmbeddedApi)
+    ).toBe(true);
+    expect(
+      result.data.functions.some(entry => entry.name === 'inspect_variables')
+    ).toBe(true);
+  });
+
+  test('describes a known editor function', async () => {
+    const { host } = makeHost();
+    const result = await host.execute('editor.functions.describe', {
+      name: 'inspect_variables',
+    });
+
+    expect(result.data.function.name).toBe('inspect_variables');
+    expect(result.data.function.inputSchema.type).toBe('object');
+  });
+
+  test('routes a single executable function through the service', async () => {
+    const { host, run } = makeHost();
+    await host.execute('editor.functions.call', {
+      name: 'inspect_variables',
+      arguments: { scope: 'global' },
+    });
+
+    expect(run).toHaveBeenCalledWith({
+      calls: [
+        {
+          name: 'inspect_variables',
+          arguments: { scope: 'global' },
+          callId: undefined,
+        },
+      ],
+      save: false,
+    });
+  });
+
+  test('rejects functions that require a project when none is open', async () => {
+    const { host } = makeHost({ project: null });
+    await expect(
+      host.execute('editor.functions.call', {
+        name: 'inspect_variables',
+        arguments: {},
+      })
+    ).rejects.toMatchObject({ code: 'no_project_open' });
+  });
+
+  test('allows projectless embedded functions', async () => {
+    const { host, run } = makeHost({ project: null });
+    await host.execute('editor.functions.call', {
+      name: 'initialize_project',
+      arguments: { game_name: 'Agent Test' },
+    });
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+
+  test('routes ordered batches and preserves save intent', async () => {
+    const { host, run } = makeHost();
+    const calls = [
+      { name: 'inspect_variables', arguments: {} },
+      { name: 'describe_instances', arguments: { scene_name: 'Scene' } },
+    ];
+    await host.execute('editor.functions.call-batch', { calls, save: true });
+    expect(run).toHaveBeenCalledWith({ calls, save: true });
+  });
+
+  test('rejects generation-service-only functions before execution', async () => {
+    const { host, run } = makeHost();
+    await expect(
+      host.execute('editor.functions.call', {
+        name: 'search_docs',
+        arguments: { query: 'camera' },
+      })
+    ).rejects.toMatchObject({ code: 'function_not_executable' });
+    expect(run).not.toHaveBeenCalled();
+  });
+});
