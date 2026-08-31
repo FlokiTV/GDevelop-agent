@@ -2,22 +2,6 @@ const http = require('http');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
-const {
-  createPreviewInteractionService,
-} = require('../AgentIntegration/PreviewInteractionService');
-const {
-  captureWindowPng,
-  createWindowCaptureService,
-} = require('../AgentIntegration/WindowCaptureService');
-const { createWindowRegistry } = require('../AgentIntegration/WindowRegistry');
-const { createRendererBridge } = require('../AgentIntegration/RendererBridge');
-const { isPreviewWindow } = require('../PreviewWindow');
-
-let electronDesktopCapturer = null;
-try {
-  electronDesktopCapturer = require('electron').desktopCapturer || null;
-} catch (error) {}
-
 const DEFAULT_PORT = 38473;
 const REQUEST_TIMEOUT_MS = 30000;
 const MAX_REQUEST_TIMEOUT_MS = 10 * 60 * 1000;
@@ -83,7 +67,6 @@ let server = null;
 let started = false;
 let config = null;
 let windowRegistry = null;
-let windowRegistryCleanup = null;
 let rendererBridge = null;
 let previewInteractionService = null;
 let windowCaptureService = null;
@@ -190,28 +173,17 @@ const getTargeting = (request, body) => ({
     null,
 });
 
-const startAgentApi = ({ app, ipcMain, BrowserWindow, log }) => {
+const startAgentApi = ({ app, log, desktopIntegrationHost }) => {
   if (started) return config;
+  if (!desktopIntegrationHost) {
+    throw new Error('desktop_integration_host_required');
+  }
   started = true;
   config = createConfig(app);
-  windowRegistry = createWindowRegistry({ BrowserWindow });
-  windowRegistryCleanup = windowRegistry.installIpc(ipcMain);
-  rendererBridge = createRendererBridge({
-    BrowserWindow,
-    ipcMain,
-    windowRegistry,
-  });
-  previewInteractionService = createPreviewInteractionService({
-    BrowserWindow,
-    windowRegistry,
-    isRegisteredPreviewWindow: isPreviewWindow,
-  });
-  windowCaptureService = createWindowCaptureService({
-    BrowserWindow,
-    desktopCapturer: electronDesktopCapturer,
-    windowRegistry,
-    isRegisteredPreviewWindow: isPreviewWindow,
-  });
+  windowRegistry = desktopIntegrationHost.windowRegistry;
+  rendererBridge = desktopIntegrationHost.rendererBridge;
+  previewInteractionService = desktopIntegrationHost.previewInteractionService;
+  windowCaptureService = desktopIntegrationHost.windowCaptureService;
 
   server = http.createServer(async (request, response) => {
     try {
@@ -264,7 +236,6 @@ const startAgentApi = ({ app, ipcMain, BrowserWindow, log }) => {
 
       if (request.method === 'GET' && url.pathname === '/v1/capabilities') {
         const result = await dispatchToRenderer({
-          BrowserWindow,
           projectPath: url.searchParams.get('projectPath'),
           windowId: url.searchParams.get('windowId'),
           request: { type: 'capabilities' },
@@ -275,7 +246,6 @@ const startAgentApi = ({ app, ipcMain, BrowserWindow, log }) => {
 
       if (request.method === 'GET' && url.pathname === '/v1/project') {
         const result = await dispatchToRenderer({
-          BrowserWindow,
           projectPath: url.searchParams.get('projectPath'),
           windowId: url.searchParams.get('windowId'),
           request: { type: 'status' },
@@ -286,7 +256,6 @@ const startAgentApi = ({ app, ipcMain, BrowserWindow, log }) => {
 
       if (request.method === 'GET' && url.pathname === '/v1/diagnostics') {
         const result = await dispatchToRenderer({
-          BrowserWindow,
           projectPath: url.searchParams.get('projectPath'),
           windowId: url.searchParams.get('windowId'),
           request: {
@@ -307,7 +276,6 @@ const startAgentApi = ({ app, ipcMain, BrowserWindow, log }) => {
 
       if (request.method === 'GET' && url.pathname === '/v1/functions') {
         const result = await dispatchToRenderer({
-          BrowserWindow,
           projectPath: url.searchParams.get('projectPath'),
           windowId: url.searchParams.get('windowId'),
           request: {
@@ -328,7 +296,6 @@ const startAgentApi = ({ app, ipcMain, BrowserWindow, log }) => {
       if (request.method === 'GET' && functionPathMatch) {
         const functionName = decodeURIComponent(functionPathMatch[1]);
         const result = await dispatchToRenderer({
-          BrowserWindow,
           projectPath: url.searchParams.get('projectPath'),
           windowId: url.searchParams.get('windowId'),
           request: { type: 'describe-function', name: functionName },
@@ -341,7 +308,6 @@ const startAgentApi = ({ app, ipcMain, BrowserWindow, log }) => {
         const body = await readJsonBody(request);
         const targeting = getTargeting(request, body);
         const result = await dispatchToRenderer({
-          BrowserWindow,
           ...targeting,
           request: { ...body, type: 'validation-report' },
         });
@@ -365,7 +331,6 @@ const startAgentApi = ({ app, ipcMain, BrowserWindow, log }) => {
         }
         const targeting = getTargeting(request, body);
         const result = await dispatchToRenderer({
-          BrowserWindow,
           ...targeting,
           request: body,
         });
@@ -381,7 +346,6 @@ const startAgentApi = ({ app, ipcMain, BrowserWindow, log }) => {
         }
         const targeting = getTargeting(request, body);
         const result = await dispatchToRenderer({
-          BrowserWindow,
           ...targeting,
           request: {
             type: 'editor-function',
@@ -406,7 +370,6 @@ const startAgentApi = ({ app, ipcMain, BrowserWindow, log }) => {
         }
         const targeting = getTargeting(request, body);
         const result = await dispatchToRenderer({
-          BrowserWindow,
           ...targeting,
           request: {
             type: 'editor-functions',
@@ -422,7 +385,6 @@ const startAgentApi = ({ app, ipcMain, BrowserWindow, log }) => {
         const body = await readJsonBody(request);
         const targeting = getTargeting(request, body);
         const result = await dispatchToRenderer({
-          BrowserWindow,
           ...targeting,
           request: { type: 'save-project' },
         });
@@ -481,9 +443,6 @@ const startAgentApi = ({ app, ipcMain, BrowserWindow, log }) => {
 };
 
 const stopAgentApi = () => {
-  if (rendererBridge) rendererBridge.dispose();
-  if (windowRegistryCleanup) windowRegistryCleanup();
-  if (windowRegistry) windowRegistry.clear();
   if (server) {
     try {
       server.close();
@@ -499,31 +458,12 @@ const stopAgentApi = () => {
   previewInteractionService = null;
   windowCaptureService = null;
   rendererBridge = null;
-  windowRegistryCleanup = null;
   windowRegistry = null;
   started = false;
 };
 
-const installAgentApi = dependencies => {
-  const { app } = dependencies;
-  const start = () => startAgentApi(dependencies);
-  const stop = () => stopAgentApi();
-
-  if (app.isReady()) start();
-  else app.once('ready', start);
-  app.once('before-quit', stop);
-
-  return () => {
-    app.removeListener('ready', start);
-    app.removeListener('before-quit', stop);
-    stop();
-  };
-};
-
 module.exports = {
-  installAgentApi,
   startAgentApi,
   stopAgentApi,
-  captureWindowPng,
   getRendererRequestTimeoutMs,
 };

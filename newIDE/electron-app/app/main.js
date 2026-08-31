@@ -38,6 +38,7 @@ const {
   closePreviewWindow,
   closePreviewWindowsForParent,
   closeAllPreviewWindows,
+  isPreviewWindow,
 } = require('./PreviewWindow');
 const {
   setupLocalGDJSDevelopmentWatcher,
@@ -70,7 +71,14 @@ autoUpdater.logger = log;
 autoUpdater.logger.transports.file.level = 'info';
 autoUpdater.autoDownload = false;
 
-require('./AgentApi').installAgentApi({ app, ipcMain, BrowserWindow, log });
+require('./AgentIntegration').installAgentIntegration({
+  app,
+  ipcMain,
+  BrowserWindow,
+  desktopCapturer: electron.desktopCapturer,
+  isRegisteredPreviewWindow: isPreviewWindow,
+  log,
+});
 
 // Keep a global reference of the window objects, if you don't, the windows will
 // be closed automatically when the JavaScript object is garbage collected.

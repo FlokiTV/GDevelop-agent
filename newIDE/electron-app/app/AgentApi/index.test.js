@@ -30,9 +30,14 @@ Module._load = function(request, parent, isMain) {
 const {
   startAgentApi,
   stopAgentApi,
-  captureWindowPng,
   getRendererRequestTimeoutMs,
 } = require('./index');
+const {
+  captureWindowPng,
+} = require('../AgentIntegration/WindowCaptureService');
+const {
+  createDesktopIntegrationHost,
+} = require('../AgentIntegration/DesktopIntegrationHost');
 Module._load = originalModuleLoad;
 
 test('captureWindowPng uses desktopCapturer when capturePage is empty', async () => {
@@ -211,9 +216,19 @@ test('serves searchable function listing and per-function metadata routes', asyn
     },
   };
 
-  const config = startAgentApi({ app, ipcMain, BrowserWindow, log: null });
+  const desktopIntegrationHost = createDesktopIntegrationHost({
+    BrowserWindow,
+    ipcMain,
+    desktopCapturer: null,
+    isRegisteredPreviewWindow: () => false,
+  });
+  const config = startAgentApi({
+    app,
+    log: null,
+    desktopIntegrationHost,
+  });
   ipcMain.emit(
-    'gdevelop-agent-api:register',
+    'gdevelop-agent-integration:register',
     { sender: webContents },
     { active: true, fileIdentifier: null }
   );
@@ -273,6 +288,7 @@ test('serves searchable function listing and per-function metadata routes', asyn
     });
   } finally {
     stopAgentApi();
+    desktopIntegrationHost.dispose();
     fs.rmSync(userData, { recursive: true, force: true });
     if (previousPort === undefined) delete process.env.GDEVELOP_AGENT_API_PORT;
     else process.env.GDEVELOP_AGENT_API_PORT = previousPort;
