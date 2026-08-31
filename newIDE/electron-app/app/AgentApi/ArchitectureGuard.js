@@ -14,12 +14,18 @@ const ALLOWED_UPSTREAM_HOOKS = new Set([
   'newIDE/electron-app/app/PreviewWindow.js',
 ]);
 
+const ALLOWED_DEPENDENCY_MANIFESTS = new Set([
+  'newIDE/electron-app/app/package.json',
+  'newIDE/electron-app/app/package-lock.json',
+]);
+
 const normalizeRepositoryPath = filePath => String(filePath).replace(/\\/g, '/');
 
 const isAllowedAgentChange = filePath => {
   const normalized = normalizeRepositoryPath(filePath);
   return (
     ALLOWED_UPSTREAM_HOOKS.has(normalized) ||
+    ALLOWED_DEPENDENCY_MANIFESTS.has(normalized) ||
     ALLOWED_PREFIXES.some(prefix => normalized.startsWith(prefix))
   );
 };
@@ -101,6 +107,7 @@ if (require.main === module) {
 module.exports = {
   ALLOWED_PREFIXES,
   ALLOWED_UPSTREAM_HOOKS,
+  ALLOWED_DEPENDENCY_MANIFESTS,
   normalizeRepositoryPath,
   isAllowedAgentChange,
   findDisallowedAgentChanges,

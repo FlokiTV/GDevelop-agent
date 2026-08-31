@@ -7,7 +7,7 @@ const {
   runArchitectureGuard,
 } = require('./ArchitectureGuard');
 
-test('allows agent-owned files and the three explicit upstream hooks', () => {
+test('allows agent-owned files, MCP manifests and the three explicit upstream hooks', () => {
   assert.equal(
     isAllowedAgentChange('newIDE/app/src/AgentApi/ExportTools.js'),
     true
@@ -30,6 +30,14 @@ test('allows agent-owned files and the three explicit upstream hooks', () => {
   assert.equal(isAllowedAgentChange('newIDE/electron-app/app/main.js'), true);
   assert.equal(
     isAllowedAgentChange('newIDE/electron-app/app/PreviewWindow.js'),
+    true
+  );
+  assert.equal(
+    isAllowedAgentChange('newIDE/electron-app/app/package.json'),
+    true
+  );
+  assert.equal(
+    isAllowedAgentChange('newIDE/electron-app/app/package-lock.json'),
     true
   );
 });
