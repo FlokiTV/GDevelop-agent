@@ -8,7 +8,6 @@ import { listAllExamples } from '../Utils/GDevelopServices/Example';
 import UrlStorageProvider from '../ProjectsStorage/UrlStorageProvider';
 import { type ResourceManagementProps } from '../ResourcesList/ResourceSource';
 import { createAssetTools } from './AssetTools';
-import { diffCheckpointToProject } from './CheckpointTools';
 import { createRuntimeTelemetry } from './RuntimeTelemetry';
 import {
   createEditorVisualTools,
@@ -22,7 +21,6 @@ import {
 } from './GameplayTestLifecycleTools';
 import { clearGameplayTestFramePreview } from '../GameplayTests/GameplayTestFrame';
 import { createDiagnosticsTools } from './DiagnosticsTools';
-import { exportLocalHtml5ForAgent } from './ExportTools';
 import {
   type SceneEventsOutsideEditorChanges,
   type InstancesOutsideEditorChanges,
@@ -43,6 +41,8 @@ import { enumerateObjectTypes } from '../ObjectsList/EnumerateObjects';
 import { type FileMetadata } from '../ProjectsStorage';
 import { createEditorFunctionService } from '../AgentIntegration/editor/EditorFunctionService';
 import { createProjectLifecycleService } from '../AgentIntegration/editor/ProjectLifecycleService';
+import { createExportService } from '../AgentIntegration/editor/ExportService';
+import { createValidationService } from '../AgentIntegration/editor/ValidationService';
 import { createSafetyService } from '../AgentIntegration/safety/SafetyService';
 import { createRendererAgentHost } from '../AgentIntegration/RendererAgentHost';
 import { attachRendererAgentHostToIpc } from '../AgentIntegration/RendererCommandAdapter';
@@ -394,8 +394,6 @@ export default function useAgentApi({
         clearGameplayTestFramePreview,
         documentObject: document,
       });
-      const runFunctionCalls = (calls, shouldSave) =>
-        editorFunctionService.run({ calls, save: shouldSave });
       const projectLifecycleService = createProjectLifecycleService({
         project,
         fileIdentifier,
@@ -412,6 +410,16 @@ export default function useAgentApi({
         fileIdentifier,
         hasUnsavedChanges,
         restoreProjectCheckpoint,
+      });
+      const exportService = createExportService({ project, i18n });
+      const validationService = createValidationService({
+        project,
+        diagnosticsTools,
+        safetyService,
+        runtimeTelemetry,
+        editorFunctionService,
+        exportService,
+        getPreviewStatus: () => getPreviewStatus(previewDebuggerServer),
       });
 
       const rendererAgentHost = createRendererAgentHost({
@@ -435,10 +443,13 @@ export default function useAgentApi({
           }),
         },
         assetTools,
+        diagnosticsTools,
         editorFunctionService,
         eventTools,
+        exportService,
         projectLifecycleService,
         safetyService,
+        validationService,
       });
       const detachRendererAgentHost = attachRendererAgentHostToIpc({
         ipcRenderer,
@@ -461,209 +472,6 @@ export default function useAgentApi({
           previewDebuggerServer.sendMessage(id, { command: action })
         );
         return { action, debuggerIds: targetIds };
-      };
-
-      const runValidationReport = async (request: any) => {
-        if (!project || !diagnosticsTools) throw new Error('no_project_open');
-
-        const steps = [];
-        let checkpointDiff = null;
-        if (typeof request.checkpointId === 'string' && request.checkpointId) {
-          try {
-            checkpointDiff = diffCheckpointToProject(
-              project,
-              request.checkpointId
-            );
-            steps.push({ name: 'checkpoint-diff', ok: true });
-          } catch (error) {
-            steps.push({
-              name: 'checkpoint-diff',
-              ok: false,
-              error: error && error.message ? error.message : String(error),
-            });
-          }
-        }
-
-        const gameplayTests = [];
-        const requestedGameplayTests = Array.isArray(request.gameplayTests)
-          ? request.gameplayTests
-          : [];
-        if (requestedGameplayTests.length > 20) {
-          throw new Error('too_many_validation_gameplay_tests');
-        }
-        for (const gameplayTest of requestedGameplayTests) {
-          const argumentsForTest =
-            gameplayTest && typeof gameplayTest === 'object'
-              ? { ...gameplayTest }
-              : {};
-          if (
-            typeof argumentsForTest.source === 'string' &&
-            argumentsForTest.persist === undefined
-          ) {
-            argumentsForTest.persist = false;
-          }
-          try {
-            const callResult = await runFunctionCalls(
-              [
-                {
-                  name: 'run_gameplay_test',
-                  arguments: argumentsForTest,
-                },
-              ],
-              false
-            );
-            const finishedResult = callResult.results[0] || null;
-            const passed = !!(
-              finishedResult &&
-              finishedResult.status === 'finished' &&
-              finishedResult.success
-            );
-            gameplayTests.push({
-              testName: argumentsForTest.test_name || null,
-              ok: passed,
-              result: finishedResult,
-            });
-            steps.push({
-              name: `gameplay-test:${String(
-                argumentsForTest.test_name || gameplayTests.length
-              )}`,
-              ok: passed,
-            });
-          } catch (error) {
-            const message =
-              error && error.message ? error.message : String(error);
-            gameplayTests.push({
-              testName: argumentsForTest.test_name || null,
-              ok: false,
-              error: message,
-            });
-            steps.push({
-              name: `gameplay-test:${String(
-                argumentsForTest.test_name || gameplayTests.length
-              )}`,
-              ok: false,
-              error: message,
-            });
-          }
-        }
-
-        const runtimeAssertions = [];
-        const requestedRuntimeAssertions = Array.isArray(
-          request.runtimeAssertions
-        )
-          ? request.runtimeAssertions
-          : [];
-        if (requestedRuntimeAssertions.length > 50) {
-          throw new Error('too_many_runtime_assertions');
-        }
-        for (const runtimeAssertion of requestedRuntimeAssertions) {
-          try {
-            if (!runtimeTelemetry)
-              throw new Error('preview_debugger_unavailable');
-            const result = await runtimeTelemetry.assertRuntime({
-              ...(runtimeAssertion || {}),
-              debuggerId:
-                (runtimeAssertion && runtimeAssertion.debuggerId) ||
-                request.debuggerId,
-            });
-            runtimeAssertions.push({ ok: !!result.passed, result });
-            steps.push({ name: 'runtime-assertion', ok: !!result.passed });
-          } catch (error) {
-            const message =
-              error && error.message ? error.message : String(error);
-            runtimeAssertions.push({ ok: false, error: message });
-            steps.push({
-              name: 'runtime-assertion',
-              ok: false,
-              error: message,
-            });
-          }
-        }
-
-        let runtimeLogs = null;
-        if (request.includeRuntimeLogs) {
-          try {
-            if (!runtimeTelemetry)
-              throw new Error('preview_debugger_unavailable');
-            runtimeLogs = runtimeTelemetry.getLogs({
-              debuggerId: request.debuggerId,
-              limit: request.runtimeLogLimit,
-            });
-            steps.push({
-              name: 'runtime-logs',
-              ok: runtimeLogs.errors === 0,
-              errors: runtimeLogs.errors,
-              warnings: runtimeLogs.warnings,
-            });
-          } catch (error) {
-            runtimeLogs = {
-              error: error && error.message ? error.message : String(error),
-            };
-            steps.push({
-              name: 'runtime-logs',
-              ok: false,
-              error: runtimeLogs.error,
-            });
-          }
-        }
-
-        let exportResult = null;
-        if (request.export) {
-          try {
-            const exportOptions =
-              request.export && typeof request.export === 'object'
-                ? request.export
-                : {};
-            exportResult = {
-              ok: true,
-              result: await exportLocalHtml5ForAgent({
-                project,
-                i18n,
-                outputDir:
-                  typeof exportOptions.outputDir === 'string'
-                    ? exportOptions.outputDir
-                    : undefined,
-              }),
-            };
-            steps.push({ name: 'html5-export', ok: true });
-          } catch (error) {
-            exportResult = {
-              ok: false,
-              error: error && error.message ? error.message : String(error),
-            };
-            steps.push({
-              name: 'html5-export',
-              ok: false,
-              error: exportResult.error,
-            });
-          }
-        }
-
-        // Re-scan after optional gameplay probes/export. HTML5 export refreshes
-        // GDevelop's native code-generation diagnostic report, so this final
-        // snapshot is more authoritative than a pre-validation scan.
-        const diagnostics = diagnosticsTools.inspect(request);
-        const failedSteps = steps.filter(step => step.ok === false);
-        return {
-          ok: diagnostics.summary.ok && failedSteps.length === 0,
-          generatedAt: new Date().toISOString(),
-          projectName: project.getName(),
-          projectUuid: project.getProjectUuid(),
-          diagnostics,
-          checkpointDiff,
-          preview: getPreviewStatus(previewDebuggerServer),
-          gameplayTests,
-          runtimeAssertions,
-          runtimeLogs,
-          export: exportResult,
-          steps,
-          summary: {
-            diagnosticErrors: diagnostics.summary.errors,
-            diagnosticWarnings: diagnostics.summary.warnings,
-            checksRun: steps.length,
-            checksFailed: failedSteps.length,
-          },
-        };
       };
 
       const onRequest = async (
@@ -1041,21 +849,33 @@ export default function useAgentApi({
           }
 
           if (request.type === 'diagnostics-project') {
-            if (!diagnosticsTools) throw new Error('no_project_open');
+            const commandResult = await rendererAgentHost.execute(
+              'diagnostics.inspect',
+              {
+                includeNativeReport: request.includeNativeReport,
+                includeAssets: request.includeAssets,
+              },
+              { traceId: requestId }
+            );
             ipcRenderer.send('gdevelop-agent-api:response', {
               requestId,
               ok: true,
-              result: diagnosticsTools.inspect(request),
+              result: commandResult.data,
             });
             return;
           }
 
           if (request.type === 'validation-report') {
-            const result = await runValidationReport(request);
+            const { type: ignoredType, ...validationInput } = request;
+            const commandResult = await rendererAgentHost.execute(
+              'validation.run',
+              validationInput,
+              { traceId: requestId }
+            );
             ipcRenderer.send('gdevelop-agent-api:response', {
               requestId,
               ok: true,
-              result,
+              result: commandResult.data,
             });
             return;
           }
@@ -1336,19 +1156,15 @@ export default function useAgentApi({
           }
 
           if (request.type === 'export-html5') {
-            if (!project) throw new Error('no_project_open');
-            const result = await exportLocalHtml5ForAgent({
-              project,
-              i18n,
-              outputDir:
-                typeof request.outputDir === 'string'
-                  ? request.outputDir
-                  : undefined,
-            });
+            const commandResult = await rendererAgentHost.execute(
+              'export.html5',
+              { outputDir: request.outputDir },
+              { traceId: requestId }
+            );
             ipcRenderer.send('gdevelop-agent-api:response', {
               requestId,
               ok: true,
-              result,
+              result: commandResult.data,
             });
             return;
           }
