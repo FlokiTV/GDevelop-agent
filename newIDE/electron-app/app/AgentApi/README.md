@@ -12,8 +12,20 @@ The implementation stays isolated:
 - `newIDE/app/src/AgentApi/RuntimeTelemetry.js`: bounded runtime snapshots, logs, assertions and wait conditions backed by GDevelop's native debugger protocol.
 - `newIDE/app/src/AgentApi/EditorVisualTools.js`: scene-editor instance selection and native focus/fit controls for visual inspection.
 - `newIDE/app/src/AgentApi/DiagnosticsTools.js`: aggregated project/event/resource/behavior diagnostics and validation summaries.
+- `newIDE/app/src/AgentApi/ExportTools.js`: wraps the native HTML5 exporter while restoring agent-observed project state after the operation.
+- `newIDE/electron-app/app/AgentApi/ArchitectureGuard.js`: verifies the fork delta stays inside AgentApi plus the explicit upstream hook allowlist.
 
-Only small hooks live outside these folders: `electron-app/app/main.js` installs the service and `app/src/MainFrame/index.js` passes callbacks already owned by the editor.
+Only three small hooks live outside these folders: `electron-app/app/main.js` installs the service, `app/src/MainFrame/index.js` passes callbacks already owned by the editor, and `electron-app/app/PreviewWindow.js` exposes preview-window identity to the isolated input/runtime adapters. Core single-instance behavior and the native HTML5 exporter remain upstream-identical.
+
+## Upstream isolation guard
+
+From the repository root, run:
+
+```bash
+node newIDE/electron-app/app/AgentApi/ArchitectureGuard.js upstream/master
+```
+
+The guard fails if the fork changes any tracked upstream file outside the two AgentApi directories and the three explicit hook files above. CI/checkouts can override the comparison ref with `GDEVELOP_AGENT_UPSTREAM_REF`.
 
 ## Discovery and security
 

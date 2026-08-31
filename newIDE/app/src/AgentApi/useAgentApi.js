@@ -32,7 +32,7 @@ import {
   getFunctionMetadataStats,
   listFunctionMetadata,
 } from './FunctionMetadata';
-import { exportLocalHtml5Headless } from '../ExportAndShare/Headless/ExportLocalHtml5Headless';
+import { exportLocalHtml5ForAgent } from './ExportTools';
 import {
   type SceneEventsOutsideEditorChanges,
   type InstancesOutsideEditorChanges,
@@ -612,14 +612,13 @@ export default function useAgentApi({
                 : {};
             exportResult = {
               ok: true,
-              result: await exportLocalHtml5Headless({
+              result: await exportLocalHtml5ForAgent({
                 project,
                 i18n,
                 outputDir:
                   typeof exportOptions.outputDir === 'string'
                     ? exportOptions.outputDir
                     : undefined,
-                persistOutputDirectory: false,
               }),
             };
             steps.push({ name: 'html5-export', ok: true });
@@ -1335,14 +1334,13 @@ export default function useAgentApi({
 
           if (request.type === 'export-html5') {
             if (!project) throw new Error('no_project_open');
-            const result = await exportLocalHtml5Headless({
+            const result = await exportLocalHtml5ForAgent({
               project,
               i18n,
               outputDir:
                 typeof request.outputDir === 'string'
                   ? request.outputDir
                   : undefined,
-              persistOutputDirectory: false,
             });
             ipcRenderer.send('gdevelop-agent-api:response', {
               requestId,

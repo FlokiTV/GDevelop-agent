@@ -99,7 +99,7 @@ const isCliRunCommand = !!args['run-command'];
 const gotTheLock =
   isCliRunCommand && !isCliProjectAlreadyOpenElsewhere(args)
     ? true
-    : app.requestSingleInstanceLock();
+    : app.requestSingleInstanceLock({ args });
 
 if (!gotTheLock) {
   // Second instance attempted - quit immediately
