@@ -13,7 +13,64 @@ try {
 
 const DEFAULT_PORT = 38473;
 const REQUEST_TIMEOUT_MS = 30000;
+const MAX_REQUEST_TIMEOUT_MS = 10 * 60 * 1000;
+const GAMEPLAY_TEST_DEFAULT_TIMEOUT_MS = 30000;
+// Gameplay tests may spend up to 60s booting a fresh game and the runner
+// keeps a 10s result watchdog margin. Keep a little extra IPC/serialization
+// room so the HTTP envelope never expires before the runner's own budget.
+const GAMEPLAY_TEST_REQUEST_OVERHEAD_MS = 75 * 1000;
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
+
+const getGameplayTestRequestBudgetMs = call => {
+  if (!call || call.name !== 'run_gameplay_test') return 0;
+  const requestedTimeoutMs = Number(
+    call.arguments && call.arguments.timeout_ms
+  );
+  const testTimeoutMs =
+    Number.isFinite(requestedTimeoutMs) && requestedTimeoutMs > 0
+      ? requestedTimeoutMs
+      : GAMEPLAY_TEST_DEFAULT_TIMEOUT_MS;
+  return testTimeoutMs + GAMEPLAY_TEST_REQUEST_OVERHEAD_MS;
+};
+
+const getRendererRequestTimeoutMs = request => {
+  let longRunningBudgetMs = 0;
+  if (request && request.type === 'editor-function') {
+    longRunningBudgetMs = getGameplayTestRequestBudgetMs(request);
+  } else if (
+    request &&
+    request.type === 'editor-functions' &&
+    Array.isArray(request.calls)
+  ) {
+    longRunningBudgetMs = request.calls.reduce(
+      (total, call) => total + getGameplayTestRequestBudgetMs(call),
+      0
+    );
+  } else if (
+    request &&
+    request.type === 'validation-report' &&
+    Array.isArray(request.gameplayTests)
+  ) {
+    longRunningBudgetMs = request.gameplayTests.reduce(
+      (total, argumentsForTest) =>
+        total +
+        getGameplayTestRequestBudgetMs({
+          name: 'run_gameplay_test',
+          arguments:
+            argumentsForTest && typeof argumentsForTest === 'object'
+              ? argumentsForTest
+              : {},
+        }),
+      0
+    );
+  }
+
+  if (longRunningBudgetMs <= 0) return REQUEST_TIMEOUT_MS;
+  return Math.min(
+    MAX_REQUEST_TIMEOUT_MS,
+    Math.max(REQUEST_TIMEOUT_MS, longRunningBudgetMs)
+  );
+};
 
 let server = null;
 let started = false;
@@ -202,13 +259,14 @@ const dispatchToRenderer = ({
   }
 
   const requestId = crypto.randomUUID();
+  const requestTimeoutMs = getRendererRequestTimeoutMs(request);
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
       pendingRequests.delete(requestId);
       const error = new Error('renderer_request_timeout');
       error.code = 'renderer_request_timeout';
       reject(error);
-    }, REQUEST_TIMEOUT_MS);
+    }, requestTimeoutMs);
 
     pendingRequests.set(requestId, {
       resolve,
@@ -664,4 +722,5 @@ module.exports = {
   startAgentApi,
   stopAgentApi,
   captureWindowPng,
+  getRendererRequestTimeoutMs,
 };

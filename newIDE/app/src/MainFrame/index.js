@@ -5635,17 +5635,6 @@ const MainFrame = (props: Props): React.MixedElement => {
     ]
   );
 
-  const closeAllPreviewsForAgentApi = React.useCallback(
-    () => {
-      const previewLauncher = _previewLauncher.current;
-      if (previewLauncher && previewLauncher.closeAllPreviews) {
-        previewLauncher.closeAllPreviews();
-      }
-      if (previewDebuggerServer) previewDebuggerServer.closeAllConnections();
-    },
-    [previewDebuggerServer]
-  );
-
   useAgentApi({
     project: state.currentProject,
     editorTabs: state.editorTabs,
@@ -5663,7 +5652,6 @@ const MainFrame = (props: Props): React.MixedElement => {
     createProjectFromExample,
     launchNewPreview,
     launchHotReloadPreview,
-    closeAllPreviews: closeAllPreviewsForAgentApi,
     previewDebuggerServer,
     triggerUnsavedChanges,
     forceUpdate,

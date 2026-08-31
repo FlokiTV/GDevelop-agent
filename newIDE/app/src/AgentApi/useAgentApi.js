@@ -30,6 +30,12 @@ import {
   restoreOpenSceneEditors,
 } from './EditorVisualTools';
 import { createEventTools } from './EventTools';
+import { closeAllPreviewWindowsForAgent } from './PreviewLifecycleTools';
+import {
+  prepareGameplayTestRunForAgent,
+  watchGameplayTestFrameForAgent,
+} from './GameplayTestLifecycleTools';
+import { clearGameplayTestFramePreview } from '../GameplayTests/GameplayTestFrame';
 import { createDiagnosticsTools } from './DiagnosticsTools';
 import {
   getFunctionMetadata,
@@ -97,7 +103,6 @@ type Props = {|
   createProjectFromExample: (exampleProjectSetup: any) => Promise<any>,
   launchNewPreview: (options?: any) => Promise<void>,
   launchHotReloadPreview: () => Promise<void>,
-  closeAllPreviews: () => void,
   previewDebuggerServer: ?any,
   triggerUnsavedChanges: () => void,
   forceUpdate: () => void,
@@ -180,7 +185,6 @@ export default function useAgentApi({
   createProjectFromExample,
   launchNewPreview,
   launchHotReloadPreview,
-  closeAllPreviews,
   previewDebuggerServer,
   triggerUnsavedChanges,
   forceUpdate,
@@ -412,39 +416,74 @@ export default function useAgentApi({
           }
         );
 
+        const processCalls = (callsToProcess: Array<EditorFunctionCall>) =>
+          processEditorFunctionCalls({
+            project,
+            functionCalls: callsToProcess,
+            i18n,
+            editorCallbacks,
+            toolOptions: { includeEventsJson: true },
+            toolsVersion: 'v12',
+            runScriptReadOnly: false,
+            relatedAiRequestId: null,
+            getRelatedAiRequestLastMessages: () => ({
+              lastUserMessage: null,
+              lastAssistantMessages: [],
+            }),
+            generateEvents,
+            onSceneEventsModifiedOutsideEditor,
+            onInstancesModifiedOutsideEditor,
+            onObjectsModifiedOutsideEditor,
+            onObjectGroupsModifiedOutsideEditor,
+            onProjectItemRenamedOutsideEditor,
+            onWillDeleteScene,
+            onWillDeleteGameplayTest,
+            onWillDeleteObject,
+            ensureExtensionInstalled,
+            onWillInstallExtension,
+            onExtensionInstalled,
+            searchAndInstallAsset,
+            searchAndInstallResources,
+            getAssetStoreTagForNewObject,
+          });
+
+        let processedCallsResult;
+        if (functionCalls.some(call => call.name === 'run_gameplay_test')) {
+          const results = [];
+          const createdSceneNames = [];
+          let createdProject = null;
+          for (const functionCall of functionCalls) {
+            let stopWatchingGameplayFrame = () => {};
+            if (functionCall.name === 'run_gameplay_test') {
+              await prepareGameplayTestRunForAgent({
+                clearPreview: clearGameplayTestFramePreview,
+              });
+              stopWatchingGameplayFrame = watchGameplayTestFrameForAgent({
+                documentObject: document,
+              });
+            }
+            let processedCall;
+            try {
+              processedCall = await processCalls([functionCall]);
+            } finally {
+              stopWatchingGameplayFrame();
+            }
+            results.push(...processedCall.results);
+            createdSceneNames.push(...processedCall.createdSceneNames);
+            if (processedCall.createdProject) {
+              createdProject = processedCall.createdProject;
+            }
+          }
+          processedCallsResult = { results, createdSceneNames, createdProject };
+        } else {
+          processedCallsResult = await processCalls(functionCalls);
+        }
+
         const {
           results,
           createdSceneNames,
           createdProject,
-        } = await processEditorFunctionCalls({
-          project,
-          functionCalls,
-          i18n,
-          editorCallbacks,
-          toolOptions: { includeEventsJson: true },
-          toolsVersion: 'v12',
-          runScriptReadOnly: false,
-          relatedAiRequestId: null,
-          getRelatedAiRequestLastMessages: () => ({
-            lastUserMessage: null,
-            lastAssistantMessages: [],
-          }),
-          generateEvents,
-          onSceneEventsModifiedOutsideEditor,
-          onInstancesModifiedOutsideEditor,
-          onObjectsModifiedOutsideEditor,
-          onObjectGroupsModifiedOutsideEditor,
-          onProjectItemRenamedOutsideEditor,
-          onWillDeleteScene,
-          onWillDeleteGameplayTest,
-          onWillDeleteObject,
-          ensureExtensionInstalled,
-          onWillInstallExtension,
-          onExtensionInstalled,
-          searchAndInstallAsset,
-          searchAndInstallResources,
-          getAssetStoreTagForNewObject,
-        });
+        } = processedCallsResult;
 
         const didModifyProject = results.some(
           result => result.status === 'finished' && result.didModifyProject
@@ -1258,11 +1297,11 @@ export default function useAgentApi({
           }
 
           if (request.type === 'preview-close-all') {
-            closeAllPreviews();
+            const result = await closeAllPreviewWindowsForAgent(ipcRenderer);
             ipcRenderer.send('gdevelop-agent-api:response', {
               requestId,
               ok: true,
-              result: { closed: true },
+              result,
             });
             return;
           }
@@ -1488,7 +1527,6 @@ export default function useAgentApi({
       createProjectForAgent,
       launchNewPreview,
       launchHotReloadPreview,
-      closeAllPreviews,
       previewDebuggerServer,
       runtimeTelemetry,
       resourceManagementProps,

@@ -27,7 +27,12 @@ Module._load = function(request, parent, isMain) {
   }
   return originalModuleLoad.call(this, request, parent, isMain);
 };
-const { startAgentApi, stopAgentApi, captureWindowPng } = require('./index');
+const {
+  startAgentApi,
+  stopAgentApi,
+  captureWindowPng,
+  getRendererRequestTimeoutMs,
+} = require('./index');
 Module._load = originalModuleLoad;
 
 test('captureWindowPng uses desktopCapturer when capturePage is empty', async () => {
@@ -78,6 +83,57 @@ test('captureWindowPng rejects when both capture paths are empty', async () => {
   await assert.rejects(
     captureWindowPng({ targetWindow, desktopCapturer }),
     error => error && error.code === 'window_capture_empty'
+  );
+});
+
+test('renderer timeout follows gameplay test budgets and stays bounded', () => {
+  assert.equal(
+    getRendererRequestTimeoutMs({ type: 'status' }),
+    30000,
+    'ordinary renderer requests keep the short timeout'
+  );
+  assert.equal(
+    getRendererRequestTimeoutMs({
+      type: 'editor-function',
+      name: 'run_gameplay_test',
+      arguments: { timeout_ms: 40000 },
+    }),
+    115000,
+    'a gameplay test gets its own budget plus boot/watchdog overhead'
+  );
+  assert.equal(
+    getRendererRequestTimeoutMs({
+      type: 'editor-functions',
+      calls: [
+        {
+          name: 'run_gameplay_test',
+          arguments: { timeout_ms: 10000 },
+        },
+        {
+          name: 'run_gameplay_test',
+          arguments: { timeout_ms: 20000 },
+        },
+      ],
+    }),
+    180000,
+    'batched gameplay tests accumulate their budgets'
+  );
+  assert.equal(
+    getRendererRequestTimeoutMs({
+      type: 'validation-report',
+      gameplayTests: [{ timeout_ms: 10000 }, { timeout_ms: 20000 }],
+    }),
+    180000,
+    'validation-report budgets all requested gameplay tests'
+  );
+  assert.equal(
+    getRendererRequestTimeoutMs({
+      type: 'editor-function',
+      name: 'run_gameplay_test',
+      arguments: { timeout_ms: 60 * 60 * 1000 },
+    }),
+    10 * 60 * 1000,
+    'the outer request timeout remains bounded'
   );
 });
 

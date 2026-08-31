@@ -91,6 +91,7 @@ Send these to `POST /v1/action` with a `type` field:
 - `runtime-wait-for`: `{ "type":"runtime-wait-for", "condition":{"path":"scene.name","operator":"equals","value":"Win"}, "timeoutMs":5000, "intervalMs":250 }` — repeatedly refreshes the native debugger dump until the condition matches or times out.
 - `diagnostics-project` — same aggregated project diagnostics as `GET /v1/diagnostics`.
 - `validation-report`: optional `checkpointId`, `gameplayTests`, `runtimeAssertions`, `includeRuntimeLogs`, `debuggerId` and `export`. Gameplay-test source probes default to `persist:false` unless explicitly requested. The response contains one pass/fail summary and per-step results.
+- Gameplay-test requests get an HTTP/IPC timeout budget derived from their own `timeout_ms` (bounded to 10 minutes). Before each Agent API gameplay run, the old gameplay iframe is fully unmounted and a test-only `requestAnimationFrame` fallback is installed inside the disposable iframe so occlusion cannot deadlock deterministic stepping. Normal previews and GDJS remain untouched.
 - `export-html5`: `{ "type":"export-html5", "outputDir":"C:\\games\\build" }`
 
 Runtime assertion paths address the returned snapshot (`scene.name`, `scene.variables.Score.value`, `objects.Player.count`, `objects.Player.instances.0.x`, etc.). Supported operators are `equals`/`eq`, `notEquals`/`neq`, `gt`, `gte`, `lt`, `lte`, `contains`, `exists`, `not-exists`, `truthy` and `falsy`. Snapshot payloads are bounded; `maxInstances` defaults to 200 and is capped at 1000.
