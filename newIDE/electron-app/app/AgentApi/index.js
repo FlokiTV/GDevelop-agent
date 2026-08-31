@@ -4,6 +4,8 @@ const fs = require('fs');
 const path = require('path');
 const { createPreviewInputTools } = require('./PreviewInputTools');
 const { createAgentPreviewRuntime } = require('./AgentPreviewRuntime');
+const { createWindowRegistry } = require('../AgentIntegration/WindowRegistry');
+const { createRendererBridge } = require('../AgentIntegration/RendererBridge');
 const { isPreviewWindow } = require('../PreviewWindow');
 
 let electronDesktopCapturer = null;
@@ -75,21 +77,11 @@ const getRendererRequestTimeoutMs = request => {
 let server = null;
 let started = false;
 let config = null;
-let windowProjects = new Map();
-let pendingRequests = new Map();
-let ipcHandlers = null;
+let windowRegistry = null;
+let windowRegistryCleanup = null;
+let rendererBridge = null;
 let previewInputTools = null;
 let agentPreviewRuntime = null;
-
-const normalizeFileIdentifier = fileIdentifier => {
-  if (!fileIdentifier || typeof fileIdentifier !== 'string') return null;
-  try {
-    const resolved = path.resolve(fileIdentifier);
-    return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
-  } catch (error) {
-    return null;
-  }
-};
 
 const json = (response, statusCode, payload) => {
   const body = JSON.stringify(payload);
@@ -189,96 +181,17 @@ const isAuthorized = request => {
   return typeof token === 'string' && token === config.token;
 };
 
-const pruneWindowProjects = BrowserWindow => {
-  for (const windowId of windowProjects.keys()) {
-    const window = BrowserWindow.fromId(windowId);
-    if (!window || window.isDestroyed()) windowProjects.delete(windowId);
-  }
-};
-
-const selectTargetWindow = ({ BrowserWindow, projectPath, windowId }) => {
-  pruneWindowProjects(BrowserWindow);
-
-  if (windowId != null) {
-    const numericWindowId = Number(windowId);
-    const window = BrowserWindow.fromId(numericWindowId);
-    if (window && !window.isDestroyed() && windowProjects.has(window.id)) {
-      return window;
-    }
-    return null;
-  }
-
-  const normalizedProjectPath = normalizeFileIdentifier(projectPath);
-  if (normalizedProjectPath) {
-    for (const [
-      registeredWindowId,
-      registeredProjectPath,
-    ] of windowProjects.entries()) {
-      if (registeredProjectPath !== normalizedProjectPath) continue;
-      const window = BrowserWindow.fromId(registeredWindowId);
-      if (window && !window.isDestroyed()) return window;
-    }
-    return null;
-  }
-
-  const focusedWindow = BrowserWindow.getFocusedWindow();
-  if (
-    focusedWindow &&
-    !focusedWindow.isDestroyed() &&
-    windowProjects.has(focusedWindow.id)
-  ) {
-    return focusedWindow;
-  }
-
-  const availableWindows = Array.from(windowProjects.keys())
-    .map(registeredWindowId => BrowserWindow.fromId(registeredWindowId))
-    .filter(window => window && !window.isDestroyed());
-
-  return availableWindows.length === 1 ? availableWindows[0] : null;
-};
-
-const dispatchToRenderer = ({
-  BrowserWindow,
-  projectPath,
-  windowId,
-  request,
-}) => {
-  const targetWindow = selectTargetWindow({
-    BrowserWindow,
-    projectPath,
-    windowId,
-  });
-  if (!targetWindow) {
-    const error = new Error(
-      projectPath
-        ? 'project_not_open_in_agent_api'
-        : 'target_window_ambiguous_or_missing'
-    );
-    error.code = 'target_window_not_found';
+const dispatchToRenderer = ({ projectPath, windowId, request }) => {
+  if (!rendererBridge) {
+    const error = new Error('renderer_bridge_unavailable');
+    error.code = 'renderer_bridge_unavailable';
     return Promise.reject(error);
   }
-
-  const requestId = crypto.randomUUID();
-  const requestTimeoutMs = getRendererRequestTimeoutMs(request);
-  return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      pendingRequests.delete(requestId);
-      const error = new Error('renderer_request_timeout');
-      error.code = 'renderer_request_timeout';
-      reject(error);
-    }, requestTimeoutMs);
-
-    pendingRequests.set(requestId, {
-      resolve,
-      reject,
-      timeout,
-      windowId: targetWindow.id,
-    });
-
-    targetWindow.webContents.send('gdevelop-agent-api:request', {
-      requestId,
-      request,
-    });
+  return rendererBridge.dispatchLegacy({
+    projectPath,
+    windowId,
+    request,
+    timeoutMs: getRendererRequestTimeoutMs(request),
   });
 };
 
@@ -306,55 +219,6 @@ const createConfig = app => {
   return { ...nextConfig, configPath };
 };
 
-const installIpcHandlers = ({ ipcMain, BrowserWindow }) => {
-  const onRegister = (event, payload = {}) => {
-    const window = BrowserWindow.fromWebContents(event.sender);
-    if (!window) return;
-    if (payload.active === false) {
-      windowProjects.delete(window.id);
-      return;
-    }
-    const normalized = normalizeFileIdentifier(payload.fileIdentifier);
-    // A registered editor window remains targetable even when no project is
-    // open. This is required for initialize_project and project-open actions.
-    windowProjects.set(window.id, normalized);
-  };
-
-  const onResponse = (event, payload = {}) => {
-    const pending = pendingRequests.get(payload.requestId);
-    if (!pending) return;
-
-    const sourceWindow = BrowserWindow.fromWebContents(event.sender);
-    if (!sourceWindow || sourceWindow.id !== pending.windowId) return;
-
-    clearTimeout(pending.timeout);
-    pendingRequests.delete(payload.requestId);
-    if (payload.ok) pending.resolve(payload.result);
-    else {
-      const error = new Error(payload.error || 'renderer_request_failed');
-      error.code = payload.code || 'renderer_request_failed';
-      pending.reject(error);
-    }
-  };
-
-  ipcMain.on('gdevelop-agent-api:register', onRegister);
-  ipcMain.on('gdevelop-agent-api:response', onResponse);
-  ipcHandlers = { ipcMain, onRegister, onResponse };
-};
-
-const uninstallIpcHandlers = () => {
-  if (!ipcHandlers) return;
-  ipcHandlers.ipcMain.removeListener(
-    'gdevelop-agent-api:register',
-    ipcHandlers.onRegister
-  );
-  ipcHandlers.ipcMain.removeListener(
-    'gdevelop-agent-api:response',
-    ipcHandlers.onResponse
-  );
-  ipcHandlers = null;
-};
-
 const getTargeting = (request, body) => ({
   projectPath:
     (body && typeof body.projectPath === 'string' && body.projectPath) || null,
@@ -368,15 +232,21 @@ const startAgentApi = ({ app, ipcMain, BrowserWindow, log }) => {
   if (started) return config;
   started = true;
   config = createConfig(app);
-  installIpcHandlers({ ipcMain, BrowserWindow });
+  windowRegistry = createWindowRegistry({ BrowserWindow });
+  windowRegistryCleanup = windowRegistry.installIpc(ipcMain);
+  rendererBridge = createRendererBridge({
+    BrowserWindow,
+    ipcMain,
+    windowRegistry,
+  });
   previewInputTools = createPreviewInputTools({
     BrowserWindow,
-    isEditorWindow: windowId => windowProjects.has(windowId),
+    isEditorWindow: windowId => windowRegistry.isRegistered(windowId),
     isRegisteredPreviewWindow: isPreviewWindow,
   });
   agentPreviewRuntime = createAgentPreviewRuntime({
     BrowserWindow,
-    isEditorWindow: windowId => windowProjects.has(windowId),
+    isEditorWindow: windowId => windowRegistry.isRegistered(windowId),
     isRegisteredPreviewWindow: isPreviewWindow,
   });
 
@@ -388,13 +258,13 @@ const startAgentApi = ({ app, ipcMain, BrowserWindow, log }) => {
       );
 
       if (request.method === 'GET' && url.pathname === '/health') {
-        pruneWindowProjects(BrowserWindow);
+        windowRegistry.prune();
         json(response, 200, {
           ok: true,
           service: 'gdevelop-agent-api',
           version: config.version,
           pid: process.pid,
-          registeredWindows: windowProjects.size,
+          registeredWindows: windowRegistry.size,
         });
         return;
       }
@@ -405,18 +275,16 @@ const startAgentApi = ({ app, ipcMain, BrowserWindow, log }) => {
       }
 
       if (request.method === 'GET' && url.pathname === '/v1/status') {
-        pruneWindowProjects(BrowserWindow);
+        windowRegistry.prune();
         json(response, 200, {
           ok: true,
-          windows: Array.from(windowProjects.entries()).map(
-            ([windowId, projectPath]) => ({ windowId, projectPath })
-          ),
+          windows: windowRegistry.listRegistered(),
         });
         return;
       }
 
       if (request.method === 'GET' && url.pathname === '/v1/windows') {
-        pruneWindowProjects(BrowserWindow);
+        windowRegistry.prune();
         json(response, 200, {
           ok: true,
           windows: BrowserWindow.getAllWindows().map(window => ({
@@ -426,10 +294,10 @@ const startAgentApi = ({ app, ipcMain, BrowserWindow, log }) => {
             bounds: window.getBounds(),
             visible: window.isVisible(),
             focused: window.isFocused(),
-            editorWindow: windowProjects.has(window.id),
+            editorWindow: windowRegistry.isRegistered(window.id),
             previewWindow: isPreviewWindow(window.id),
-            projectPath: windowProjects.has(window.id)
-              ? windowProjects.get(window.id)
+            projectPath: windowRegistry.isRegistered(window.id)
+              ? windowRegistry.getProjectPath(window.id)
               : null,
           })),
         });
@@ -677,13 +545,9 @@ const startAgentApi = ({ app, ipcMain, BrowserWindow, log }) => {
 };
 
 const stopAgentApi = () => {
-  for (const pending of pendingRequests.values()) {
-    clearTimeout(pending.timeout);
-    pending.reject(new Error('agent_api_stopped'));
-  }
-  pendingRequests.clear();
-  windowProjects.clear();
-  uninstallIpcHandlers();
+  if (rendererBridge) rendererBridge.dispose();
+  if (windowRegistryCleanup) windowRegistryCleanup();
+  if (windowRegistry) windowRegistry.clear();
   if (server) {
     try {
       server.close();
@@ -698,6 +562,9 @@ const stopAgentApi = () => {
   config = null;
   previewInputTools = null;
   agentPreviewRuntime = null;
+  rendererBridge = null;
+  windowRegistryCleanup = null;
+  windowRegistry = null;
   started = false;
 };
 

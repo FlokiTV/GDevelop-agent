@@ -253,12 +253,12 @@ export default function useAgentApi({
       if (!ipcRenderer) return;
       // Keep this renderer registered even when no project is open, so callers
       // can invoke projectless functions such as initialize_project.
-      ipcRenderer.send('gdevelop-agent-api:register', {
+      ipcRenderer.send('gdevelop-agent-integration:register', {
         fileIdentifier,
         active: true,
       });
       return () => {
-        ipcRenderer.send('gdevelop-agent-api:register', {
+        ipcRenderer.send('gdevelop-agent-integration:register', {
           fileIdentifier: null,
           active: false,
         });
