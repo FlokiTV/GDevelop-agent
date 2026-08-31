@@ -2,10 +2,7 @@
 import * as React from 'react';
 import { type I18n as I18nType } from '@lingui/core';
 import optionalRequire from '../Utils/OptionalRequire';
-import {
-  type EditorCallbacks,
-  type EditorFunctionCall,
-} from '../EditorFunctions';
+import { type EditorCallbacks } from '../EditorFunctions';
 import { processEditorFunctionCalls } from '../EditorFunctions/EditorFunctionCallRunner';
 import { listAllExamples } from '../Utils/GDevelopServices/Example';
 import UrlStorageProvider from '../ProjectsStorage/UrlStorageProvider';
@@ -61,22 +58,12 @@ import { ObjectStoreContext } from '../AssetStore/ObjectStoreContext';
 import { ExtensionStoreContext } from '../AssetStore/ExtensionStore/ExtensionStoreContext';
 import { enumerateObjectTypes } from '../ObjectsList/EnumerateObjects';
 import { type FileMetadata } from '../ProjectsStorage';
+import { createEditorFunctionService } from '../AgentIntegration/editor/EditorFunctionService';
 
 const gd: libGDevelop = global.gd;
 const electron = optionalRequire('electron');
 const ipcRenderer = electron ? electron.ipcRenderer : null;
 const path = optionalRequire('path');
-
-const makeCallId = (index: number): string =>
-  `agent-api-${Date.now()}-${index}-${Math.random()
-    .toString(16)
-    .slice(2)}`;
-
-type AgentFunctionCall = {|
-  name: string,
-  arguments?: any,
-  callId?: string,
-|};
 
 type Props = {|
   project: ?gdProject,
@@ -392,131 +379,36 @@ export default function useAgentApi({
         };
       };
 
-      const runFunctionCalls = async (
-        calls: Array<AgentFunctionCall>,
-        shouldSave: boolean
-      ) => {
-        if (calls.length === 0) throw new Error('no_function_calls');
-        if (calls.length > 100) throw new Error('too_many_function_calls');
-
-        const functionCalls: Array<EditorFunctionCall> = calls.map(
-          (call, index) => {
-            if (!call || typeof call.name !== 'string' || !call.name) {
-              throw new Error(`invalid_function_call_at_index:${index}`);
-            }
-            return {
-              name: call.name,
-              arguments: JSON.stringify(
-                call.arguments && typeof call.arguments === 'object'
-                  ? call.arguments
-                  : {}
-              ),
-              call_id: call.callId || makeCallId(index),
-            };
-          }
-        );
-
-        const processCalls = (callsToProcess: Array<EditorFunctionCall>) =>
-          processEditorFunctionCalls({
-            project,
-            functionCalls: callsToProcess,
-            i18n,
-            editorCallbacks,
-            toolOptions: { includeEventsJson: true },
-            toolsVersion: 'v12',
-            runScriptReadOnly: false,
-            relatedAiRequestId: null,
-            getRelatedAiRequestLastMessages: () => ({
-              lastUserMessage: null,
-              lastAssistantMessages: [],
-            }),
-            generateEvents,
-            onSceneEventsModifiedOutsideEditor,
-            onInstancesModifiedOutsideEditor,
-            onObjectsModifiedOutsideEditor,
-            onObjectGroupsModifiedOutsideEditor,
-            onProjectItemRenamedOutsideEditor,
-            onWillDeleteScene,
-            onWillDeleteGameplayTest,
-            onWillDeleteObject,
-            ensureExtensionInstalled,
-            onWillInstallExtension,
-            onExtensionInstalled,
-            searchAndInstallAsset,
-            searchAndInstallResources,
-            getAssetStoreTagForNewObject,
-          });
-
-        let processedCallsResult;
-        if (functionCalls.some(call => call.name === 'run_gameplay_test')) {
-          const results = [];
-          const createdSceneNames = [];
-          let createdProject = null;
-          for (const functionCall of functionCalls) {
-            let stopWatchingGameplayFrame = () => {};
-            if (functionCall.name === 'run_gameplay_test') {
-              await prepareGameplayTestRunForAgent({
-                clearPreview: clearGameplayTestFramePreview,
-              });
-              stopWatchingGameplayFrame = watchGameplayTestFrameForAgent({
-                documentObject: document,
-              });
-            }
-            let processedCall;
-            try {
-              processedCall = await processCalls([functionCall]);
-            } finally {
-              stopWatchingGameplayFrame();
-            }
-            results.push(...processedCall.results);
-            createdSceneNames.push(...processedCall.createdSceneNames);
-            if (processedCall.createdProject) {
-              createdProject = processedCall.createdProject;
-            }
-          }
-          processedCallsResult = { results, createdSceneNames, createdProject };
-        } else {
-          processedCallsResult = await processCalls(functionCalls);
-        }
-
-        const {
-          results,
-          createdSceneNames,
-          createdProject,
-        } = processedCallsResult;
-
-        const didModifyProject = results.some(
-          result => result.status === 'finished' && result.didModifyProject
-        );
-        if (didModifyProject) {
-          triggerUnsavedChanges();
-          forceUpdate();
-        }
-
-        let saved = false;
-        if (shouldSave) {
-          if (!project)
-            throw new Error('save_after_creation_requires_followup');
-          const fileMetadata = await saveProject({
-            skipNewVersionWarning: true,
-          });
-          if (!fileMetadata) throw new Error('project_save_failed');
-          saved = true;
-        }
-
-        return {
-          results,
-          createdSceneNames,
-          didModifyProject,
-          saved,
-          createdProject: createdProject
-            ? {
-                name: createdProject.getName(),
-                uuid: createdProject.getProjectUuid(),
-              }
-            : null,
-        };
-      };
+      const editorFunctionService = createEditorFunctionService({
+        project,
+        i18n,
+        editorCallbacks,
+        processEditorFunctionCalls,
+        generateEvents,
+        onSceneEventsModifiedOutsideEditor,
+        onInstancesModifiedOutsideEditor,
+        onObjectsModifiedOutsideEditor,
+        onObjectGroupsModifiedOutsideEditor,
+        onProjectItemRenamedOutsideEditor,
+        onWillDeleteScene,
+        onWillDeleteGameplayTest,
+        onWillDeleteObject,
+        ensureExtensionInstalled,
+        onWillInstallExtension,
+        onExtensionInstalled,
+        searchAndInstallAsset,
+        searchAndInstallResources,
+        getAssetStoreTagForNewObject,
+        triggerUnsavedChanges,
+        forceUpdate,
+        saveProject,
+        prepareGameplayTestRun: prepareGameplayTestRunForAgent,
+        watchGameplayTestFrame: watchGameplayTestFrameForAgent,
+        clearGameplayTestFramePreview,
+        documentObject: document,
+      });
+      const runFunctionCalls = (calls, shouldSave) =>
+        editorFunctionService.run({ calls, save: shouldSave });
 
       const controlPreview = (request: any) => {
         if (!previewDebuggerServer)
