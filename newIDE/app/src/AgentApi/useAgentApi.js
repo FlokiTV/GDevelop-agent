@@ -6,7 +6,6 @@ import { type EditorCallbacks } from '../EditorFunctions';
 import { processEditorFunctionCalls } from '../EditorFunctions/EditorFunctionCallRunner';
 import { listAllExamples } from '../Utils/GDevelopServices/Example';
 import UrlStorageProvider from '../ProjectsStorage/UrlStorageProvider';
-import LocalFileStorageProvider from '../ProjectsStorage/LocalFileStorageProvider';
 import { type ResourceManagementProps } from '../ResourcesList/ResourceSource';
 import { createAssetTools } from './AssetTools';
 import {
@@ -34,11 +33,6 @@ import {
 } from './GameplayTestLifecycleTools';
 import { clearGameplayTestFramePreview } from '../GameplayTests/GameplayTestFrame';
 import { createDiagnosticsTools } from './DiagnosticsTools';
-import {
-  getFunctionMetadata,
-  getFunctionMetadataStats,
-  listFunctionMetadata,
-} from './FunctionMetadata';
 import { exportLocalHtml5ForAgent } from './ExportTools';
 import {
   type SceneEventsOutsideEditorChanges,
@@ -59,6 +53,7 @@ import { ExtensionStoreContext } from '../AssetStore/ExtensionStore/ExtensionSto
 import { enumerateObjectTypes } from '../ObjectsList/EnumerateObjects';
 import { type FileMetadata } from '../ProjectsStorage';
 import { createEditorFunctionService } from '../AgentIntegration/editor/EditorFunctionService';
+import { createProjectLifecycleService } from '../AgentIntegration/editor/ProjectLifecycleService';
 import { createRendererAgentHost } from '../AgentIntegration/RendererAgentHost';
 import { attachRendererAgentHostToIpc } from '../AgentIntegration/RendererCommandAdapter';
 
@@ -411,6 +406,17 @@ export default function useAgentApi({
       });
       const runFunctionCalls = (calls, shouldSave) =>
         editorFunctionService.run({ calls, save: shouldSave });
+      const projectLifecycleService = createProjectLifecycleService({
+        project,
+        fileIdentifier,
+        hasUnsavedChanges,
+        createProjectForAgent,
+        openFromFileMetadataWithStorageProvider,
+        closeProject,
+        saveProject,
+        saveProjectAsWithStorageProvider,
+        pathModule: path,
+      });
 
       const rendererAgentHost = createRendererAgentHost({
         environment: {
@@ -433,6 +439,7 @@ export default function useAgentApi({
           }),
         },
         editorFunctionService,
+        projectLifecycleService,
       });
       const detachRendererAgentHost = attachRendererAgentHostToIpc({
         ipcRenderer,
@@ -670,71 +677,58 @@ export default function useAgentApi({
           }
 
           if (request.type === 'status') {
+            const commandResult = await rendererAgentHost.execute(
+              'project.status',
+              {},
+              { traceId: requestId }
+            );
             ipcRenderer.send('gdevelop-agent-api:response', {
               requestId,
               ok: true,
-              result: {
-                projectOpen: !!project,
-                fileIdentifier,
-                projectName: project ? project.getName() : null,
-                projectUuid: project ? project.getProjectUuid() : null,
-                sceneNames: project
-                  ? Array.from(
-                      { length: project.getLayoutsCount() },
-                      (_, index) => project.getLayoutAt(index).getName()
-                    )
-                  : [],
-                hasUnsavedChanges,
-                preview: getPreviewStatus(previewDebuggerServer),
-              },
+              result: commandResult.data,
             });
             return;
           }
 
           if (request.type === 'list-functions') {
-            const functions = listFunctionMetadata({
-              query:
-                typeof request.query === 'string' && request.query
-                  ? request.query
-                  : null,
-              executableOnly: !!request.executableOnly,
-            });
+            const query =
+              typeof request.query === 'string' && request.query
+                ? request.query
+                : null;
+            const commandResult = await rendererAgentHost.execute(
+              'editor.functions.list',
+              {
+                ...(query ? { query } : {}),
+                executableOnly: !!request.executableOnly,
+              },
+              { traceId: requestId }
+            );
             ipcRenderer.send('gdevelop-agent-api:response', {
               requestId,
               ok: true,
               result: {
                 projectOpen: !!project,
                 fileIdentifier,
-                query:
-                  typeof request.query === 'string' && request.query
-                    ? request.query
-                    : null,
-                stats: getFunctionMetadataStats(),
-                functions,
+                query,
+                ...commandResult.data,
               },
             });
             return;
           }
 
           if (request.type === 'describe-function') {
-            if (!request.name || typeof request.name !== 'string') {
-              const error: any = new Error('missing_function_name');
-              error.code = 'missing_function_name';
-              throw error;
-            }
-            const functionMetadata = getFunctionMetadata(request.name);
-            if (!functionMetadata) {
-              const error: any = new Error('function_not_found');
-              error.code = 'function_not_found';
-              throw error;
-            }
+            const commandResult = await rendererAgentHost.execute(
+              'editor.functions.describe',
+              { name: request.name },
+              { traceId: requestId }
+            );
             ipcRenderer.send('gdevelop-agent-api:response', {
               requestId,
               ok: true,
               result: {
                 projectOpen: !!project,
                 fileIdentifier,
-                function: functionMetadata,
+                ...commandResult.data,
               },
             });
             return;
@@ -814,112 +808,77 @@ export default function useAgentApi({
           }
 
           if (request.type === 'create-project') {
-            if (project) throw new Error('project_already_open');
-            if (!request.name || typeof request.name !== 'string') {
-              throw new Error('missing_project_name');
-            }
-            const { createdProject, exampleSlug } = await createProjectForAgent(
+            const commandResult = await rendererAgentHost.execute(
+              'project.create',
               {
                 name: request.name,
-                exampleSlug:
-                  typeof request.templateSlug === 'string'
-                    ? request.templateSlug
-                    : null,
-              }
+                templateSlug: request.templateSlug,
+              },
+              { traceId: requestId }
             );
-            if (!createdProject) throw new Error('project_creation_failed');
             ipcRenderer.send('gdevelop-agent-api:response', {
               requestId,
               ok: true,
-              result: {
-                created: true,
-                projectName: createdProject.getName(),
-                projectUuid: createdProject.getProjectUuid(),
-                templateSlug: exampleSlug,
-                needsSaveAs: true,
-              },
+              result: commandResult.data,
             });
             return;
           }
 
           if (request.type === 'open-project') {
-            if (!request.filePath || typeof request.filePath !== 'string') {
-              throw new Error('missing_project_file_path');
-            }
-            if (hasUnsavedChanges && !request.discardUnsavedChanges) {
-              throw new Error('unsaved_changes_require_explicit_discard');
-            }
-            await openFromFileMetadataWithStorageProvider(
+            const commandResult = await rendererAgentHost.execute(
+              'project.open',
               {
-                storageProviderName: LocalFileStorageProvider.internalName,
-                fileMetadata: { fileIdentifier: request.filePath },
+                filePath: request.filePath,
+                discardUnsavedChanges: request.discardUnsavedChanges,
               },
-              { ignoreUnsavedChanges: !!request.discardUnsavedChanges }
+              { traceId: requestId }
             );
             ipcRenderer.send('gdevelop-agent-api:response', {
               requestId,
               ok: true,
-              result: { opened: true, filePath: request.filePath },
+              result: commandResult.data,
             });
             return;
           }
 
           if (request.type === 'close-project') {
-            if (!project) {
-              ipcRenderer.send('gdevelop-agent-api:response', {
-                requestId,
-                ok: true,
-                result: { closed: false, reason: 'no_project_open' },
-              });
-              return;
-            }
-            if (hasUnsavedChanges && !request.discardUnsavedChanges) {
-              throw new Error('unsaved_changes_require_explicit_discard');
-            }
-            await closeProject();
+            const commandResult = await rendererAgentHost.execute(
+              'project.close',
+              { discardUnsavedChanges: request.discardUnsavedChanges },
+              { traceId: requestId }
+            );
             ipcRenderer.send('gdevelop-agent-api:response', {
               requestId,
               ok: true,
-              result: { closed: true },
+              result: commandResult.data,
             });
             return;
           }
 
           if (request.type === 'save-project') {
-            if (!project) throw new Error('no_project_open');
-            const fileMetadata = await saveProject({
-              skipNewVersionWarning: true,
-            });
-            if (!fileMetadata) throw new Error('project_save_failed');
+            const commandResult = await rendererAgentHost.execute(
+              'project.save',
+              {},
+              { traceId: requestId }
+            );
             ipcRenderer.send('gdevelop-agent-api:response', {
               requestId,
               ok: true,
-              result: { saved: true, fileIdentifier },
+              result: commandResult.data,
             });
             return;
           }
 
           if (request.type === 'save-project-as') {
-            if (!project) throw new Error('no_project_open');
-            if (!path) throw new Error('local_filesystem_unavailable');
-            if (!request.filePath || typeof request.filePath !== 'string') {
-              throw new Error('missing_project_file_path');
-            }
-            const filePath = path.resolve(request.filePath);
-            const fileMetadata = await saveProjectAsWithStorageProvider({
-              requestedStorageProvider: LocalFileStorageProvider,
-              forcedSavedAsLocation: {
-                name:
-                  (typeof request.name === 'string' && request.name) ||
-                  project.getName(),
-                fileIdentifier: filePath,
-              },
-            });
-            if (!fileMetadata) throw new Error('project_save_as_failed');
+            const commandResult = await rendererAgentHost.execute(
+              'project.save-as',
+              { filePath: request.filePath, name: request.name },
+              { traceId: requestId }
+            );
             ipcRenderer.send('gdevelop-agent-api:response', {
               requestId,
               ok: true,
-              result: { saved: true, fileMetadata },
+              result: commandResult.data,
             });
             return;
           }
@@ -1371,31 +1330,37 @@ export default function useAgentApi({
           }
 
           if (request.type === 'editor-function') {
-            const result = await runFunctionCalls(
-              [
-                {
-                  name: request.name,
-                  arguments: request.arguments,
-                  callId: request.callId,
-                },
-              ],
-              !!request.save
+            const commandResult = await rendererAgentHost.execute(
+              'editor.functions.call',
+              {
+                name: request.name,
+                arguments: request.arguments,
+                callId: request.callId,
+                save: !!request.save,
+              },
+              { traceId: requestId }
             );
             ipcRenderer.send('gdevelop-agent-api:response', {
               requestId,
               ok: true,
-              result,
+              result: commandResult.data,
             });
             return;
           }
 
           if (request.type === 'editor-functions') {
-            const calls = Array.isArray(request.calls) ? request.calls : [];
-            const result = await runFunctionCalls(calls, !!request.save);
+            const commandResult = await rendererAgentHost.execute(
+              'editor.functions.call-batch',
+              {
+                calls: Array.isArray(request.calls) ? request.calls : [],
+                save: !!request.save,
+              },
+              { traceId: requestId }
+            );
             ipcRenderer.send('gdevelop-agent-api:response', {
               requestId,
               ok: true,
-              result,
+              result: commandResult.data,
             });
             return;
           }
