@@ -434,6 +434,7 @@ export default function useAgentApi({
             preview: getPreviewStatus(previewDebuggerServer),
           }),
         },
+        assetTools,
         editorFunctionService,
         eventTools,
         projectLifecycleService,
@@ -1231,71 +1232,105 @@ export default function useAgentApi({
           }
 
           if (request.type === 'list-resources') {
-            if (!assetTools) throw new Error('no_project_open');
+            const commandResult = await rendererAgentHost.execute(
+              'resources.list',
+              {},
+              { traceId: requestId }
+            );
             ipcRenderer.send('gdevelop-agent-api:response', {
               requestId,
               ok: true,
-              result: assetTools.listResources(),
+              result: commandResult.data,
             });
             return;
           }
 
           if (request.type === 'inspect-resource') {
-            if (!assetTools) throw new Error('no_project_open');
-            if (
-              !request.resourceName ||
-              typeof request.resourceName !== 'string'
-            ) {
-              throw new Error('missing_resource_name');
-            }
+            const commandResult = await rendererAgentHost.execute(
+              'resources.inspect',
+              { resourceName: request.resourceName },
+              { traceId: requestId }
+            );
             ipcRenderer.send('gdevelop-agent-api:response', {
               requestId,
               ok: true,
-              result: assetTools.inspectResource(request.resourceName),
+              result: commandResult.data,
             });
             return;
           }
 
           if (request.type === 'import-local-resource') {
-            if (!assetTools) throw new Error('no_project_open');
-            const result = await assetTools.importLocalResource(request);
+            const commandResult = await rendererAgentHost.execute(
+              'resources.import-local',
+              {
+                filePath: request.filePath,
+                resourceName: request.resourceName,
+                kind: request.kind,
+                copyToProject: request.copyToProject,
+                overwrite: request.overwrite,
+                preserveOrigin: request.preserveOrigin,
+              },
+              { traceId: requestId }
+            );
             ipcRenderer.send('gdevelop-agent-api:response', {
               requestId,
               ok: true,
-              result,
+              result: commandResult.data,
             });
             return;
           }
 
           if (request.type === 'replace-local-resource') {
-            if (!assetTools) throw new Error('no_project_open');
-            const result = await assetTools.replaceLocalResource(request);
+            const commandResult = await rendererAgentHost.execute(
+              'resources.replace-local',
+              {
+                resourceName: request.resourceName,
+                filePath: request.filePath,
+                kind: request.kind,
+                copyToProject: request.copyToProject,
+                preserveOrigin: request.preserveOrigin,
+                deletePreviousFile: request.deletePreviousFile,
+              },
+              { traceId: requestId }
+            );
             ipcRenderer.send('gdevelop-agent-api:response', {
               requestId,
               ok: true,
-              result,
+              result: commandResult.data,
             });
             return;
           }
 
           if (request.type === 'rename-resource') {
-            if (!assetTools) throw new Error('no_project_open');
-            const result = assetTools.renameResource(request);
+            const commandResult = await rendererAgentHost.execute(
+              'resources.rename',
+              {
+                resourceName: request.resourceName,
+                newResourceName: request.newResourceName,
+              },
+              { traceId: requestId }
+            );
             ipcRenderer.send('gdevelop-agent-api:response', {
               requestId,
               ok: true,
-              result,
+              result: commandResult.data,
             });
             return;
           }
 
           if (request.type === 'remove-resource') {
-            if (!assetTools) throw new Error('no_project_open');
-            const result = assetTools.removeResource(request);
+            const commandResult = await rendererAgentHost.execute(
+              'resources.remove',
+              {
+                resourceName: request.resourceName,
+                deleteFile: request.deleteFile,
+              },
+              { traceId: requestId }
+            );
             ipcRenderer.send('gdevelop-agent-api:response', {
               requestId,
               ok: true,
-              result,
+              result: commandResult.data,
             });
             return;
           }

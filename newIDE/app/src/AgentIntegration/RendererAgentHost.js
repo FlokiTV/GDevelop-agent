@@ -4,10 +4,12 @@ import { createCoreCommandDescriptors } from './core/CoreCommands';
 import { createEditorFunctionCommandDescriptors } from './editor/EditorFunctionCommands';
 import { createEventCommandDescriptors } from './editor/EventCommands';
 import { createProjectLifecycleCommandDescriptors } from './editor/ProjectLifecycleCommands';
+import { createResourceCommandDescriptors } from './editor/ResourceCommands';
 import { createSafetyCommandDescriptors } from './safety/SafetyCommands';
 
 type Options = {|
   environment: any,
+  assetTools: any,
   editorFunctionService: {| run: (options: any) => Promise<any> |},
   eventTools: any,
   projectLifecycleService: any,
@@ -16,6 +18,7 @@ type Options = {|
 
 export const createRendererAgentHost = ({
   environment,
+  assetTools,
   editorFunctionService,
   eventTools,
   projectLifecycleService,
@@ -28,6 +31,7 @@ export const createRendererAgentHost = ({
       ...createProjectLifecycleCommandDescriptors({ projectLifecycleService }),
       ...createSafetyCommandDescriptors({ safetyService }),
       ...createEventCommandDescriptors({ eventTools }),
+      ...createResourceCommandDescriptors({ assetTools }),
       ...createEditorFunctionCommandDescriptors({ editorFunctionService }),
     ],
   });
