@@ -2,8 +2,13 @@ const http = require('http');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
-const { createPreviewInputTools } = require('./PreviewInputTools');
-const { createAgentPreviewRuntime } = require('./AgentPreviewRuntime');
+const {
+  createPreviewInteractionService,
+} = require('../AgentIntegration/PreviewInteractionService');
+const {
+  captureWindowPng,
+  createWindowCaptureService,
+} = require('../AgentIntegration/WindowCaptureService');
 const { createWindowRegistry } = require('../AgentIntegration/WindowRegistry');
 const { createRendererBridge } = require('../AgentIntegration/RendererBridge');
 const { isPreviewWindow } = require('../PreviewWindow');
@@ -80,8 +85,8 @@ let config = null;
 let windowRegistry = null;
 let windowRegistryCleanup = null;
 let rendererBridge = null;
-let previewInputTools = null;
-let agentPreviewRuntime = null;
+let previewInteractionService = null;
+let windowCaptureService = null;
 
 const json = (response, statusCode, payload) => {
   const body = JSON.stringify(payload);
@@ -102,49 +107,6 @@ const png = (response, imageBuffer) => {
     'X-Content-Type-Options': 'nosniff',
   });
   response.end(imageBuffer);
-};
-
-const captureWindowPng = async ({ targetWindow, desktopCapturer }) => {
-  const image = await targetWindow.webContents.capturePage();
-  const directBuffer = image && image.toPNG ? image.toPNG() : Buffer.alloc(0);
-  if (directBuffer.length > 0) return directBuffer;
-
-  if (!desktopCapturer || typeof desktopCapturer.getSources !== 'function') {
-    const error = new Error('window_capture_empty');
-    error.code = 'window_capture_empty';
-    throw error;
-  }
-
-  const bounds = targetWindow.getBounds();
-  const sources = await desktopCapturer.getSources({
-    types: ['window'],
-    thumbnailSize: {
-      width: Math.max(1, bounds.width),
-      height: Math.max(1, bounds.height),
-    },
-    fetchWindowIcons: false,
-  });
-  const mediaSourceId =
-    typeof targetWindow.getMediaSourceId === 'function'
-      ? targetWindow.getMediaSourceId()
-      : null;
-  let source = mediaSourceId
-    ? sources.find(candidate => candidate.id === mediaSourceId)
-    : null;
-  if (!source && typeof targetWindow.getTitle === 'function') {
-    const title = targetWindow.getTitle();
-    source = sources.find(candidate => candidate.name === title);
-  }
-
-  const fallbackBuffer =
-    source && source.thumbnail && source.thumbnail.toPNG
-      ? source.thumbnail.toPNG()
-      : Buffer.alloc(0);
-  if (fallbackBuffer.length > 0) return fallbackBuffer;
-
-  const error = new Error('window_capture_empty');
-  error.code = 'window_capture_empty';
-  throw error;
 };
 
 const readJsonBody = request =>
@@ -239,14 +201,15 @@ const startAgentApi = ({ app, ipcMain, BrowserWindow, log }) => {
     ipcMain,
     windowRegistry,
   });
-  previewInputTools = createPreviewInputTools({
+  previewInteractionService = createPreviewInteractionService({
     BrowserWindow,
-    isEditorWindow: windowId => windowRegistry.isRegistered(windowId),
+    windowRegistry,
     isRegisteredPreviewWindow: isPreviewWindow,
   });
-  agentPreviewRuntime = createAgentPreviewRuntime({
+  windowCaptureService = createWindowCaptureService({
     BrowserWindow,
-    isEditorWindow: windowId => windowRegistry.isRegistered(windowId),
+    desktopCapturer: electronDesktopCapturer,
+    windowRegistry,
     isRegisteredPreviewWindow: isPreviewWindow,
   });
 
@@ -284,40 +247,18 @@ const startAgentApi = ({ app, ipcMain, BrowserWindow, log }) => {
       }
 
       if (request.method === 'GET' && url.pathname === '/v1/windows') {
-        windowRegistry.prune();
         json(response, 200, {
           ok: true,
-          windows: BrowserWindow.getAllWindows().map(window => ({
-            windowId: window.id,
-            title: window.getTitle(),
-            url: window.webContents.getURL(),
-            bounds: window.getBounds(),
-            visible: window.isVisible(),
-            focused: window.isFocused(),
-            editorWindow: windowRegistry.isRegistered(window.id),
-            previewWindow: isPreviewWindow(window.id),
-            projectPath: windowRegistry.isRegistered(window.id)
-              ? windowRegistry.getProjectPath(window.id)
-              : null,
-          })),
+          windows: windowCaptureService.listWindows(),
         });
         return;
       }
 
       if (request.method === 'GET' && url.pathname === '/v1/capture') {
-        const requestedWindowId = url.searchParams.get('windowId');
-        const targetWindow = requestedWindowId
-          ? BrowserWindow.fromId(Number(requestedWindowId))
-          : BrowserWindow.getFocusedWindow();
-        if (!targetWindow || targetWindow.isDestroyed()) {
-          json(response, 404, { ok: false, error: 'window_not_found' });
-          return;
-        }
-        const imageBuffer = await captureWindowPng({
-          targetWindow,
-          desktopCapturer: electronDesktopCapturer,
+        const captured = await windowCaptureService.capture({
+          windowId: url.searchParams.get('windowId'),
         });
-        png(response, imageBuffer);
+        png(response, captured.data);
         return;
       }
 
@@ -414,16 +355,11 @@ const startAgentApi = ({ app, ipcMain, BrowserWindow, log }) => {
           json(response, 400, { ok: false, error: 'missing_action_type' });
           return;
         }
-        if (previewInputTools && previewInputTools.canHandleAction(body.type)) {
-          const result = await previewInputTools.handleAction(body);
-          json(response, 200, { ok: true, result });
-          return;
-        }
         if (
-          agentPreviewRuntime &&
-          agentPreviewRuntime.canHandleAction(body.type)
+          previewInteractionService &&
+          previewInteractionService.canHandleLegacyAction(body.type)
         ) {
-          const result = await agentPreviewRuntime.handleAction(body);
+          const result = await previewInteractionService.handleLegacyAction(body);
           json(response, 200, { ok: true, result });
           return;
         }
@@ -560,8 +496,8 @@ const stopAgentApi = () => {
   }
   server = null;
   config = null;
-  previewInputTools = null;
-  agentPreviewRuntime = null;
+  previewInteractionService = null;
+  windowCaptureService = null;
   rendererBridge = null;
   windowRegistryCleanup = null;
   windowRegistry = null;
