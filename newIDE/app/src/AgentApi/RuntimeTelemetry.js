@@ -399,8 +399,12 @@ export const createRuntimeTelemetry = (previewDebuggerServer: any): any => {
       return requestedId;
     }
     if (!ids.length) throw makeError('preview_not_running');
-    if (ids.length > 1) throw makeError('preview_debugger_ambiguous');
-    return ids[0];
+    // Preview debugger ids are kept in connection order by the native preview
+    // debugger server. During hot reload, the old websocket can overlap briefly
+    // with the newly connected one. Prefer the newest connection so telemetry
+    // stays targetable throughout that transition. Callers that need a specific
+    // preview window can still pass debuggerId explicitly.
+    return ids[ids.length - 1];
   };
 
   const requestMessage = (

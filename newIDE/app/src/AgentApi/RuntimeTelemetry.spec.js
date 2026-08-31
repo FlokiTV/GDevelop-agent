@@ -13,10 +13,12 @@ const createDebuggerServer = ({
   dump = debuggerDump,
   onRefresh,
   dropFirstRefresh = false,
+  previewDebuggerIds = ['preview-1'],
 }: {|
   dump?: any,
   onRefresh?: number => any,
   dropFirstRefresh?: boolean,
+  previewDebuggerIds?: Array<string>,
 |} = {}) => {
   let callbacks = null;
   let refreshCount = 0;
@@ -27,8 +29,8 @@ const createDebuggerServer = ({
         callbacks = null;
       };
     }),
-    getExistingPreviewDebuggerIds: jest.fn(() => ['preview-1']),
-    getExistingDebuggerIds: jest.fn(() => ['preview-1']),
+    getExistingPreviewDebuggerIds: jest.fn(() => previewDebuggerIds),
+    getExistingDebuggerIds: jest.fn(() => previewDebuggerIds),
     sendMessage: jest.fn((id, message) => {
       Promise.resolve().then(() => {
         if (!callbacks) return;
@@ -173,6 +175,21 @@ describe('AgentApi RuntimeTelemetry', () => {
 
     expect(snapshot.scene.name).toBe('New scene');
     expect(server.sendMessage).toHaveBeenCalledTimes(2);
+    telemetry.dispose();
+  });
+
+  it('prefers the newest preview debugger while hot reload connections overlap', async () => {
+    const server = createDebuggerServer({
+      previewDebuggerIds: ['preview-old', 'preview-new'],
+    });
+    const telemetry = createRuntimeTelemetry(server);
+
+    const snapshot = await telemetry.getSnapshot({ maxInstances: 1 });
+
+    expect(snapshot.debuggerId).toBe('preview-new');
+    expect(server.sendMessage).toHaveBeenCalledWith('preview-new', {
+      command: 'refresh',
+    });
     telemetry.dispose();
   });
 

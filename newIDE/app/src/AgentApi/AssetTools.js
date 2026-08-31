@@ -189,7 +189,15 @@ const getResourceInfo = (
     originIdentifier: resource.getOriginIdentifier() || null,
     fileStatus:
       resource.useFile() && project.getProjectFile()
-        ? getResourceFilePathStatus(project, resourceName)
+        ? localFile.isLocalFile && localFile.exists === false
+          ? 'error'
+          : localFile.isLocalFile && localFile.insideProjectFolder === false
+          ? 'warning'
+          : localFile.isLocalFile &&
+            localFile.exists === true &&
+            localFile.insideProjectFolder === true
+          ? ''
+          : getResourceFilePathStatus(project, resourceName)
         : '',
     isLocalFile: localFile.isLocalFile,
     localFilePath: localFile.fullPath,

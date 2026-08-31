@@ -97,6 +97,30 @@ describe('AgentApi AssetTools', () => {
     project.delete();
   });
 
+  it('keeps fileStatus consistent with insideProjectFolder on Windows path casing', () => {
+    if (process.platform !== 'win32') return;
+
+    const project = gd.ProjectHelper.createNewGDJSProject();
+    const projectFolder = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'gd-agent-assets-case-')
+    );
+    const projectFile = path.join(projectFolder, 'game.json');
+    const resourceFile = path.join(projectFolder, 'inside.png');
+    fs.writeFileSync(resourceFile, Buffer.from([1, 2, 3]));
+    project.setProjectFile(projectFile);
+    addImageResource(project, 'inside.png', resourceFile.toLowerCase());
+
+    const { tools } = makeTools(project);
+    const resource = tools.inspectResource('inside.png');
+
+    expect(resource.fileExists).toBe(true);
+    expect(resource.insideProjectFolder).toBe(true);
+    expect(resource.fileStatus).toBe('');
+
+    project.delete();
+    fs.rmSync(projectFolder, { recursive: true, force: true });
+  });
+
   it('renames a resource and updates object references', () => {
     const project = gd.ProjectHelper.createNewGDJSProject();
     addImageResource(project, 'old.png');

@@ -1,5 +1,8 @@
 // @flow
-import { createEditorVisualTools } from './EditorVisualTools';
+import {
+  createEditorVisualTools,
+  restoreOpenSceneEditors,
+} from './EditorVisualTools';
 
 const gd: libGDevelop = global.gd;
 
@@ -70,6 +73,37 @@ describe('AgentApi EditorVisualTools', () => {
         pane: 'left',
       },
     ]);
+  });
+
+  it('restores unique open scene editors and focuses the previously active scene', () => {
+    project.insertNewLayout('Level2', 1);
+    const onOpenLayout = jest.fn();
+
+    const result = restoreOpenSceneEditors({
+      project,
+      openSceneEditors: [
+        { sceneName: 'Level1', active: false },
+        { sceneName: 'Level2', active: true },
+        { sceneName: 'Level2', active: false },
+        { sceneName: 'DeletedScene', active: false },
+      ],
+      onOpenLayout,
+    });
+
+    expect(result).toEqual({
+      sceneNames: ['Level1', 'Level2'],
+      activeSceneName: 'Level2',
+    });
+    expect(onOpenLayout).toHaveBeenNthCalledWith(1, 'Level1', {
+      openEventsEditor: false,
+      openSceneEditor: true,
+      focusWhenOpened: 'none',
+    });
+    expect(onOpenLayout).toHaveBeenNthCalledWith(2, 'Level2', {
+      openEventsEditor: false,
+      openSceneEditor: true,
+      focusWhenOpened: 'scene',
+    });
   });
 
   it('selects all instances of an object and fits the view', () => {

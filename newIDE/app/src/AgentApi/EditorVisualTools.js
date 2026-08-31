@@ -38,6 +38,56 @@ const getSceneEditorEntry = (editorTabs: any, sceneName: string): any => {
   return null;
 };
 
+export const restoreOpenSceneEditors = ({
+  project,
+  openSceneEditors,
+  onOpenLayout,
+}: {|
+  project: gdProject,
+  openSceneEditors: Array<any>,
+  onOpenLayout: (sceneName: string, options: any) => void,
+|}): any => {
+  const sceneNames = [];
+  const seenSceneNames = new Set();
+  let requestedActiveSceneName = null;
+
+  for (const entry of openSceneEditors || []) {
+    if (!entry || typeof entry.sceneName !== 'string' || !entry.sceneName)
+      continue;
+    if (entry.active) requestedActiveSceneName = entry.sceneName;
+    if (seenSceneNames.has(entry.sceneName)) continue;
+    seenSceneNames.add(entry.sceneName);
+    if (project.hasLayoutNamed(entry.sceneName))
+      sceneNames.push(entry.sceneName);
+  }
+
+  const activeSceneName =
+    requestedActiveSceneName && sceneNames.includes(requestedActiveSceneName)
+      ? requestedActiveSceneName
+      : sceneNames.length
+      ? sceneNames[sceneNames.length - 1]
+      : null;
+
+  sceneNames
+    .filter(sceneName => sceneName !== activeSceneName)
+    .forEach(sceneName => {
+      onOpenLayout(sceneName, {
+        openEventsEditor: false,
+        openSceneEditor: true,
+        focusWhenOpened: 'none',
+      });
+    });
+  if (activeSceneName) {
+    onOpenLayout(activeSceneName, {
+      openEventsEditor: false,
+      openSceneEditor: true,
+      focusWhenOpened: 'scene',
+    });
+  }
+
+  return { sceneNames, activeSceneName };
+};
+
 const summarizeInstance = (instance: gdInitialInstance): any => ({
   id: instance.getPersistentUuid().slice(0, 10),
   objectName: instance.getObjectName(),

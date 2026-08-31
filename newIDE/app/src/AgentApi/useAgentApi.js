@@ -25,7 +25,11 @@ import {
   prepareTransactionRollback,
 } from './CheckpointTools';
 import { createRuntimeTelemetry } from './RuntimeTelemetry';
-import { createEditorVisualTools } from './EditorVisualTools';
+import {
+  createEditorVisualTools,
+  restoreOpenSceneEditors,
+} from './EditorVisualTools';
+import { createEventTools } from './EventTools';
 import { createDiagnosticsTools } from './DiagnosticsTools';
 import {
   getFunctionMetadata,
@@ -145,13 +149,17 @@ const getPreviewStatus = (previewDebuggerServer: ?any) => {
   const debuggerIds = previewDebuggerServer.getExistingDebuggerIds
     ? previewDebuggerServer.getExistingDebuggerIds()
     : [];
+  const previewDebuggerIds = previewDebuggerServer.getExistingPreviewDebuggerIds
+    ? previewDebuggerServer.getExistingPreviewDebuggerIds()
+    : debuggerIds;
   return {
     available: true,
     serverState: previewDebuggerServer.getServerState
       ? previewDebuggerServer.getServerState()
       : null,
     debuggerIds,
-    running: debuggerIds.length > 0,
+    previewDebuggerIds,
+    running: previewDebuggerIds.length > 0,
   };
 };
 
@@ -273,6 +281,21 @@ export default function useAgentApi({
     [onOpenLayout, createProjectForAgent]
   );
 
+  const runtimeTelemetry = React.useMemo(
+    () =>
+      previewDebuggerServer
+        ? createRuntimeTelemetry(previewDebuggerServer)
+        : null,
+    [previewDebuggerServer]
+  );
+
+  React.useEffect(
+    () => () => {
+      if (runtimeTelemetry) runtimeTelemetry.dispose();
+    },
+    [runtimeTelemetry]
+  );
+
   React.useEffect(
     () => {
       if (!ipcRenderer) return;
@@ -304,17 +327,24 @@ export default function useAgentApi({
             forceUpdate,
           })
         : null;
-      const runtimeTelemetry = previewDebuggerServer
-        ? createRuntimeTelemetry(previewDebuggerServer)
-        : null;
       const editorVisualTools = project
         ? createEditorVisualTools({ project, editorTabs })
+        : null;
+      const eventTools = project
+        ? createEventTools({
+            project,
+            triggerUnsavedChanges,
+            onSceneEventsModifiedOutsideEditor,
+          })
         : null;
       const diagnosticsTools = project
         ? createDiagnosticsTools({ project, i18n, assetTools })
         : null;
 
       const restoreProjectCheckpoint = async (checkpoint: any) => {
+        const openSceneEditors = editorVisualTools
+          ? editorVisualTools.listOpenSceneEditors()
+          : [];
         const serializedProject = gd.Serializer.fromJSObject(
           checkpoint.snapshot
         );
@@ -334,6 +364,13 @@ export default function useAgentApi({
         if (checkpoint.hadUnsavedChanges) triggerUnsavedChanges();
 
         const restoredProject = restoredState && restoredState.currentProject;
+        const restoredEditorContext = restoredProject
+          ? restoreOpenSceneEditors({
+              project: restoredProject,
+              openSceneEditors,
+              onOpenLayout,
+            })
+          : { sceneNames: [], activeSceneName: null };
         return {
           restored: true,
           checkpointId: checkpoint.id,
@@ -346,6 +383,7 @@ export default function useAgentApi({
               ? restoredState.currentFileMetadata.fileIdentifier
               : null,
           hasUnsavedChanges: checkpoint.hadUnsavedChanges,
+          restoredEditorContext,
           restoreStrategy: 'safe-project-reload',
         };
       };
@@ -760,6 +798,8 @@ export default function useAgentApi({
                   'batch-editor-functions',
                   'editor-function-schema-inspection',
                   'editor-function-capability-search',
+                  'deterministic-events-json-read',
+                  'deterministic-events-json-apply',
                   'resource-list-inspect',
                   'local-resource-import',
                   'local-resource-replace',
@@ -1067,6 +1107,26 @@ export default function useAgentApi({
               requestId,
               ok: true,
               result: { rolledBack: true, ...restored, diff },
+            });
+            return;
+          }
+
+          if (request.type === 'events-json-read') {
+            if (!eventTools) throw new Error('no_project_open');
+            ipcRenderer.send('gdevelop-agent-api:response', {
+              requestId,
+              ok: true,
+              result: eventTools.readSceneEventsJson(request),
+            });
+            return;
+          }
+
+          if (request.type === 'events-json-apply') {
+            if (!eventTools) throw new Error('no_project_open');
+            ipcRenderer.send('gdevelop-agent-api:response', {
+              requestId,
+              ok: true,
+              result: eventTools.applySceneEventsJson(request),
             });
             return;
           }
@@ -1395,7 +1455,6 @@ export default function useAgentApi({
       ipcRenderer.on('gdevelop-agent-api:request', onRequest);
       return () => {
         ipcRenderer.removeListener('gdevelop-agent-api:request', onRequest);
-        if (runtimeTelemetry) runtimeTelemetry.dispose();
       };
     },
     [
@@ -1431,6 +1490,7 @@ export default function useAgentApi({
       launchHotReloadPreview,
       closeAllPreviews,
       previewDebuggerServer,
+      runtimeTelemetry,
       resourceManagementProps,
       onOpenLayout,
       triggerUnsavedChanges,

@@ -10,7 +10,8 @@ The implementation stays isolated:
 - `newIDE/app/src/AgentApi/CheckpointTools.js`: in-memory checkpoints, structural diffs and transactions.
 - `newIDE/app/src/AgentApi/FunctionMetadata.js`: searchable EditorFunction schemas derived from native source by `generateFunctionMetadata.js`.
 - `newIDE/app/src/AgentApi/RuntimeTelemetry.js`: bounded runtime snapshots, logs, assertions and wait conditions backed by GDevelop's native debugger protocol.
-- `newIDE/app/src/AgentApi/EditorVisualTools.js`: scene-editor instance selection and native focus/fit controls for visual inspection.
+- `newIDE/app/src/AgentApi/EditorVisualTools.js`: scene-editor instance selection, native focus/fit controls and restoration of open scene tabs after transactional reloads.
+- `newIDE/app/src/AgentApi/EventTools.js`: deterministic native events JSON read/replace/append operations that do not require an AI request ID or external EventScript parser.
 - `newIDE/app/src/AgentApi/DiagnosticsTools.js`: aggregated project/event/resource/behavior diagnostics and validation summaries.
 - `newIDE/app/src/AgentApi/ExportTools.js`: wraps the native HTML5 exporter while restoring agent-observed project state after the operation.
 - `newIDE/electron-app/app/AgentApi/ArchitectureGuard.js`: verifies the fork delta stays inside AgentApi plus the explicit upstream hook allowlist.
