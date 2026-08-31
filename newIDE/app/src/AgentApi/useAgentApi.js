@@ -435,6 +435,7 @@ export default function useAgentApi({
           }),
         },
         editorFunctionService,
+        eventTools,
         projectLifecycleService,
         safetyService,
       });
@@ -1007,21 +1008,33 @@ export default function useAgentApi({
           }
 
           if (request.type === 'events-json-read') {
-            if (!eventTools) throw new Error('no_project_open');
+            const commandResult = await rendererAgentHost.execute(
+              'events.read',
+              { sceneName: request.sceneName },
+              { traceId: requestId }
+            );
             ipcRenderer.send('gdevelop-agent-api:response', {
               requestId,
               ok: true,
-              result: eventTools.readSceneEventsJson(request),
+              result: commandResult.data,
             });
             return;
           }
 
           if (request.type === 'events-json-apply') {
-            if (!eventTools) throw new Error('no_project_open');
+            const commandResult = await rendererAgentHost.execute(
+              'events.apply',
+              {
+                sceneName: request.sceneName,
+                eventsJson: request.eventsJson,
+                mode: request.mode,
+              },
+              { traceId: requestId }
+            );
             ipcRenderer.send('gdevelop-agent-api:response', {
               requestId,
               ok: true,
-              result: eventTools.applySceneEventsJson(request),
+              result: commandResult.data,
             });
             return;
           }
