@@ -27,8 +27,59 @@ Module._load = function(request, parent, isMain) {
   }
   return originalModuleLoad.call(this, request, parent, isMain);
 };
-const { startAgentApi, stopAgentApi } = require('./index');
+const { startAgentApi, stopAgentApi, captureWindowPng } = require('./index');
 Module._load = originalModuleLoad;
+
+test('captureWindowPng uses desktopCapturer when capturePage is empty', async () => {
+  const fallbackPng = Buffer.from('fallback-png');
+  const targetWindow = {
+    webContents: {
+      capturePage: async () => ({ toPNG: () => Buffer.alloc(0) }),
+    },
+    getBounds: () => ({ width: 800, height: 600 }),
+    getMediaSourceId: () => 'window:42:0',
+    getTitle: () => 'GDevelop',
+  };
+  const desktopCapturer = {
+    getSources: async options => {
+      assert.deepEqual(options, {
+        types: ['window'],
+        thumbnailSize: { width: 800, height: 600 },
+        fetchWindowIcons: false,
+      });
+      return [
+        {
+          id: 'window:42:0',
+          name: 'GDevelop',
+          thumbnail: { toPNG: () => fallbackPng },
+        },
+      ];
+    },
+  };
+
+  assert.equal(
+    await captureWindowPng({ targetWindow, desktopCapturer }),
+    fallbackPng
+  );
+});
+
+test('captureWindowPng rejects when both capture paths are empty', async () => {
+  const targetWindow = {
+    webContents: {
+      capturePage: async () => ({ toPNG: () => Buffer.alloc(0) }),
+    },
+    getBounds: () => ({ width: 800, height: 600 }),
+    getTitle: () => 'GDevelop',
+  };
+  const desktopCapturer = {
+    getSources: async () => [],
+  };
+
+  await assert.rejects(
+    captureWindowPng({ targetWindow, desktopCapturer }),
+    error => error && error.code === 'window_capture_empty'
+  );
+});
 
 const waitForFetch = async (url, options) => {
   let lastError = null;

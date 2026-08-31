@@ -6,6 +6,11 @@ const { createPreviewInputTools } = require('./PreviewInputTools');
 const { createAgentPreviewRuntime } = require('./AgentPreviewRuntime');
 const { isPreviewWindow } = require('../PreviewWindow');
 
+let electronDesktopCapturer = null;
+try {
+  electronDesktopCapturer = require('electron').desktopCapturer || null;
+} catch (error) {}
+
 const DEFAULT_PORT = 38473;
 const REQUEST_TIMEOUT_MS = 30000;
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
@@ -48,6 +53,49 @@ const png = (response, imageBuffer) => {
     'X-Content-Type-Options': 'nosniff',
   });
   response.end(imageBuffer);
+};
+
+const captureWindowPng = async ({ targetWindow, desktopCapturer }) => {
+  const image = await targetWindow.webContents.capturePage();
+  const directBuffer = image && image.toPNG ? image.toPNG() : Buffer.alloc(0);
+  if (directBuffer.length > 0) return directBuffer;
+
+  if (!desktopCapturer || typeof desktopCapturer.getSources !== 'function') {
+    const error = new Error('window_capture_empty');
+    error.code = 'window_capture_empty';
+    throw error;
+  }
+
+  const bounds = targetWindow.getBounds();
+  const sources = await desktopCapturer.getSources({
+    types: ['window'],
+    thumbnailSize: {
+      width: Math.max(1, bounds.width),
+      height: Math.max(1, bounds.height),
+    },
+    fetchWindowIcons: false,
+  });
+  const mediaSourceId =
+    typeof targetWindow.getMediaSourceId === 'function'
+      ? targetWindow.getMediaSourceId()
+      : null;
+  let source = mediaSourceId
+    ? sources.find(candidate => candidate.id === mediaSourceId)
+    : null;
+  if (!source && typeof targetWindow.getTitle === 'function') {
+    const title = targetWindow.getTitle();
+    source = sources.find(candidate => candidate.name === title);
+  }
+
+  const fallbackBuffer =
+    source && source.thumbnail && source.thumbnail.toPNG
+      ? source.thumbnail.toPNG()
+      : Buffer.alloc(0);
+  if (fallbackBuffer.length > 0) return fallbackBuffer;
+
+  const error = new Error('window_capture_empty');
+  error.code = 'window_capture_empty';
+  throw error;
 };
 
 const readJsonBody = request =>
@@ -339,8 +387,11 @@ const startAgentApi = ({ app, ipcMain, BrowserWindow, log }) => {
           json(response, 404, { ok: false, error: 'window_not_found' });
           return;
         }
-        const image = await targetWindow.webContents.capturePage();
-        png(response, image.toPNG());
+        const imageBuffer = await captureWindowPng({
+          targetWindow,
+          desktopCapturer: electronDesktopCapturer,
+        });
+        png(response, imageBuffer);
         return;
       }
 
@@ -612,4 +663,5 @@ module.exports = {
   installAgentApi,
   startAgentApi,
   stopAgentApi,
+  captureWindowPng,
 };
