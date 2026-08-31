@@ -8,6 +8,8 @@ import { createExportCommandDescriptors } from './editor/ExportCommands';
 import { createProjectLifecycleCommandDescriptors } from './editor/ProjectLifecycleCommands';
 import { createResourceCommandDescriptors } from './editor/ResourceCommands';
 import { createValidationCommandDescriptors } from './editor/ValidationCommands';
+import { createPreviewCommandDescriptors } from './runtime/PreviewCommands';
+import { createRuntimeCommandDescriptors } from './runtime/RuntimeCommands';
 import { createSafetyCommandDescriptors } from './safety/SafetyCommands';
 
 type Options = {|
@@ -17,7 +19,9 @@ type Options = {|
   editorFunctionService: {| run: (options: any) => Promise<any> |},
   eventTools: any,
   exportService: any,
+  previewService: any,
   projectLifecycleService: any,
+  runtimeTelemetry: any,
   safetyService: any,
   validationService: any,
 |};
@@ -29,7 +33,9 @@ export const createRendererAgentHost = ({
   editorFunctionService,
   eventTools,
   exportService,
+  previewService,
   projectLifecycleService,
+  runtimeTelemetry,
   safetyService,
   validationService,
 }: Options): AgentHost =>
@@ -44,6 +50,8 @@ export const createRendererAgentHost = ({
       ...createDiagnosticsCommandDescriptors({ diagnosticsTools }),
       ...createValidationCommandDescriptors({ validationService }),
       ...createExportCommandDescriptors({ exportService }),
+      ...createPreviewCommandDescriptors({ previewService }),
+      ...createRuntimeCommandDescriptors({ runtimeTelemetry }),
       ...createEditorFunctionCommandDescriptors({ editorFunctionService }),
     ],
   });

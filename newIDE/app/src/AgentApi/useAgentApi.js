@@ -14,7 +14,6 @@ import {
   restoreOpenSceneEditors,
 } from './EditorVisualTools';
 import { createEventTools } from './EventTools';
-import { closeAllPreviewWindowsForAgent } from './PreviewLifecycleTools';
 import {
   prepareGameplayTestRunForAgent,
   watchGameplayTestFrameForAgent,
@@ -43,6 +42,7 @@ import { createEditorFunctionService } from '../AgentIntegration/editor/EditorFu
 import { createProjectLifecycleService } from '../AgentIntegration/editor/ProjectLifecycleService';
 import { createExportService } from '../AgentIntegration/editor/ExportService';
 import { createValidationService } from '../AgentIntegration/editor/ValidationService';
+import { createPreviewService } from '../AgentIntegration/runtime/PreviewService';
 import { createSafetyService } from '../AgentIntegration/safety/SafetyService';
 import { createRendererAgentHost } from '../AgentIntegration/RendererAgentHost';
 import { attachRendererAgentHostToIpc } from '../AgentIntegration/RendererCommandAdapter';
@@ -115,32 +115,6 @@ type Props = {|
   onWillInstallExtension: (extensionNames: Array<string>) => void,
   onExtensionInstalled: (extensionNames: Array<string>) => void,
 |};
-
-const getPreviewStatus = (previewDebuggerServer: ?any) => {
-  if (!previewDebuggerServer) {
-    return {
-      available: false,
-      serverState: null,
-      debuggerIds: [],
-      running: false,
-    };
-  }
-  const debuggerIds = previewDebuggerServer.getExistingDebuggerIds
-    ? previewDebuggerServer.getExistingDebuggerIds()
-    : [];
-  const previewDebuggerIds = previewDebuggerServer.getExistingPreviewDebuggerIds
-    ? previewDebuggerServer.getExistingPreviewDebuggerIds()
-    : debuggerIds;
-  return {
-    available: true,
-    serverState: previewDebuggerServer.getServerState
-      ? previewDebuggerServer.getServerState()
-      : null,
-    debuggerIds,
-    previewDebuggerIds,
-    running: previewDebuggerIds.length > 0,
-  };
-};
 
 export default function useAgentApi({
   project,
@@ -412,6 +386,13 @@ export default function useAgentApi({
         restoreProjectCheckpoint,
       });
       const exportService = createExportService({ project, i18n });
+      const previewService = createPreviewService({
+        project,
+        previewDebuggerServer,
+        launchNewPreview,
+        launchHotReloadPreview,
+        ipcRenderer,
+      });
       const validationService = createValidationService({
         project,
         diagnosticsTools,
@@ -419,7 +400,7 @@ export default function useAgentApi({
         runtimeTelemetry,
         editorFunctionService,
         exportService,
-        getPreviewStatus: () => getPreviewStatus(previewDebuggerServer),
+        getPreviewStatus: previewService.getStatus,
       });
 
       const rendererAgentHost = createRendererAgentHost({
@@ -439,7 +420,7 @@ export default function useAgentApi({
                 )
               : [],
             hasUnsavedChanges,
-            preview: getPreviewStatus(previewDebuggerServer),
+            preview: previewService.getStatus(),
           }),
         },
         assetTools,
@@ -447,7 +428,9 @@ export default function useAgentApi({
         editorFunctionService,
         eventTools,
         exportService,
+        previewService,
         projectLifecycleService,
+        runtimeTelemetry,
         safetyService,
         validationService,
       });
@@ -455,24 +438,6 @@ export default function useAgentApi({
         ipcRenderer,
         agentHost: rendererAgentHost,
       });
-
-      const controlPreview = (request: any) => {
-        if (!previewDebuggerServer)
-          throw new Error('preview_debugger_unavailable');
-        const action = request.action;
-        if (!['play', 'pause', 'refresh'].includes(action)) {
-          throw new Error(`unsupported_preview_action:${String(action)}`);
-        }
-        const debuggerIds = previewDebuggerServer.getExistingDebuggerIds();
-        const targetIds = request.debuggerId
-          ? debuggerIds.filter(id => id === request.debuggerId)
-          : debuggerIds;
-        if (!targetIds.length) throw new Error('preview_not_running');
-        targetIds.forEach(id =>
-          previewDebuggerServer.sendMessage(id, { command: action })
-        );
-        return { action, debuggerIds: targetIds };
-      };
 
       const onRequest = async (
         event,
@@ -881,117 +846,141 @@ export default function useAgentApi({
           }
 
           if (request.type === 'runtime-status') {
-            if (!runtimeTelemetry)
-              throw new Error('preview_debugger_unavailable');
-            const result = await runtimeTelemetry.getStatus(request);
+            const commandResult = await rendererAgentHost.execute(
+              'runtime.status',
+              request,
+              { traceId: requestId }
+            );
             ipcRenderer.send('gdevelop-agent-api:response', {
               requestId,
               ok: true,
-              result,
+              result: commandResult.data,
             });
             return;
           }
 
           if (request.type === 'runtime-snapshot') {
-            if (!runtimeTelemetry)
-              throw new Error('preview_debugger_unavailable');
-            const result = await runtimeTelemetry.getSnapshot(request);
+            const commandResult = await rendererAgentHost.execute(
+              'runtime.snapshot',
+              request,
+              { traceId: requestId }
+            );
             ipcRenderer.send('gdevelop-agent-api:response', {
               requestId,
               ok: true,
-              result,
+              result: commandResult.data,
             });
             return;
           }
 
           if (request.type === 'runtime-logs') {
-            if (!runtimeTelemetry)
-              throw new Error('preview_debugger_unavailable');
+            const commandResult = await rendererAgentHost.execute(
+              'runtime.logs',
+              request,
+              { traceId: requestId }
+            );
             ipcRenderer.send('gdevelop-agent-api:response', {
               requestId,
               ok: true,
-              result: runtimeTelemetry.getLogs(request),
+              result: commandResult.data,
             });
             return;
           }
 
           if (request.type === 'runtime-assert') {
-            if (!runtimeTelemetry)
-              throw new Error('preview_debugger_unavailable');
-            const result = await runtimeTelemetry.assertRuntime(request);
+            const commandResult = await rendererAgentHost.execute(
+              'runtime.assert',
+              request,
+              { traceId: requestId }
+            );
             ipcRenderer.send('gdevelop-agent-api:response', {
               requestId,
               ok: true,
-              result,
+              result: commandResult.data,
             });
             return;
           }
 
           if (request.type === 'runtime-wait-for') {
-            if (!runtimeTelemetry)
-              throw new Error('preview_debugger_unavailable');
-            const result = await runtimeTelemetry.waitFor(request);
+            const commandResult = await rendererAgentHost.execute(
+              'runtime.wait-for',
+              request,
+              { traceId: requestId }
+            );
             ipcRenderer.send('gdevelop-agent-api:response', {
               requestId,
               ok: true,
-              result,
+              result: commandResult.data,
             });
             return;
           }
 
           if (request.type === 'preview-status') {
+            const commandResult = await rendererAgentHost.execute(
+              'preview.status',
+              {},
+              { traceId: requestId }
+            );
             ipcRenderer.send('gdevelop-agent-api:response', {
               requestId,
               ok: true,
-              result: getPreviewStatus(previewDebuggerServer),
+              result: commandResult.data,
             });
             return;
           }
 
           if (request.type === 'preview-start') {
-            if (!project) throw new Error('no_project_open');
-            await launchNewPreview({
-              numberOfWindows:
-                Number.isInteger(request.numberOfWindows) &&
-                request.numberOfWindows > 0
-                  ? request.numberOfWindows
-                  : 1,
-            });
+            const commandResult = await rendererAgentHost.execute(
+              'preview.start',
+              { numberOfWindows: request.numberOfWindows },
+              { traceId: requestId }
+            );
             ipcRenderer.send('gdevelop-agent-api:response', {
               requestId,
               ok: true,
-              result: { started: true },
+              result: commandResult.data,
             });
             return;
           }
 
           if (request.type === 'preview-hot-reload') {
-            if (!project) throw new Error('no_project_open');
-            await launchHotReloadPreview();
+            const commandResult = await rendererAgentHost.execute(
+              'preview.hot-reload',
+              {},
+              { traceId: requestId }
+            );
             ipcRenderer.send('gdevelop-agent-api:response', {
               requestId,
               ok: true,
-              result: { hotReloaded: true },
+              result: commandResult.data,
             });
             return;
           }
 
           if (request.type === 'preview-control') {
-            const result = controlPreview(request);
+            const commandResult = await rendererAgentHost.execute(
+              'preview.control',
+              { action: request.action, debuggerId: request.debuggerId },
+              { traceId: requestId }
+            );
             ipcRenderer.send('gdevelop-agent-api:response', {
               requestId,
               ok: true,
-              result,
+              result: commandResult.data,
             });
             return;
           }
 
           if (request.type === 'preview-close-all') {
-            const result = await closeAllPreviewWindowsForAgent(ipcRenderer);
+            const commandResult = await rendererAgentHost.execute(
+              'preview.close-all',
+              {},
+              { traceId: requestId }
+            );
             ipcRenderer.send('gdevelop-agent-api:response', {
               requestId,
               ok: true,
-              result,
+              result: commandResult.data,
             });
             return;
           }
