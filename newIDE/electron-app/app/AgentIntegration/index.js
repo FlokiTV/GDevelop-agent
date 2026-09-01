@@ -1,12 +1,22 @@
 const { createDesktopIntegrationHost } = require('./DesktopIntegrationHost');
-const { startAgentApi, stopAgentApi } = require('../AgentApi');
+const { createMcpIntegrationHost } = require('./McpIntegrationHost');
 
 let desktopIntegrationHost = null;
-let installed = false;
+let mcpIntegrationHost = null;
+let startPromise = null;
+
+const logLifecycleError = (log, message, error) => {
+  if (log && typeof log.error === 'function') {
+    log.error(message, error);
+  }
+};
 
 const startAgentIntegration = dependencies => {
-  if (installed) return desktopIntegrationHost;
-  installed = true;
+  if (desktopIntegrationHost && mcpIntegrationHost && mcpIntegrationHost.serverInfo) {
+    return Promise.resolve(desktopIntegrationHost);
+  }
+  if (startPromise) return startPromise;
+
   const {
     app,
     ipcMain,
@@ -22,39 +32,93 @@ const startAgentIntegration = dependencies => {
     desktopCapturer,
     isRegisteredPreviewWindow,
   });
-
-  // Transitional transport only. MCP will replace this call once the first
-  // end-to-end protocol smoke is green. Desktop services are already owned by
-  // AgentIntegration and are injected into the legacy adapter.
-  startAgentApi({
+  mcpIntegrationHost = createMcpIntegrationHost({
     app,
-    BrowserWindow,
+    rendererBridge: desktopIntegrationHost.rendererBridge,
     log,
-    desktopIntegrationHost,
   });
-  return desktopIntegrationHost;
+
+  startPromise = mcpIntegrationHost
+    .start()
+    .then(() => desktopIntegrationHost)
+    .catch(async error => {
+      const failedMcpHost = mcpIntegrationHost;
+      const failedDesktopHost = desktopIntegrationHost;
+      mcpIntegrationHost = null;
+      desktopIntegrationHost = null;
+      if (failedMcpHost) {
+        try {
+          await failedMcpHost.dispose();
+        } catch (disposeError) {
+          logLifecycleError(
+            log,
+            '[AgentIntegration] Failed to clean MCP host after startup error:',
+            disposeError
+          );
+        }
+      }
+      if (failedDesktopHost) failedDesktopHost.dispose();
+      throw error;
+    })
+    .finally(() => {
+      startPromise = null;
+    });
+
+  return startPromise;
 };
 
-const stopAgentIntegration = () => {
-  stopAgentApi();
-  if (desktopIntegrationHost) desktopIntegrationHost.dispose();
+const stopAgentIntegration = async () => {
+  const pendingStart = startPromise;
+  if (pendingStart) {
+    try {
+      await pendingStart;
+    } catch (error) {}
+  }
+
+  const currentMcpHost = mcpIntegrationHost;
+  const currentDesktopHost = desktopIntegrationHost;
+  mcpIntegrationHost = null;
   desktopIntegrationHost = null;
-  installed = false;
+  startPromise = null;
+
+  if (currentMcpHost) await currentMcpHost.dispose();
+  if (currentDesktopHost) currentDesktopHost.dispose();
 };
 
 const installAgentIntegration = dependencies => {
-  const { app } = dependencies;
-  const start = () => startAgentIntegration(dependencies);
-  const stop = () => stopAgentIntegration();
+  const { app, log } = dependencies;
+  let disposed = false;
+
+  const start = () => {
+    if (disposed) return;
+    startAgentIntegration(dependencies).catch(error => {
+      logLifecycleError(
+        log,
+        '[AgentIntegration] MCP startup failed:',
+        error
+      );
+    });
+  };
+  const stop = () => {
+    stopAgentIntegration().catch(error => {
+      logLifecycleError(
+        log,
+        '[AgentIntegration] MCP shutdown failed:',
+        error
+      );
+    });
+  };
 
   if (app.isReady()) start();
   else app.once('ready', start);
   app.once('before-quit', stop);
 
   return () => {
+    if (disposed) return Promise.resolve();
+    disposed = true;
     app.removeListener('ready', start);
     app.removeListener('before-quit', stop);
-    stop();
+    return stopAgentIntegration();
   };
 };
 
