@@ -60,12 +60,15 @@ const closeHttpServer = server =>
 
 const startMcpHttpServer = async ({
   rendererBridge,
+  desktopCommandRegistry = null,
   token,
   host = DEFAULT_HOST,
   port = DEFAULT_PORT,
   log = null,
 }) => {
-  const handler = createMcpHandler(createMcpServerFactory({ rendererBridge }), {
+  const handler = createMcpHandler(
+    createMcpServerFactory({ rendererBridge, desktopCommandRegistry }),
+    {
     legacy: 'reject',
     onerror: error => {
       if (log) log.error('[AgentIntegration:MCP] Request error:', error);

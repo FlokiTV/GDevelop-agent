@@ -4,6 +4,7 @@ const {
   createPreviewInteractionService,
 } = require('./PreviewInteractionService');
 const { createWindowCaptureService } = require('./WindowCaptureService');
+const { createDesktopCommandRegistry } = require('./DesktopCommandRegistry');
 
 const createDesktopIntegrationHost = ({
   BrowserWindow,
@@ -29,6 +30,10 @@ const createDesktopIntegrationHost = ({
     windowRegistry,
     isRegisteredPreviewWindow,
   });
+  const desktopCommandRegistry = createDesktopCommandRegistry({
+    windowCaptureService,
+    previewInteractionService,
+  });
 
   let disposed = false;
   const dispose = () => {
@@ -44,6 +49,7 @@ const createDesktopIntegrationHost = ({
     rendererBridge,
     previewInteractionService,
     windowCaptureService,
+    desktopCommandRegistry,
     dispose,
   };
 };

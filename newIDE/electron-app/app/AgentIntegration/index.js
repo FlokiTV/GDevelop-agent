@@ -35,6 +35,7 @@ const startAgentIntegration = dependencies => {
   mcpIntegrationHost = createMcpIntegrationHost({
     app,
     rendererBridge: desktopIntegrationHost.rendererBridge,
+    desktopCommandRegistry: desktopIntegrationHost.desktopCommandRegistry,
     log,
   });
 

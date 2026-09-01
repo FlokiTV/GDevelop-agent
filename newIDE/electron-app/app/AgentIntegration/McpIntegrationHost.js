@@ -8,6 +8,7 @@ const {
 const createMcpIntegrationHost = ({
   app,
   rendererBridge,
+  desktopCommandRegistry = null,
   log = null,
   startServer = startMcpHttpServer,
 }) => {
@@ -25,6 +26,7 @@ const createMcpIntegrationHost = ({
       try {
         const startedServer = await startServer({
           rendererBridge,
+          desktopCommandRegistry,
           token: runtimeConfig.token,
           host: runtimeConfig.host,
           port: runtimeConfig.port,

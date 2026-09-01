@@ -8,6 +8,9 @@ const {
   PROTOCOL_VERSION,
 } = require('./McpServerFactory');
 const { startMcpHttpServer } = require('./McpHttpServer');
+const {
+  createDesktopCommandRegistry,
+} = require('../../DesktopCommandRegistry');
 
 const makeDescriptor = (name, metadata = {}) => ({
   name,
@@ -177,6 +180,94 @@ test('rejects missing auth and non-local origins before MCP dispatch', async () 
     assert.equal(badOrigin.status, 403);
     assert.equal(rendererBridge.calls.length, 0);
   } finally {
+    await host.stop();
+  }
+});
+
+test('official MCP client calls desktop capture and preview input without renderer dispatch', async () => {
+  const rendererBridge = makeBridge();
+  const desktopCalls = [];
+  const desktopCommandRegistry = createDesktopCommandRegistry({
+    windowCaptureService: {
+      listWindows: () => [{ windowId: 8, previewWindow: true }],
+      capture: async input => {
+        desktopCalls.push(['capture', input]);
+        return {
+          windowId: Number(input.windowId),
+          mimeType: 'image/png',
+          data: Buffer.from('desktop-png'),
+        };
+      },
+    },
+    previewInteractionService: {
+      sendInput: input => {
+        desktopCalls.push(['sendInput', input]);
+        return { sent: true, windowId: input.previewWindowId };
+      },
+      sendSequence: async input => ({ sent: true, steps: input.steps.length }),
+      resetInput: input => ({ reset: true, windowId: input.previewWindowId }),
+      sendTouch: input => ({ sent: true, windowId: input.previewWindowId }),
+      sendGamepad: input => ({ sent: true, windowId: input.previewWindowId }),
+      getRuntimeStatus: input => ({ installed: true, windowId: input.previewWindowId }),
+      resetRuntime: input => ({ reset: true, windowId: input.previewWindowId }),
+    },
+  });
+  const token = 'desktop-token';
+  const host = await startMcpHttpServer({
+    rendererBridge,
+    desktopCommandRegistry,
+    token,
+    port: 0,
+  });
+  const client = await connectClient({ url: host.url, token });
+
+  try {
+    const tools = await client.listTools();
+    assert.equal(
+      tools.tools.some(tool => tool.name === 'desktop.window.capture'),
+      true
+    );
+    assert.equal(
+      tools.tools.some(tool => tool.name === 'preview.input.send'),
+      true
+    );
+
+    const capture = await client.callTool({
+      name: 'desktop.window.capture',
+      arguments: { windowId: 8 },
+    });
+    assert.equal(capture.content[0].type, 'image');
+    assert.equal(
+      capture.content[0].data,
+      Buffer.from('desktop-png').toString('base64')
+    );
+    assert.equal(capture.content[0].mimeType, 'image/png');
+    assert.equal(capture.structuredContent.data.windowId, 8);
+    assert.equal(capture.structuredContent.data.byteLength, 11);
+    assert.equal('imageBuffer' in capture.structuredContent.data, false);
+
+    const input = await client.callTool({
+      name: 'preview.input.send',
+      arguments: {
+        previewWindowId: 8,
+        event: { type: 'keyDown', keyCode: 'W' },
+      },
+    });
+    assert.equal(input.structuredContent.data.sent, true);
+    assert.deepEqual(
+      desktopCalls.map(call => call[0]),
+      ['capture', 'sendInput']
+    );
+    assert.equal(
+      rendererBridge.calls.some(
+        call =>
+          call.command === 'desktop.window.capture' ||
+          call.command === 'preview.input.send'
+      ),
+      false
+    );
+  } finally {
+    await client.close();
     await host.stop();
   }
 });
