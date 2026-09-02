@@ -2,8 +2,6 @@ const crypto = require('crypto');
 
 const COMMAND_REQUEST_CHANNEL = 'gdevelop-agent-integration:command';
 const COMMAND_RESPONSE_CHANNEL = 'gdevelop-agent-integration:command-response';
-const LEGACY_REQUEST_CHANNEL = 'gdevelop-agent-api:request';
-const LEGACY_RESPONSE_CHANNEL = 'gdevelop-agent-api:response';
 const DEFAULT_TIMEOUT_MS = 30000;
 const MAX_TIMEOUT_MS = 10 * 60 * 1000;
 
@@ -29,7 +27,7 @@ const createRendererBridge = ({
   const pendingRequests = new Map();
   let installed = false;
 
-  const settleResponse = (event, payload = {}, structuredError) => {
+  const onCommandResponse = (event, payload = {}) => {
     const pending = pendingRequests.get(payload.requestId);
     if (!pending) return;
     const sourceWindow = BrowserWindow.fromWebContents(event.sender);
@@ -42,7 +40,7 @@ const createRendererBridge = ({
       return;
     }
 
-    if (structuredError && payload.error && typeof payload.error === 'object') {
+    if (payload.error && typeof payload.error === 'object') {
       const error = makeError(
         payload.error.code || 'renderer_request_failed',
         payload.error.message || 'renderer_request_failed',
@@ -56,24 +54,13 @@ const createRendererBridge = ({
       return;
     }
 
-    pending.reject(
-      makeError(
-        payload.code || 'renderer_request_failed',
-        payload.error || 'renderer_request_failed'
-      )
-    );
+    pending.reject(makeError('renderer_request_failed'));
   };
-
-  const onCommandResponse = (event, payload) =>
-    settleResponse(event, payload, true);
-  const onLegacyResponse = (event, payload) =>
-    settleResponse(event, payload, false);
 
   const install = () => {
     if (installed) return;
     installed = true;
     ipcMain.on(COMMAND_RESPONSE_CHANNEL, onCommandResponse);
-    ipcMain.on(LEGACY_RESPONSE_CHANNEL, onLegacyResponse);
   };
 
   const rejectAll = code => {
@@ -87,17 +74,17 @@ const createRendererBridge = ({
   const dispose = () => {
     if (installed) {
       ipcMain.removeListener(COMMAND_RESPONSE_CHANNEL, onCommandResponse);
-      ipcMain.removeListener(LEGACY_RESPONSE_CHANNEL, onLegacyResponse);
       installed = false;
     }
     rejectAll('renderer_bridge_stopped');
   };
 
-  const dispatch = ({
+  const executeCommand = ({
+    command,
+    input,
+    traceId,
     projectPath,
     windowId,
-    channel,
-    payload,
     timeoutMs,
   }) => {
     const targetWindow = windowRegistry.select({ projectPath, windowId });
@@ -125,49 +112,19 @@ const createRendererBridge = ({
         timeout,
         windowId: targetWindow.id,
       });
-      targetWindow.webContents.send(channel, { requestId, ...payload });
-    });
-  };
-
-  const executeCommand = ({
-    command,
-    input,
-    traceId,
-    projectPath,
-    windowId,
-    timeoutMs,
-  }) =>
-    dispatch({
-      projectPath,
-      windowId,
-      channel: COMMAND_REQUEST_CHANNEL,
-      timeoutMs,
-      payload: {
+      targetWindow.webContents.send(COMMAND_REQUEST_CHANNEL, {
+        requestId,
         command,
         input: input && typeof input === 'object' ? input : {},
         ...(typeof traceId === 'string' && traceId ? { traceId } : {}),
-      },
+      });
     });
-
-  const dispatchLegacy = ({
-    request,
-    projectPath,
-    windowId,
-    timeoutMs,
-  }) =>
-    dispatch({
-      projectPath,
-      windowId,
-      channel: LEGACY_REQUEST_CHANNEL,
-      timeoutMs,
-      payload: { request },
-    });
+  };
 
   install();
 
   return {
     executeCommand,
-    dispatchLegacy,
     dispose,
     rejectAll,
     get pendingCount() {
@@ -179,8 +136,6 @@ const createRendererBridge = ({
 module.exports = {
   COMMAND_REQUEST_CHANNEL,
   COMMAND_RESPONSE_CHANNEL,
-  LEGACY_REQUEST_CHANNEL,
-  LEGACY_RESPONSE_CHANNEL,
   DEFAULT_TIMEOUT_MS,
   MAX_TIMEOUT_MS,
   normalizeTimeoutMs,

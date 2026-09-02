@@ -3,7 +3,6 @@ const assert = require('node:assert/strict');
 const { EventEmitter } = require('events');
 const {
   REGISTER_CHANNEL,
-  LEGACY_REGISTER_CHANNEL,
   createWindowRegistry,
   normalizeFileIdentifier,
 } = require('./WindowRegistry');
@@ -81,7 +80,7 @@ test('prunes destroyed or missing windows', () => {
   assert.deepEqual(registry.listRegistered(), [{ windowId: 1, projectPath: null }]);
 });
 
-test('installs new and legacy registration channels and cleans both up', () => {
+test('installs the AgentIntegration registration channel and cleans it up', () => {
   const fixture = makeWindowFixture();
   const window = fixture.addWindow(1);
   const ipcMain = new EventEmitter();
@@ -93,12 +92,11 @@ test('installs new and legacy registration channels and cleans both up', () => {
     fileIdentifier: 'C:/game.json',
   });
   assert.equal(registry.isRegistered(1), true);
-  ipcMain.emit(LEGACY_REGISTER_CHANNEL, { sender: window.webContents }, {
+  ipcMain.emit(REGISTER_CHANNEL, { sender: window.webContents }, {
     active: false,
   });
   assert.equal(registry.isRegistered(1), false);
 
   cleanup();
   assert.equal(ipcMain.listenerCount(REGISTER_CHANNEL), 0);
-  assert.equal(ipcMain.listenerCount(LEGACY_REGISTER_CHANNEL), 0);
 });

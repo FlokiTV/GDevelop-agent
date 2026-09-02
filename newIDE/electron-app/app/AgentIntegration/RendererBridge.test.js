@@ -4,8 +4,6 @@ const { EventEmitter } = require('events');
 const {
   COMMAND_REQUEST_CHANNEL,
   COMMAND_RESPONSE_CHANNEL,
-  LEGACY_REQUEST_CHANNEL,
-  LEGACY_RESPONSE_CHANNEL,
   createRendererBridge,
   normalizeTimeoutMs,
 } = require('./RendererBridge');
@@ -41,7 +39,7 @@ const makeFixture = () => {
   return { ipcMain, sent, targetWindow, spoofWindow, bridge };
 };
 
-test('executes commands over the new integration channels', async () => {
+test('executes commands only over AgentIntegration channels', async () => {
   const fixture = makeFixture();
   const promise = fixture.bridge.executeCommand({
     command: 'project.status',
@@ -63,22 +61,6 @@ test('executes commands over the new integration channels', async () => {
     { requestId: 'request-1', ok: true, result: { command: 'project.status' } }
   );
   assert.deepEqual(await promise, { command: 'project.status' });
-  fixture.bridge.dispose();
-});
-
-test('preserves legacy request dispatch while REST is transitional', async () => {
-  const fixture = makeFixture();
-  const promise = fixture.bridge.dispatchLegacy({ request: { type: 'status' } });
-  assert.deepEqual(fixture.sent[0], {
-    channel: LEGACY_REQUEST_CHANNEL,
-    payload: { requestId: 'request-1', request: { type: 'status' } },
-  });
-  fixture.ipcMain.emit(
-    LEGACY_RESPONSE_CHANNEL,
-    { sender: fixture.targetWindow.webContents },
-    { requestId: 'request-1', ok: true, result: { projectOpen: true } }
-  );
-  assert.deepEqual(await promise, { projectOpen: true });
   fixture.bridge.dispose();
 });
 
@@ -132,13 +114,12 @@ test('maps structured command errors without losing recovery metadata', async ()
   fixture.bridge.dispose();
 });
 
-test('rejects pending requests and removes listeners on dispose', async () => {
+test('rejects pending requests and removes command listener on dispose', async () => {
   const fixture = makeFixture();
   const promise = fixture.bridge.executeCommand({ command: 'project.status' });
   fixture.bridge.dispose();
   await assert.rejects(promise, error => error.code === 'renderer_bridge_stopped');
   assert.equal(fixture.ipcMain.listenerCount(COMMAND_RESPONSE_CHANNEL), 0);
-  assert.equal(fixture.ipcMain.listenerCount(LEGACY_RESPONSE_CHANNEL), 0);
   assert.equal(fixture.bridge.pendingCount, 0);
 });
 

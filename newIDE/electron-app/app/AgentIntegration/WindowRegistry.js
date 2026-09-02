@@ -1,7 +1,6 @@
 const path = require('path');
 
 const REGISTER_CHANNEL = 'gdevelop-agent-integration:register';
-const LEGACY_REGISTER_CHANNEL = 'gdevelop-agent-api:register';
 
 const normalizeFileIdentifier = fileIdentifier => {
   if (!fileIdentifier || typeof fileIdentifier !== 'string') return null;
@@ -96,12 +95,9 @@ const createWindowRegistry = ({ BrowserWindow }) => {
       register(window, payload.fileIdentifier);
     };
     ipcMain.on(REGISTER_CHANNEL, onRegister);
-    // Transitional compatibility while the old REST adapter still exists.
-    ipcMain.on(LEGACY_REGISTER_CHANNEL, onRegister);
     const cleanup = () => {
       if (!installedIpc) return;
       ipcMain.removeListener(REGISTER_CHANNEL, onRegister);
-      ipcMain.removeListener(LEGACY_REGISTER_CHANNEL, onRegister);
       installedIpc = null;
     };
     installedIpc = { ipcMain, onRegister, cleanup };
@@ -129,7 +125,6 @@ const createWindowRegistry = ({ BrowserWindow }) => {
 
 module.exports = {
   REGISTER_CHANNEL,
-  LEGACY_REGISTER_CHANNEL,
   normalizeFileIdentifier,
   createWindowRegistry,
 };
