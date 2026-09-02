@@ -58,21 +58,6 @@ const createPreviewInteractionService = ({
       validateGamepad(input || {})
     );
 
-  const canHandleLegacyAction = type =>
-    inputTools.canHandleAction(type) || previewRuntime.canHandleAction(type);
-
-  const handleLegacyAction = input => {
-    if (inputTools.canHandleAction(input && input.type)) {
-      return inputTools.handleAction(input);
-    }
-    if (previewRuntime.canHandleAction(input && input.type)) {
-      return previewRuntime.handleAction(input);
-    }
-    const error = new Error('unsupported_preview_interaction_action');
-    error.code = 'unsupported_preview_interaction_action';
-    throw error;
-  };
-
   return {
     sendInput,
     sendSequence,
@@ -81,8 +66,6 @@ const createPreviewInteractionService = ({
     resetRuntime,
     sendTouch,
     sendGamepad,
-    canHandleLegacyAction,
-    handleLegacyAction,
   };
 };
 

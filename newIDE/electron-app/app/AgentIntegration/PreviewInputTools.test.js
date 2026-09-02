@@ -84,12 +84,11 @@ test('recognizes preview windows and rejects editor windows', () => {
   assert.equal(isLikelyPreviewWindow(editorWindow, id => id === 8), false);
 });
 
-test('sends keyboard input to a focused preview', async () => {
+test('sends keyboard input to a focused preview', () => {
   const { tools, events, getFocusCount } = makeWindowHarness();
-  const result = await tools.handleAction({
-    type: 'preview-input',
-    previewWindowId: 7,
-    event: { type: 'keyDown', keyCode: 'ArrowRight' },
+  const result = tools.sendInput({
+    windowId: 7,
+    inputEvent: { type: 'keyDown', keyCode: 'ArrowRight' },
   });
   assert.equal(result.sent, true);
   assert.equal(result.windowId, 7);
@@ -99,19 +98,12 @@ test('sends keyboard input to a focused preview', async () => {
 
 test('runs an input sequence in order', async () => {
   const { tools, events } = makeWindowHarness();
-  const result = await tools.handleAction({
-    type: 'preview-input-sequence',
+  const result = await tools.sendSequence({
     windowId: 7,
     steps: [
       { event: { type: 'keyDown', keyCode: 'Space' } },
       { event: { type: 'keyUp', keyCode: 'Space' }, delayMs: 1 },
-      {
-        event: {
-          type: 'mouseMove',
-          x: 100,
-          y: 120,
-        },
-      },
+      { event: { type: 'mouseMove', x: 100, y: 120 } },
     ],
   });
   assert.equal(result.steps, 3);
@@ -122,22 +114,23 @@ test('runs an input sequence in order', async () => {
   ]);
 });
 
-test('reset releases tracked keys and mouse buttons', async () => {
+test('reset releases tracked keys and mouse buttons', () => {
   const { tools, events } = makeWindowHarness();
-  await tools.handleAction({
-    type: 'preview-input',
+  tools.sendInput({
     windowId: 7,
-    event: { type: 'keyDown', keyCode: 'KeyA' },
+    inputEvent: { type: 'keyDown', keyCode: 'KeyA' },
   });
-  await tools.handleAction({
-    type: 'preview-input',
+  tools.sendInput({
     windowId: 7,
-    event: { type: 'mouseDown', x: 30, y: 40, button: 'left', clickCount: 1 },
+    inputEvent: {
+      type: 'mouseDown',
+      x: 30,
+      y: 40,
+      button: 'left',
+      clickCount: 1,
+    },
   });
-  const reset = await tools.handleAction({
-    type: 'preview-input-reset',
-    windowId: 7,
-  });
+  const reset = tools.resetInput({ windowId: 7 });
   assert.deepEqual(reset.releasedKeys, ['KeyA']);
   assert.deepEqual(reset.releasedButtons, ['left']);
   assert.deepEqual(events.slice(-2), [
@@ -148,17 +141,16 @@ test('reset releases tracked keys and mouse buttons', async () => {
 
 test('rejects non-preview target and oversized sequences', async () => {
   const { tools } = makeWindowHarness();
-  await assert.rejects(
-    tools.handleAction({
-      type: 'preview-input',
-      windowId: 8,
-      event: { type: 'keyDown', keyCode: 'Space' },
-    }),
+  assert.throws(
+    () =>
+      tools.sendInput({
+        windowId: 8,
+        inputEvent: { type: 'keyDown', keyCode: 'Space' },
+      }),
     /preview_window_not_found/
   );
   await assert.rejects(
-    tools.handleAction({
-      type: 'preview-input-sequence',
+    tools.sendSequence({
       windowId: 7,
       steps: Array.from({ length: 201 }, () => ({
         event: { type: 'keyDown', keyCode: 'Space' },
@@ -166,4 +158,5 @@ test('rejects non-preview target and oversized sequences', async () => {
     }),
     /too_many_input_sequence_steps/
   );
+  assert.equal('handleAction' in tools, false);
 });

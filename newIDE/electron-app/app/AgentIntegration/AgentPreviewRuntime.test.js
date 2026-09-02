@@ -121,21 +121,20 @@ test('validates touch and gamepad payloads', () => {
 
 test('installs runtime and dispatches a synthetic touch to the game canvas', async () => {
   const { runtime, canvasEvents } = makeHarness();
-  const status = await runtime.handleAction({
-    type: 'preview-runtime-status',
-    windowId: 12,
-  });
+  const status = await runtime.ensureInstalled(12);
   assert.equal(status.installed, true);
   assert.equal(status.version, 1);
 
-  const result = await runtime.handleAction({
-    type: 'preview-touch',
-    windowId: 12,
-    action: 'start',
-    identifier: 3,
-    x: 120,
-    y: 240,
-  });
+  const result = await runtime.call(
+    12,
+    'touch',
+    validateTouch({
+      action: 'start',
+      identifier: 3,
+      x: 120,
+      y: 240,
+    })
+  );
   assert.equal(result.result.action, 'start');
   assert.deepEqual(result.result.activeTouchIds, [3]);
   assert.equal(canvasEvents.length, 1);
@@ -145,28 +144,33 @@ test('installs runtime and dispatches a synthetic touch to the game canvas', asy
 
 test('virtual gamepad is exposed through navigator.getGamepads', async () => {
   const { runtime, context, windowEvents } = makeHarness();
-  await runtime.handleAction({
-    type: 'preview-gamepad',
-    windowId: 12,
-    action: 'connect',
-    index: 0,
-    axes: [0.25, -0.5],
-    buttons: [1, 0],
-  });
+  await runtime.call(
+    12,
+    'gamepad',
+    validateGamepad({
+      action: 'connect',
+      index: 0,
+      axes: [0.25, -0.5],
+      buttons: [1, 0],
+    })
+  );
   const pads = context.navigator.getGamepads();
   assert.equal(pads[0].connected, true);
   assert.deepEqual(Array.from(pads[0].axes), [0.25, -0.5]);
   assert.equal(pads[0].buttons[0].pressed, true);
   assert.equal(windowEvents[0].type, 'gamepadconnected');
 
-  await runtime.handleAction({
-    type: 'preview-gamepad',
-    windowId: 12,
-    action: 'update',
-    index: 0,
-    axes: [1, 0],
-    buttons: [0, 1],
-  });
+  await runtime.call(
+    12,
+    'gamepad',
+    validateGamepad({
+      action: 'update',
+      index: 0,
+      axes: [1, 0],
+      buttons: [0, 1],
+    })
+  );
   assert.deepEqual(Array.from(context.navigator.getGamepads()[0].axes), [1, 0]);
   assert.equal(context.navigator.getGamepads()[0].buttons[1].pressed, true);
+  assert.equal('handleAction' in runtime, false);
 });

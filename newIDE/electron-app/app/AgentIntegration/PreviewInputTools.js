@@ -365,32 +365,7 @@ const createPreviewInputTools = ({
     };
   };
 
-  const canHandleAction = type =>
-    type === 'preview-input' ||
-    type === 'preview-input-sequence' ||
-    type === 'preview-input-reset';
-
-  const handleAction = async body => {
-    const windowId =
-      body.previewWindowId != null ? body.previewWindowId : body.windowId;
-    if (body.type === 'preview-input') {
-      return sendInput({
-        windowId,
-        inputEvent: body.event || body.inputEvent,
-      });
-    }
-    if (body.type === 'preview-input-sequence') {
-      return sendSequence({ windowId, steps: body.steps });
-    }
-    if (body.type === 'preview-input-reset') {
-      return resetInput({ windowId });
-    }
-    throw makeError('unsupported_preview_input_action');
-  };
-
   return {
-    canHandleAction,
-    handleAction,
     sendInput,
     sendSequence,
     resetInput,

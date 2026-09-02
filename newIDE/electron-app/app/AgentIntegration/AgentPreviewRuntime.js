@@ -109,29 +109,7 @@ const createAgentPreviewRuntime = ({
     return { windowId: targetWindow.id, result };
   };
 
-  const canHandleAction = type =>
-    type === 'preview-runtime-status' ||
-    type === 'preview-runtime-reset' ||
-    type === 'preview-touch' ||
-    type === 'preview-gamepad';
-
-  const handleAction = async body => {
-    const windowId =
-      body.previewWindowId != null ? body.previewWindowId : body.windowId;
-    if (body.type === 'preview-runtime-status')
-      return ensureInstalled(windowId);
-    if (body.type === 'preview-runtime-reset')
-      return call(windowId, 'reset', {});
-    if (body.type === 'preview-touch')
-      return call(windowId, 'touch', validateTouch(body));
-    if (body.type === 'preview-gamepad')
-      return call(windowId, 'gamepad', validateGamepad(body));
-    throw makeError('unsupported_preview_runtime_action');
-  };
-
   return {
-    canHandleAction,
-    handleAction,
     ensureInstalled,
     call,
   };

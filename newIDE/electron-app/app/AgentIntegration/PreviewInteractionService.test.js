@@ -4,6 +4,7 @@ const { createPreviewInteractionService } = require('./PreviewInteractionService
 
 const makeFixture = () => {
   const sentInputEvents = [];
+  const executedScripts = [];
   const previewWindow = {
     id: 12,
     isDestroyed: () => false,
@@ -14,9 +15,7 @@ const makeFixture = () => {
       focus: () => {},
       sendInputEvent: event => sentInputEvents.push(event),
       executeJavaScript: async source => {
-        if (source.includes('__GDevelopAgentPreviewRuntime')) {
-          return { installed: true, version: 1 };
-        }
+        executedScripts.push(source);
         return { installed: true, version: 1 };
       },
     },
@@ -29,7 +28,7 @@ const makeFixture = () => {
     windowRegistry: { isRegistered: () => false },
     isRegisteredPreviewWindow: id => Number(id) === 12,
   });
-  return { service, sentInputEvents };
+  return { service, sentInputEvents, executedScripts };
 };
 
 test('exposes protocol-independent keyboard/mouse input methods', () => {
@@ -48,13 +47,18 @@ test('exposes protocol-independent keyboard/mouse input methods', () => {
   assert.deepEqual(sentInputEvents, [{ type: 'keyDown', keyCode: 'W' }]);
 });
 
-test('keeps legacy action routing as a transitional adapter only', async () => {
-  const { service } = makeFixture();
-  assert.equal(service.canHandleLegacyAction('preview-input'), true);
-  assert.equal(service.canHandleLegacyAction('preview-touch'), true);
-  assert.equal(service.canHandleLegacyAction('unknown'), false);
-  assert.throws(
-    () => service.handleLegacyAction({ type: 'unknown' }),
-    error => error.code === 'unsupported_preview_interaction_action'
-  );
+test('exposes runtime/touch methods directly without an action router', async () => {
+  const { service, executedScripts } = makeFixture();
+  const status = await service.getRuntimeStatus({ windowId: 12 });
+  assert.equal(status.windowId, 12);
+
+  await service.sendTouch({
+    windowId: 12,
+    action: 'start',
+    identifier: 1,
+    x: 10,
+    y: 20,
+  });
+  assert.ok(executedScripts.some(source => source.includes('touch')));
+  assert.equal('handleLegacyAction' in service, false);
 });
