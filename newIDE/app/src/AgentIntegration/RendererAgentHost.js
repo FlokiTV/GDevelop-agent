@@ -3,6 +3,7 @@ import { AgentHost } from './core/AgentHost';
 import { createCoreCommandDescriptors } from './core/CoreCommands';
 import { createDiagnosticsCommandDescriptors } from './editor/DiagnosticsCommands';
 import { createEditorFunctionCommandDescriptors } from './editor/EditorFunctionCommands';
+import { createEditorVisualCommandDescriptors } from './editor/EditorVisualCommands';
 import { createEventCommandDescriptors } from './editor/EventCommands';
 import { createExportCommandDescriptors } from './editor/ExportCommands';
 import { createProjectLifecycleCommandDescriptors } from './editor/ProjectLifecycleCommands';
@@ -17,6 +18,7 @@ type Options = {|
   assetTools: any,
   diagnosticsTools: any,
   editorFunctionService: {| run: (options: any) => Promise<any> |},
+  editorVisualService: any,
   eventTools: any,
   exportService: any,
   previewService: any,
@@ -31,6 +33,7 @@ export const createRendererAgentHost = ({
   assetTools,
   diagnosticsTools,
   editorFunctionService,
+  editorVisualService,
   eventTools,
   exportService,
   previewService,
@@ -48,6 +51,7 @@ export const createRendererAgentHost = ({
       ...createEventCommandDescriptors({ eventTools }),
       ...createResourceCommandDescriptors({ assetTools }),
       ...createDiagnosticsCommandDescriptors({ diagnosticsTools }),
+      ...createEditorVisualCommandDescriptors({ editorVisualService }),
       ...createValidationCommandDescriptors({ validationService }),
       ...createExportCommandDescriptors({ exportService }),
       ...createPreviewCommandDescriptors({ previewService }),
