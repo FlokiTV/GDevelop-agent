@@ -102,21 +102,13 @@ Architecture baseline starts after `080a724` (`docs: define agent integration ar
 
 ## Current automated baseline
 
-### Electron/desktop Node suite
+### Electron/desktop MCP suite
 
-Command:
+The original REST characterization suite was retired after equivalent AgentIntegration/MCP coverage became green. The active desktop gate now runs the focused `AgentIntegration/*.test.js` and `AgentIntegration/protocols/mcp/*.test.js` suites plus `ArchitectureGuard`.
 
-```text
-node --test \
-  newIDE/electron-app/app/AgentApi/AgentPreviewRuntime.test.js \
-  newIDE/electron-app/app/AgentApi/ArchitectureGuard.test.js \
-  newIDE/electron-app/app/AgentApi/index.test.js \
-  newIDE/electron-app/app/AgentApi/PreviewInputTools.test.js
-```
+Latest MCP-only baseline before REST deletion: **37/37 AgentIntegration/MCP tests passed**.
 
-Baseline: **16/16 tests passed**.
-
-This suite currently covers preview runtime installation, touch/gamepad validation, keyboard/mouse input, preview targeting, sequences, input reset, capture fallback, long gameplay timeout budgeting, function metadata routing and the architecture isolation guard.
+This coverage includes preview runtime installation, touch/gamepad validation, keyboard/mouse input, preview targeting, sequences, input reset, capture fallback, WindowRegistry targeting, RendererBridge spoof protection/timeouts, MCP discovery/auth, official-client initialize/tools/list/tools/call, desktop capture as MCP image content and direct preview input through desktop services.
 
 ### Renderer AgentApi suite
 
@@ -161,8 +153,8 @@ At every semantic migration block:
 
 1. run the focused tests for the moved module;
 2. run the core/adapter boundary tests;
-3. run the full 16-test desktop baseline when Electron infrastructure changes;
-4. run the full 47-test renderer baseline when editor/runtime behavior changes;
+3. run the full AgentIntegration/MCP desktop suite when Electron infrastructure changes;
+4. run the full renderer AgentApi/AgentIntegration baseline when editor/runtime behavior changes;
 5. run ArchitectureGuard against `upstream/master`;
 6. commit only after the affected gate is green.
 
