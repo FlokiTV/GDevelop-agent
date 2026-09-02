@@ -1,4 +1,4 @@
-# 3D quality gate for embedded agents
+# 3D quality gate for GDevelop MCP agents
 
 A successful build, zero runtime errors, or a clean diagnostics report is **not** enough to call a 3D change finished. Agents must validate what a player actually sees and what the game actually does.
 
@@ -39,11 +39,11 @@ The correct Skyline Trial redesign therefore returned to the starter contract: r
 
 After placing geometry:
 
-1. Open the intended scene with `open-scene`.
-2. Select a representative set with `editor-select-instances`.
+1. Open the intended scene with `scene.open`.
+2. Select a representative set with `editor.instances.select`.
 3. Use `focusMode: "fit"` for a composition view and `focusMode: "center"` for local inspection.
-4. Capture the editor window with `/v1/windows` + `/v1/capture`.
-5. Inspect the returned PNG before continuing.
+4. Use `desktop.windows.list` to identify the editor window and `desktop.window.capture` to capture it.
+5. Inspect the returned MCP `image/png` content before continuing.
 
 Look specifically for:
 
@@ -58,15 +58,15 @@ A top/editor view is useful for layout, but it does not replace the player camer
 
 ## 3. Always inspect a real preview
 
-Start or hot-reload the preview, then:
+Start or hot-reload the preview with `preview.start` / `preview.hot-reload`, then:
 
-1. use `/v1/windows` to find the actual preview window;
-2. capture it with `/v1/capture?windowId=...`;
-3. inspect the PNG;
+1. use `desktop.windows.list` to find the actual preview window;
+2. call `desktop.window.capture` with that `windowId`;
+3. inspect the returned MCP image;
 4. verify that it is the intended scene, not merely the project's first scene;
 5. repeat after material visual changes.
 
-Do not infer visual quality from `preview-start: { started: true }`.
+Do not infer visual quality from a successful `preview.start` result alone.
 
 The preview image is the authoritative check for apparent scale, lighting, occlusion and camera readability.
 
@@ -99,30 +99,30 @@ This separates "input mapping failed" from "collection logic failed" and avoids 
 
 ## 5. Use runtime telemetry when healthy, but do not depend on it blindly
 
-Preferred proof combines preview capture with `runtime-status`, `runtime-snapshot`, `runtime-assert` or `runtime-wait-for`.
+Preferred proof combines preview capture with `runtime.status`, `runtime.snapshot`, `runtime.assert` or `runtime.wait-for`.
 
 However, debugger telemetry can time out while a visible preview is still running. If `runtime_telemetry_timeout:*` occurs:
 
 - record the telemetry failure explicitly;
-- verify `preview-runtime-status`/window presence where available;
+- verify `preview.input.runtime-status` and window presence where available;
 - use controlled input or a controlled proximity probe;
 - capture before/after preview images;
 - inspect runtime logs if available;
 - do **not** convert the telemetry timeout into a passing telemetry result.
 
-A fallback may validate gameplay behavior, but the telemetry problem remains a separate Agent API issue.
+A fallback may validate gameplay behavior, but the telemetry problem remains a separate AgentIntegration/runtime issue.
 
-## 6. Event authoring limitation in the embedded API
+## 6. Author events through deterministic AgentIntegration commands
 
-At the time this guide was written, embedded `add_scene_events`/`generate_events` calls run with `relatedAiRequestId: null`. The native event generation function therefore rejects them with `No related AI request ID found for events generation.`
+The MCP surface now exposes deterministic event access through `events.read` and `events.apply`. These commands operate on the live in-memory project and notify the open Events Sheet about out-of-editor changes. AI event generation is not required for this path.
 
 Rules for agents:
 
-- never report events as added when this call failed;
-- prefer a deterministic supported event-authoring path when one exists;
-- if a temporary file-level fallback is absolutely necessary for investigation, use a clearly named **working copy**, preserve a backup, reopen the copy through GDevelop, and validate the parsed EventScript before previewing;
-- never overwrite the user's original project merely to bypass this limitation;
-- track the missing deterministic event-authoring path as an Agent API gap to fix.
+- read the current event tree before replacing or appending event JSON;
+- use `events.apply` only with data derived from the current live project state;
+- inspect diagnostics after a material event change and verify the Events Sheet/preview when behavior matters;
+- prefer the smallest supported mutation; surgical event-node patching will supersede whole-tree replacement where available;
+- never edit the project JSON behind GDevelop merely to bypass an authoring limitation.
 
 ## 7. Validate level mechanics before decorating
 

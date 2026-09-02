@@ -110,7 +110,7 @@ Latest MCP-only baseline before REST deletion: **37/37 AgentIntegration/MCP test
 
 This coverage includes preview runtime installation, touch/gamepad validation, keyboard/mouse input, preview targeting, sequences, input reset, capture fallback, WindowRegistry targeting, RendererBridge spoof protection/timeouts, MCP discovery/auth, official-client initialize/tools/list/tools/call, desktop capture as MCP image content and direct preview input through desktop services.
 
-### Renderer AgentApi suite
+### Renderer characterization suite
 
 Command:
 
@@ -154,8 +154,8 @@ At every semantic migration block:
 1. run the focused tests for the moved module;
 2. run the core/adapter boundary tests;
 3. run the full AgentIntegration/MCP desktop suite when Electron infrastructure changes;
-4. run the full renderer AgentApi/AgentIntegration baseline when editor/runtime behavior changes;
+4. run the full renderer AgentIntegration characterization baseline when editor/runtime behavior changes;
 5. run ArchitectureGuard against `upstream/master`;
 6. commit only after the affected gate is green.
 
-Before replacing the final legacy execution path with MCP, every capability listed above must either have a direct AgentCore test or an MCP integration test. Legacy REST route tests may then be deleted together with `/v1`.
+The legacy execution path has now been removed. Every capability that survived that cut must remain covered by a direct AgentCore/AgentIntegration test or an MCP integration test; `/v1` route coverage is intentionally gone with the deleted REST server.

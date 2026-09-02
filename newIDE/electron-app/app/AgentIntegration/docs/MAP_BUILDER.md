@@ -1,6 +1,6 @@
-# 3D Map Builder guide for embedded agents
+# 3D Map Builder guide for GDevelop MCP agents
 
-This document describes **how to reason about and build a 3D map** with the embedded Agent API. It is intentionally separate from [`3D_QUALITY_GATE.md`](./3D_QUALITY_GATE.md):
+This document describes **how to reason about and build a 3D map** through the live AgentIntegration/MCP surface. It is intentionally separate from [`3D_QUALITY_GATE.md`](./3D_QUALITY_GATE.md):
 
 - **Map Builder** = understand the game, design the route, then construct it.
 - **3D Quality Gate** = prove the result is structurally, visually and functionally acceptable.
@@ -15,7 +15,7 @@ A map is an arrangement of mechanics, not a collection of meshes.
 
 Before a material map change:
 
-1. Confirm the exact project file currently open with Agent API status.
+1. Confirm the exact project file currently open with `project.status`.
 2. Check `hasUnsavedChanges`.
 3. Prefer a clearly named review/working copy while the design is still experimental.
 4. Create a checkpoint or transaction before a mutation batch when available.
@@ -234,7 +234,7 @@ Before calling the map playable, exercise the scene's required controls individu
 
 For mouse camera control, a valid proof must include the pointer-lock/capture step when required and an observable camera-angle change. Merely seeing a `ThirdPersonCamera` behavior on the Player is not proof.
 
-For automated input, distinguish **event delivery** from **gameplay effect**. If synthetic keyboard input is accepted by the preview API but the Player does not visibly or measurably move, mark the test **inconclusive** and rely on a measured alternative or manual playtest. Do not infer success from unrelated animation in the frame.
+For automated input, distinguish **event delivery** from **gameplay effect**. If `preview.input.send` succeeds but the Player does not visibly or measurably move, mark the test **inconclusive** and rely on a measured alternative or manual playtest. Do not infer success from unrelated animation in the frame.
 
 ## Phase 9 — Use a short build/inspect loop
 
@@ -255,7 +255,7 @@ When the map design is complete, execute [`3D_QUALITY_GATE.md`](./3D_QUALITY_GAT
 The map is not finished merely because:
 
 - diagnostics show zero errors;
-- preview-start returned success;
+- `preview.start` returned success;
 - all instances exist;
 - the collectible event source parses;
 - the scene looks good from the top editor camera.
