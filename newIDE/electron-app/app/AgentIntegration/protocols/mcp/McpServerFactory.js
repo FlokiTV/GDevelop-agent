@@ -107,31 +107,89 @@ const createMcpServerFactory = ({
           idempotencyKey,
           ...commandInput
         } = normalizedInput;
-        const result =
+        let result;
+        if (
           desktopCommandRegistry &&
           desktopCommandRegistry.has(registration.name)
-            ? await desktopCommandRegistry.execute({
-                command: registration.name,
-                input: commandInput,
-              })
-            : await rendererBridge.executeCommand({
-                command: registration.name,
-                input: commandInput,
-                traceId: crypto.randomUUID(),
-                ...(registration.modifiesProject &&
-                Number.isInteger(expectedRevision) &&
-                expectedRevision >= 0
-                  ? { expectedRevision }
-                  : {}),
-                ...(registration.modifiesProject &&
-                typeof idempotencyKey === 'string' &&
-                idempotencyKey
-                  ? { idempotencyKey }
-                  : {}),
-                timeoutMs: registration.timeoutMs,
-                signal: requestContext && requestContext.signal,
+        ) {
+          let desktopInput = commandInput;
+          if (
+            registration.name === 'desktop.window.capture' &&
+            desktopInput.windowId == null &&
+            targeting.windowId &&
+            /^\d+$/.test(targeting.windowId)
+          ) {
+            desktopInput = {
+              ...desktopInput,
+              windowId: Number(targeting.windowId),
+            };
+          }
+          result = await desktopCommandRegistry.execute({
+            command: registration.name,
+            input: desktopInput,
+          });
+          if (registration.name === 'desktop.window.capture' && result.data) {
+            let projectRevision = null;
+            let sceneName = null;
+            try {
+              const projectStatus = await rendererBridge.executeCommand({
+                command: 'project.status',
+                input: {},
                 ...targeting,
               });
+              projectRevision =
+                projectStatus &&
+                projectStatus.meta &&
+                Number.isInteger(projectStatus.meta.projectRevision)
+                  ? projectStatus.meta.projectRevision
+                  : projectStatus &&
+                    projectStatus.data &&
+                    Number.isInteger(projectStatus.data.projectRevision)
+                  ? projectStatus.data.projectRevision
+                  : null;
+              const visualStatus = await rendererBridge.executeCommand({
+                command: 'editor.visual.status',
+                input: {},
+                ...targeting,
+              });
+              const openSceneEditors =
+                visualStatus &&
+                visualStatus.data &&
+                Array.isArray(visualStatus.data.openSceneEditors)
+                  ? visualStatus.data.openSceneEditors
+                  : [];
+              const activeScene = openSceneEditors.find(entry => entry.active);
+              sceneName = activeScene ? activeScene.sceneName : null;
+            } catch (error) {}
+            result = {
+              ...result,
+              data: {
+                ...result.data,
+                projectRevision,
+                sceneName,
+              },
+            };
+          }
+        } else {
+          result = await rendererBridge.executeCommand({
+            command: registration.name,
+            input: commandInput,
+            traceId: crypto.randomUUID(),
+            ...(registration.modifiesProject &&
+            Number.isInteger(expectedRevision) &&
+            expectedRevision >= 0
+              ? { expectedRevision }
+              : {}),
+            ...(registration.modifiesProject &&
+            typeof idempotencyKey === 'string' &&
+            idempotencyKey
+              ? { idempotencyKey }
+              : {}),
+            timeoutMs: registration.timeoutMs,
+            signal: requestContext && requestContext.signal,
+            ...targeting,
+          });
+        }
         return toMcpToolResult(result);
       }
     );

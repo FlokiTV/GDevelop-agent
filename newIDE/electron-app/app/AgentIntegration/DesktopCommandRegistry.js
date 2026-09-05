@@ -10,7 +10,11 @@ const emptyObjectSchema = () => ({
   properties: {},
 });
 
-const metadata = ({ readOnly = false, idempotent = false, longRunning = false } = {}) => ({
+const metadata = ({
+  readOnly = false,
+  idempotent = false,
+  longRunning = false,
+} = {}) => ({
   readOnly,
   destructive: false,
   idempotent,
@@ -38,8 +42,24 @@ const DESCRIPTORS = [
         windowId: {
           type: 'integer',
           minimum: 1,
-          description: 'Electron window id. Omit to capture the focused window.',
+          description:
+            'Electron window id. Omit to capture the focused window.',
         },
+        region: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['x', 'y', 'width', 'height'],
+          properties: {
+            x: { type: 'integer', minimum: 0 },
+            y: { type: 'integer', minimum: 0 },
+            width: { type: 'integer', minimum: 1 },
+            height: { type: 'integer', minimum: 1 },
+          },
+          description:
+            'Optional capture rectangle in window content coordinates.',
+        },
+        maxWidth: { type: 'integer', minimum: 1, maximum: 8192 },
+        maxHeight: { type: 'integer', minimum: 1, maximum: 8192 },
       },
     },
     metadata: metadata({ readOnly: true, idempotent: true }),
@@ -121,7 +141,8 @@ const DESCRIPTORS = [
   },
   {
     name: 'preview.input.touch',
-    description: 'Send a synthetic touch start/move/end/cancel event to a running preview.',
+    description:
+      'Send a synthetic touch start/move/end/cancel event to a running preview.',
     inputSchema: {
       type: 'object',
       additionalProperties: false,
@@ -139,7 +160,8 @@ const DESCRIPTORS = [
   },
   {
     name: 'preview.input.gamepad',
-    description: 'Connect, update, disconnect or reset a virtual gamepad in a running preview.',
+    description:
+      'Connect, update, disconnect or reset a virtual gamepad in a running preview.',
     inputSchema: {
       type: 'object',
       additionalProperties: false,
@@ -173,7 +195,8 @@ const DESCRIPTORS = [
   },
   {
     name: 'preview.input.runtime-reset',
-    description: 'Reset synthetic touch and virtual gamepad state in a running preview.',
+    description:
+      'Reset synthetic touch and virtual gamepad state in a running preview.',
     inputSchema: {
       type: 'object',
       additionalProperties: false,
@@ -204,14 +227,20 @@ const createDesktopCommandRegistry = ({
       return {
         windowId: captured.windowId,
         mimeType: captured.mimeType,
+        region: captured.region || null,
+        maxWidth: captured.maxWidth || null,
+        maxHeight: captured.maxHeight || null,
         imageBuffer: captured.data,
       };
     },
-    'preview.input.send': input => previewInteractionService.sendInput(input || {}),
+    'preview.input.send': input =>
+      previewInteractionService.sendInput(input || {}),
     'preview.input.sequence': input =>
       previewInteractionService.sendSequence(input || {}),
-    'preview.input.reset': input => previewInteractionService.resetInput(input || {}),
-    'preview.input.touch': input => previewInteractionService.sendTouch(input || {}),
+    'preview.input.reset': input =>
+      previewInteractionService.resetInput(input || {}),
+    'preview.input.touch': input =>
+      previewInteractionService.sendTouch(input || {}),
     'preview.input.gamepad': input =>
       previewInteractionService.sendGamepad(input || {}),
     'preview.input.runtime-status': input =>

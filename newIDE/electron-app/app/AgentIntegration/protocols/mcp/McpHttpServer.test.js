@@ -66,11 +66,32 @@ const makeBridge = () => {
       if (options.command === 'project.status') {
         return {
           command: 'project.status',
-          data: { projectOpen: true, projectName: 'MCP Test' },
+          data: {
+            projectOpen: true,
+            projectName: 'MCP Test',
+            projectRevision: 12,
+          },
           meta: {
             traceId: options.traceId || null,
             readOnly: true,
             modifiesProject: false,
+            projectRevision: 12,
+          },
+        };
+      }
+      if (options.command === 'editor.visual.status') {
+        return {
+          command: 'editor.visual.status',
+          data: {
+            openSceneEditors: [
+              { sceneName: 'Game', active: true, editorReady: true },
+            ],
+          },
+          meta: {
+            traceId: options.traceId || null,
+            readOnly: true,
+            modifiesProject: false,
+            projectRevision: 12,
           },
         };
       }
@@ -679,6 +700,9 @@ test('official MCP client calls desktop capture and preview input without render
         return {
           windowId: Number(input.windowId),
           mimeType: 'image/png',
+          region: input.region || null,
+          maxWidth: input.maxWidth || null,
+          maxHeight: input.maxHeight || null,
           data: Buffer.from('desktop-png'),
         };
       },
@@ -706,7 +730,7 @@ test('official MCP client calls desktop capture and preview input without render
     token,
     port: 0,
   });
-  const client = await connectClient({ url: host.url, token });
+  const client = await connectClient({ url: host.url, token, windowId: 8 });
 
   try {
     const tools = await client.listTools();
@@ -721,7 +745,11 @@ test('official MCP client calls desktop capture and preview input without render
 
     const capture = await client.callTool({
       name: 'desktop.window.capture',
-      arguments: { windowId: 8 },
+      arguments: {
+        region: { x: 10, y: 20, width: 320, height: 180 },
+        maxWidth: 160,
+        maxHeight: 90,
+      },
     });
     assert.equal(capture.content[0].type, 'image');
     assert.equal(
@@ -731,7 +759,18 @@ test('official MCP client calls desktop capture and preview input without render
     assert.equal(capture.content[0].mimeType, 'image/png');
     assert.equal(capture.structuredContent.data.windowId, 8);
     assert.equal(capture.structuredContent.data.byteLength, 11);
+    assert.deepEqual(capture.structuredContent.data.region, {
+      x: 10,
+      y: 20,
+      width: 320,
+      height: 180,
+    });
+    assert.equal(capture.structuredContent.data.maxWidth, 160);
+    assert.equal(capture.structuredContent.data.maxHeight, 90);
+    assert.equal(capture.structuredContent.data.projectRevision, 12);
+    assert.equal(capture.structuredContent.data.sceneName, 'Game');
     assert.equal('imageBuffer' in capture.structuredContent.data, false);
+    assert.equal(desktopCalls[0][1].windowId, 8);
 
     const input = await client.callTool({
       name: 'preview.input.send',

@@ -53,6 +53,42 @@ test('captureWindowPng rejects oversized PNG responses', async () => {
   );
 });
 
+test('captureWindowPng forwards crop region and bounds output dimensions', async () => {
+  const region = { x: 10, y: 20, width: 1000, height: 500 };
+  const resizedPng = Buffer.from('resized-png');
+  let receivedRegion = null;
+  const targetWindow = {
+    webContents: {
+      capturePage: async requestedRegion => {
+        receivedRegion = requestedRegion;
+        return {
+          getSize: () => ({ width: 1000, height: 500 }),
+          resize: options => {
+            assert.deepEqual(options, {
+              width: 400,
+              height: 200,
+              quality: 'good',
+            });
+            return { toPNG: () => resizedPng };
+          },
+          toPNG: () => Buffer.from('full-size-png'),
+        };
+      },
+    },
+  };
+
+  const result = await captureWindowPng({
+    targetWindow,
+    desktopCapturer: null,
+    region,
+    maxWidth: 400,
+    maxHeight: 400,
+  });
+
+  assert.deepEqual(receivedRegion, region);
+  assert.equal(result, resizedPng);
+});
+
 test('capture service lists semantic window metadata and captures by id', async () => {
   const png = Buffer.from('png');
   const editorWindow = {

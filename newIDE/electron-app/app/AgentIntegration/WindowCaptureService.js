@@ -6,9 +6,34 @@ const makeError = code => {
   return error;
 };
 
+const resizeNativeImage = (image, maxWidth, maxHeight) => {
+  if (
+    !image ||
+    typeof image.getSize !== 'function' ||
+    typeof image.resize !== 'function' ||
+    (!maxWidth && !maxHeight)
+  ) {
+    return image;
+  }
+  const size = image.getSize();
+  if (!size || !size.width || !size.height) return image;
+  const widthScale = maxWidth ? maxWidth / size.width : 1;
+  const heightScale = maxHeight ? maxHeight / size.height : 1;
+  const scale = Math.min(1, widthScale, heightScale);
+  if (scale >= 1) return image;
+  return image.resize({
+    width: Math.max(1, Math.floor(size.width * scale)),
+    height: Math.max(1, Math.floor(size.height * scale)),
+    quality: 'good',
+  });
+};
+
 const captureWindowPng = async ({
   targetWindow,
   desktopCapturer,
+  region,
+  maxWidth,
+  maxHeight,
   maxCaptureBytes = DEFAULT_MAX_CAPTURE_BYTES,
 }) => {
   const ensureCaptureSize = buffer => {
@@ -18,8 +43,10 @@ const captureWindowPng = async ({
     return buffer;
   };
 
-  const image = await targetWindow.webContents.capturePage();
-  const directBuffer = image && image.toPNG ? image.toPNG() : Buffer.alloc(0);
+  const image = await targetWindow.webContents.capturePage(region);
+  const resizedImage = resizeNativeImage(image, maxWidth, maxHeight);
+  const directBuffer =
+    resizedImage && resizedImage.toPNG ? resizedImage.toPNG() : Buffer.alloc(0);
   if (directBuffer.length > 0) return ensureCaptureSize(directBuffer);
 
   if (!desktopCapturer || typeof desktopCapturer.getSources !== 'function') {
@@ -47,9 +74,14 @@ const captureWindowPng = async ({
     source = sources.find(candidate => candidate.name === title);
   }
 
+  let fallbackImage = source && source.thumbnail ? source.thumbnail : null;
+  if (fallbackImage && region && typeof fallbackImage.crop === 'function') {
+    fallbackImage = fallbackImage.crop(region);
+  }
+  fallbackImage = resizeNativeImage(fallbackImage, maxWidth, maxHeight);
   const fallbackBuffer =
-    source && source.thumbnail && source.thumbnail.toPNG
-      ? source.thumbnail.toPNG()
+    fallbackImage && fallbackImage.toPNG
+      ? fallbackImage.toPNG()
       : Buffer.alloc(0);
   if (fallbackBuffer.length > 0) return ensureCaptureSize(fallbackBuffer);
   throw makeError('window_capture_empty');
@@ -90,14 +122,20 @@ const createWindowCaptureService = ({
     return targetWindow;
   };
 
-  const capture = async ({ windowId } = {}) => {
+  const capture = async ({ windowId, region, maxWidth, maxHeight } = {}) => {
     const targetWindow = resolveWindow(windowId);
     return {
       windowId: targetWindow.id,
       mimeType: 'image/png',
+      region: region || null,
+      maxWidth: maxWidth || null,
+      maxHeight: maxHeight || null,
       data: await captureWindowPng({
         targetWindow,
         desktopCapturer,
+        region,
+        maxWidth,
+        maxHeight,
         maxCaptureBytes,
       }),
     };
