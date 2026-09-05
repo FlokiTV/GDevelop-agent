@@ -178,9 +178,10 @@ export const createEditorFunctionCommandDescriptors = ({
       defaultTimeoutMs: 180000,
     }),
     validateInput: input => assertFunctionName(input.name),
-    execute: ({ environment, input }) => {
+    execute: ({ environment, input, requestContext }) => {
       assertExecutableFunction(input.name, environment.project || null);
       return editorFunctionService.run({
+        signal: requestContext && requestContext.signal,
         calls: [
           {
             name: input.name,
@@ -220,11 +221,12 @@ export const createEditorFunctionCommandDescriptors = ({
         }
       });
     },
-    execute: ({ environment, input }) => {
+    execute: ({ environment, input, requestContext }) => {
       input.calls.forEach(call =>
         assertExecutableFunction(call.name, environment.project || null)
       );
       return editorFunctionService.run({
+        signal: requestContext && requestContext.signal,
         calls: input.calls,
         save: !!input.save,
       });

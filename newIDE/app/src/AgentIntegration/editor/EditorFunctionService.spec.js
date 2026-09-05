@@ -405,6 +405,85 @@ describe('EditorFunctionService', () => {
     });
   });
 
+  it('rejects an already-cancelled operation before executing any EditorFunction', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const { service, processEditorFunctionCalls, saveProject } = createService();
+
+    await expect(
+      service.run({
+        calls: [{ name: 'scene.inspect' }],
+        save: true,
+        signal: controller.signal,
+      })
+    ).rejects.toMatchObject({ code: 'operation_cancelled' });
+    expect(processEditorFunctionCalls).not.toHaveBeenCalled();
+    expect(saveProject).not.toHaveBeenCalled();
+  });
+
+  it('preserves dirty state but skips save when cancellation arrives during a mutating batch', async () => {
+    const controller = new AbortController();
+    const processEditorFunctionCalls = jest.fn(async () => {
+      controller.abort();
+      return {
+        results: [
+          { status: 'finished', success: true, didModifyProject: true },
+        ],
+        createdSceneNames: [],
+        createdProject: null,
+      };
+    });
+    const {
+      service,
+      triggerUnsavedChanges,
+      forceUpdate,
+      saveProject,
+    } = createService({ processEditorFunctionCalls });
+
+    await expect(
+      service.run({
+        calls: [{ name: 'scene.create' }],
+        save: true,
+        signal: controller.signal,
+      })
+    ).rejects.toMatchObject({ code: 'operation_cancelled' });
+    expect(triggerUnsavedChanges).toHaveBeenCalledTimes(1);
+    expect(forceUpdate).toHaveBeenCalledTimes(1);
+    expect(saveProject).not.toHaveBeenCalled();
+  });
+
+  it('stops a gameplay batch between calls after cancellation and releases its frame watcher', async () => {
+    const controller = new AbortController();
+    const processEditorFunctionCalls = jest.fn(async () => {
+      controller.abort();
+      return {
+        results: [
+          { status: 'finished', success: true, didModifyProject: false },
+        ],
+        createdSceneNames: [],
+        createdProject: null,
+      };
+    });
+    const {
+      service,
+      prepareGameplayTestRun,
+      stopWatching,
+    } = createService({ processEditorFunctionCalls });
+
+    await expect(
+      service.run({
+        calls: [
+          { name: 'run_gameplay_test', arguments: { test_name: 'First' } },
+          { name: 'run_gameplay_test', arguments: { test_name: 'Second' } },
+        ],
+        signal: controller.signal,
+      })
+    ).rejects.toMatchObject({ code: 'operation_cancelled' });
+    expect(processEditorFunctionCalls).toHaveBeenCalledTimes(1);
+    expect(prepareGameplayTestRun).toHaveBeenCalledTimes(1);
+    expect(stopWatching).toHaveBeenCalledTimes(1);
+  });
+
   it('rejects invalid batches and explicit save without an open project', async () => {
     const { service } = createService();
     await expect(service.run({ calls: [] })).rejects.toThrow('no_function_calls');

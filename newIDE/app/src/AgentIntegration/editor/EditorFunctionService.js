@@ -1,4 +1,5 @@
 // @flow
+import { AgentError } from '../core/AgentError';
 
 export type AgentFunctionCall = {|
   name: string,
@@ -123,10 +124,23 @@ export const createEditorFunctionService = ({
   const run = async ({
     calls,
     save = false,
+    signal = null,
   }: {|
     calls: Array<AgentFunctionCall>,
     save?: boolean,
+    signal?: any,
   |}) => {
+    const throwIfCancelled = () => {
+      if (signal && signal.aborted) {
+        throw new AgentError({
+          code: 'operation_cancelled',
+          message: 'The editor function operation was cancelled.',
+          retryable: false,
+        });
+      }
+    };
+
+    throwIfCancelled();
     if (calls.length === 0) throw new Error('no_function_calls');
     if (calls.length > 100) throw new Error('too_many_function_calls');
 
@@ -249,6 +263,7 @@ export const createEditorFunctionService = ({
         if (processedCall.createdProject) {
           createdProject = processedCall.createdProject;
         }
+        if (signal && signal.aborted) break;
       }
       processedCallsResult = { results, createdSceneNames, createdProject };
     } else {
@@ -277,6 +292,8 @@ export const createEditorFunctionService = ({
       triggerUnsavedChanges();
       forceUpdate();
     }
+
+    throwIfCancelled();
 
     let saved = false;
     if (save) {
