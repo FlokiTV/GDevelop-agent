@@ -23,7 +23,7 @@ const createProject = () => {
   return project;
 };
 
-describe('AgentApi CheckpointTools', () => {
+describe('AgentIntegration CheckpointTools', () => {
   beforeEach(() => {
     __resetCheckpointStoresForTests();
   });

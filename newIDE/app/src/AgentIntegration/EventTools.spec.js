@@ -3,7 +3,7 @@ import { createEventTools } from './EventTools';
 
 const gd: libGDevelop = global.gd;
 
-describe('AgentApi EventTools', () => {
+describe('AgentIntegration EventTools', () => {
   let project: gdProject;
   let source: gdLayout;
   let target: gdLayout;

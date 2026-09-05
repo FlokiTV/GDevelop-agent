@@ -1,7 +1,7 @@
 // @flow
 import { closeAllPreviewWindowsForAgent } from './PreviewLifecycleTools';
 
-describe('AgentApi PreviewLifecycleTools', () => {
+describe('AgentIntegration PreviewLifecycleTools', () => {
   it('closes native preview windows without touching the debugger server', async () => {
     const ipcRenderer = { invoke: jest.fn(() => Promise.resolve()) };
 

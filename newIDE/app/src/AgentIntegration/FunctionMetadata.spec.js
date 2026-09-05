@@ -12,7 +12,7 @@ import {
 
 const gd: libGDevelop = global.gd;
 
-describe('AgentApi FunctionMetadata', () => {
+describe('AgentIntegration FunctionMetadata', () => {
   it('covers every exported native EditorFunction exactly once', () => {
     const expectedNames = [
       ...new Set([

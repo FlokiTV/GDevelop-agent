@@ -5,7 +5,7 @@ jest.mock('../ExportAndShare/Headless/ExportLocalHtml5Headless', () => ({
   exportLocalHtml5Headless: jest.fn(),
 }));
 
-describe('AgentApi ExportTools', () => {
+describe('AgentIntegration ExportTools', () => {
   it('restores the project compilation directory after a successful export', async () => {
     let currentDirectory = 'C:/previous';
     const project = ({

@@ -15,7 +15,7 @@ const i18n: any = {
       : String(value),
 };
 
-describe('AgentApi DiagnosticsTools', () => {
+describe('AgentIntegration DiagnosticsTools', () => {
   let project: gdProject;
 
   beforeEach(() => {

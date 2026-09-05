@@ -70,7 +70,7 @@ const createDebuggerServer = ({
   return server;
 };
 
-describe('AgentApi RuntimeTelemetry', () => {
+describe('AgentIntegration RuntimeTelemetry', () => {
   it('summarizes scene, time, instances, variables and behaviors', () => {
     const snapshot = summarizeRuntimeDump(debuggerDump, { maxInstances: 200 });
 

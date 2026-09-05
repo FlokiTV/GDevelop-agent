@@ -6,7 +6,7 @@ import {
 
 const gd: libGDevelop = global.gd;
 
-describe('AgentApi EditorVisualTools', () => {
+describe('AgentIntegration EditorVisualTools', () => {
   let project: gdProject;
   let layout: gdLayout;
   let player1: gdInitialInstance;

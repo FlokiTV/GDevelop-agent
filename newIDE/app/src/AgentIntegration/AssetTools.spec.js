@@ -61,7 +61,7 @@ const makeTools = (project: gdProject) => {
   };
 };
 
-describe('AgentApi AssetTools', () => {
+describe('AgentIntegration AssetTools', () => {
   it('lists used and orphaned resources and inspects object usage', () => {
     const project = gd.ProjectHelper.createNewGDJSProject();
     addImageResource(project, 'used.png');
