@@ -1,12 +1,11 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const http = require('node:http');
 const {
   Client,
   StreamableHTTPClientTransport,
 } = require('@modelcontextprotocol/client');
-const {
-  PROTOCOL_VERSION,
-} = require('./McpServerFactory');
+const { PROTOCOL_VERSION } = require('./McpServerFactory');
 const { startMcpHttpServer } = require('./McpHttpServer');
 const {
   createDesktopCommandRegistry,
@@ -124,17 +123,21 @@ test('official MCP client initializes, lists registry tools and calls them direc
     assert.equal(client.getNegotiatedProtocolVersion(), PROTOCOL_VERSION);
 
     const tools = await client.listTools();
-    assert.deepEqual(
-      tools.tools.map(tool => tool.name),
-      ['project.save', 'project.status']
-    );
+    assert.deepEqual(tools.tools.map(tool => tool.name), [
+      'project.save',
+      'project.status',
+    ]);
     const saveTool = tools.tools.find(tool => tool.name === 'project.save');
     assert.equal(saveTool.annotations.readOnlyHint, false);
     assert.equal(saveTool.annotations.idempotentHint, false);
     assert.equal(saveTool._meta['gdevelop/defaultTimeoutMs'], 90000);
     assert.deepEqual(saveTool.inputSchema.examples, [{}]);
     assert.equal(saveTool.outputSchema.type, 'object');
-    assert.deepEqual(saveTool.outputSchema.required, ['command', 'data', 'meta']);
+    assert.deepEqual(saveTool.outputSchema.required, [
+      'command',
+      'data',
+      'meta',
+    ]);
 
     const result = await client.callTool({
       name: 'project.status',
@@ -182,10 +185,10 @@ test('isolates renderer targeting across concurrent MCP clients', async () => {
       call => call.command === 'project.status'
     );
     assert.equal(directCalls.length, 2);
-    assert.deepEqual(
-      directCalls.map(call => call.windowId).sort(),
-      ['17', '23']
-    );
+    assert.deepEqual(directCalls.map(call => call.windowId).sort(), [
+      '17',
+      '23',
+    ]);
   } finally {
     await clientA.close();
     await clientB.close();
@@ -203,7 +206,11 @@ test('allows a fresh MCP client to reconnect after the previous client closes', 
   });
 
   try {
-    const firstClient = await connectClient({ url: host.url, token, windowId: 21 });
+    const firstClient = await connectClient({
+      url: host.url,
+      token,
+      windowId: 21,
+    });
     const firstResult = await firstClient.callTool({
       name: 'project.status',
       arguments: {},
@@ -211,7 +218,11 @@ test('allows a fresh MCP client to reconnect after the previous client closes', 
     assert.equal(firstResult.structuredContent.command, 'project.status');
     await firstClient.close();
 
-    const secondClient = await connectClient({ url: host.url, token, windowId: 22 });
+    const secondClient = await connectClient({
+      url: host.url,
+      token,
+      windowId: 22,
+    });
     try {
       const secondResult = await secondClient.callTool({
         name: 'project.status',
@@ -225,10 +236,7 @@ test('allows a fresh MCP client to reconnect after the previous client closes', 
     const statusCalls = rendererBridge.calls.filter(
       call => call.command === 'project.status'
     );
-    assert.deepEqual(
-      statusCalls.map(call => call.windowId),
-      ['21', '22']
-    );
+    assert.deepEqual(statusCalls.map(call => call.windowId), ['21', '22']);
   } finally {
     await host.stop();
   }
@@ -265,6 +273,88 @@ test('rejects missing auth and non-local origins before MCP dispatch', async () 
   }
 });
 
+test('rejects malformed and oversized authenticated POST bodies before MCP dispatch', async () => {
+  const rendererBridge = makeBridge();
+  const host = await startMcpHttpServer({
+    rendererBridge,
+    token: 'security-token',
+    port: 0,
+    maxBodyBytes: 128,
+  });
+  try {
+    const malformed = await fetch(host.url, {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer security-token',
+        'Content-Type': 'application/json',
+      },
+      body: '{not-json',
+    });
+    assert.equal(malformed.status, 400);
+    const malformedBody = await malformed.json();
+    assert.equal(malformedBody.error.code, -32700);
+
+    const oversized = await fetch(host.url, {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer security-token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ payload: 'x'.repeat(256) }),
+    });
+    assert.equal(oversized.status, 413);
+    const oversizedBody = await oversized.json();
+    assert.equal(oversizedBody.error.code, -32003);
+    assert.equal(rendererBridge.calls.length, 0);
+  } finally {
+    await host.stop();
+  }
+});
+
+test('applies backpressure before dispatch when the authenticated request limit is saturated', async () => {
+  const rendererBridge = makeBridge();
+  const host = await startMcpHttpServer({
+    rendererBridge,
+    token: 'backpressure-token',
+    port: 0,
+    maxConcurrentRequests: 1,
+  });
+  const target = new URL(host.url);
+  const heldRequest = http.request({
+    hostname: target.hostname,
+    port: target.port,
+    path: target.pathname,
+    method: 'POST',
+    headers: {
+      Authorization: 'Bearer backpressure-token',
+      'Content-Type': 'application/json',
+      'Content-Length': '64',
+    },
+  });
+  heldRequest.on('error', () => {});
+  heldRequest.write('{');
+
+  try {
+    await new Promise(resolve => setTimeout(resolve, 20));
+    const saturated = await fetch(host.url, {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer backpressure-token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({}),
+    });
+    assert.equal(saturated.status, 429);
+    assert.equal(saturated.headers.get('retry-after'), '1');
+    const saturatedBody = await saturated.json();
+    assert.equal(saturatedBody.error.code, -32002);
+    assert.equal(rendererBridge.calls.length, 0);
+  } finally {
+    heldRequest.destroy();
+    await host.stop();
+  }
+});
+
 test('official MCP client calls desktop capture and preview input without renderer dispatch', async () => {
   const rendererBridge = makeBridge();
   const desktopCalls = [];
@@ -289,7 +379,10 @@ test('official MCP client calls desktop capture and preview input without render
       resetInput: input => ({ reset: true, windowId: input.previewWindowId }),
       sendTouch: input => ({ sent: true, windowId: input.previewWindowId }),
       sendGamepad: input => ({ sent: true, windowId: input.previewWindowId }),
-      getRuntimeStatus: input => ({ installed: true, windowId: input.previewWindowId }),
+      getRuntimeStatus: input => ({
+        installed: true,
+        windowId: input.previewWindowId,
+      }),
       resetRuntime: input => ({ reset: true, windowId: input.previewWindowId }),
     },
   });
@@ -335,10 +428,10 @@ test('official MCP client calls desktop capture and preview input without render
       },
     });
     assert.equal(input.structuredContent.data.sent, true);
-    assert.deepEqual(
-      desktopCalls.map(call => call[0]),
-      ['capture', 'sendInput']
-    );
+    assert.deepEqual(desktopCalls.map(call => call[0]), [
+      'capture',
+      'sendInput',
+    ]);
     assert.equal(
       rendererBridge.calls.some(
         call =>
