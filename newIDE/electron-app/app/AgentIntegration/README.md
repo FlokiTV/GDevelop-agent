@@ -164,6 +164,8 @@ A safe agent workflow is:
 10. call `project.save` or `project.save-as` only when saving is explicitly intended;
 11. use `export.html5` when an output build is required.
 
+Mutations never auto-hot-reload as a hidden side effect. After a hot-reload-compatible edit, the agent explicitly calls `preview.hot-reload`; ordinary iteration should keep the existing preview/debugger alive rather than closing and restarting it. `preview.start` is reserved for starting a missing preview, while restart is only used when the underlying GDevelop lifecycle genuinely requires it.
+
 Normal authoring must not close/reopen the project as a synchronization mechanism. Full serialized project reload is reserved for explicit checkpoint/transaction restore where replacing the complete project is the intended safety operation.
 
 ## Save and destructive operations

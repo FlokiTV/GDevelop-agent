@@ -417,6 +417,212 @@ test('applies global and per-client backpressure before MCP dispatch', async () 
   }
 });
 
+test('official MCP client completes edit hot-reload input assert edit loop without reopening the project', async () => {
+  let projectRevision = 0;
+  const rendererCalls = [];
+  const descriptors = [
+    {
+      ...makeDescriptor('events.update', {
+        readOnly: false,
+        idempotent: false,
+        requiresProject: true,
+        modifiesProject: true,
+      }),
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['sceneName', 'handle', 'eventJson'],
+        properties: {
+          sceneName: { type: 'string' },
+          handle: { type: 'string' },
+          eventJson: { type: 'object' },
+        },
+      },
+    },
+    makeDescriptor('preview.hot-reload', {
+      readOnly: true,
+      idempotent: false,
+      requiresProject: true,
+    }),
+    {
+      ...makeDescriptor('runtime.assert'),
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['expression'],
+        properties: { expression: { type: 'string' } },
+      },
+    },
+  ];
+  const rendererBridge = {
+    calls: rendererCalls,
+    executeCommand: async options => {
+      rendererCalls.push(options);
+      if (options.command === 'agent.commands.list') {
+        return {
+          command: options.command,
+          data: { commands: descriptors },
+          meta: { traceId: null, readOnly: true, modifiesProject: false },
+        };
+      }
+      if (options.command === 'events.update') {
+        assert.equal(options.expectedRevision, projectRevision);
+        projectRevision++;
+        return {
+          command: options.command,
+          data: { updated: true, sceneName: options.input.sceneName },
+          meta: {
+            traceId: options.traceId || null,
+            readOnly: false,
+            modifiesProject: true,
+            projectRevision,
+          },
+        };
+      }
+      if (options.command === 'preview.hot-reload') {
+        return {
+          command: options.command,
+          data: {
+            reloaded: true,
+            running: true,
+            debuggerIds: ['preview-1'],
+          },
+          meta: {
+            traceId: options.traceId || null,
+            readOnly: true,
+            modifiesProject: false,
+            projectRevision,
+          },
+        };
+      }
+      if (options.command === 'runtime.assert') {
+        return {
+          command: options.command,
+          data: { passed: true, debuggerId: 'preview-1' },
+          meta: {
+            traceId: options.traceId || null,
+            readOnly: true,
+            modifiesProject: false,
+            projectRevision,
+          },
+        };
+      }
+      throw new Error(`unexpected_command:${options.command}`);
+    },
+  };
+  const desktopCalls = [];
+  const desktopCommandRegistry = createDesktopCommandRegistry({
+    windowCaptureService: {
+      listWindows: () => [{ windowId: 8, previewWindow: true }],
+      capture: async () => {
+        throw new Error('capture_not_expected');
+      },
+    },
+    previewInteractionService: {
+      sendInput: input => {
+        desktopCalls.push(input);
+        return { sent: true, windowId: input.previewWindowId };
+      },
+      sendSequence: async input => ({ sent: true, steps: input.steps.length }),
+      resetInput: input => ({ reset: true, windowId: input.previewWindowId }),
+      sendTouch: input => ({ sent: true, windowId: input.previewWindowId }),
+      sendGamepad: input => ({ sent: true, windowId: input.previewWindowId }),
+      getRuntimeStatus: input => ({
+        installed: true,
+        windowId: input.previewWindowId,
+      }),
+      resetRuntime: input => ({ reset: true, windowId: input.previewWindowId }),
+    },
+  });
+  const token = 'live-loop-token';
+  const host = await startMcpHttpServer({
+    rendererBridge,
+    desktopCommandRegistry,
+    token,
+    port: 0,
+  });
+  const client = await connectClient({ url: host.url, token, windowId: 17 });
+
+  try {
+    const firstEdit = await client.callTool({
+      name: 'events.update',
+      arguments: {
+        sceneName: 'Game',
+        handle: 'event:id:player-loop',
+        eventJson: { type: 'BuiltinCommonInstructions::Standard' },
+        expectedRevision: 0,
+        idempotencyKey: 'loop-edit-1',
+      },
+    });
+    assert.equal(firstEdit.structuredContent.meta.projectRevision, 1);
+
+    const hotReload = await client.callTool({
+      name: 'preview.hot-reload',
+      arguments: {},
+    });
+    assert.equal(hotReload.structuredContent.data.running, true);
+    assert.deepEqual(hotReload.structuredContent.data.debuggerIds, [
+      'preview-1',
+    ]);
+
+    const input = await client.callTool({
+      name: 'preview.input.send',
+      arguments: {
+        previewWindowId: 8,
+        event: { type: 'keyDown', keyCode: 'W' },
+      },
+    });
+    assert.equal(input.structuredContent.data.sent, true);
+
+    const runtimeAssertion = await client.callTool({
+      name: 'runtime.assert',
+      arguments: { expression: 'Player.X() > 0' },
+    });
+    assert.equal(runtimeAssertion.structuredContent.data.passed, true);
+    assert.equal(
+      runtimeAssertion.structuredContent.data.debuggerId,
+      'preview-1'
+    );
+
+    const secondEdit = await client.callTool({
+      name: 'events.update',
+      arguments: {
+        sceneName: 'Game',
+        handle: 'event:id:player-loop',
+        eventJson: {
+          type: 'BuiltinCommonInstructions::Standard',
+          disabled: true,
+        },
+        expectedRevision: 1,
+        idempotencyKey: 'loop-edit-2',
+      },
+    });
+    assert.equal(secondEdit.structuredContent.meta.projectRevision, 2);
+
+    const executedRendererCommands = rendererCalls
+      .map(call => call.command)
+      .filter(command => command !== 'agent.commands.list');
+    assert.deepEqual(executedRendererCommands, [
+      'events.update',
+      'preview.hot-reload',
+      'runtime.assert',
+      'events.update',
+    ]);
+    assert.equal(desktopCalls.length, 1);
+    assert.equal(desktopCalls[0].previewWindowId, 8);
+    assert.equal(
+      rendererCalls.some(
+        call =>
+          call.command === 'project.open' || call.command === 'project.close'
+      ),
+      false
+    );
+  } finally {
+    await client.close();
+    await host.stop();
+  }
+});
+
 test('official MCP client calls desktop capture and preview input without renderer dispatch', async () => {
   const rendererBridge = makeBridge();
   const desktopCalls = [];
