@@ -185,6 +185,47 @@ test('isolates renderer targeting across concurrent MCP clients', async () => {
   }
 });
 
+test('allows a fresh MCP client to reconnect after the previous client closes', async () => {
+  const rendererBridge = makeBridge();
+  const token = 'reconnect-token';
+  const host = await startMcpHttpServer({
+    rendererBridge,
+    token,
+    port: 0,
+  });
+
+  try {
+    const firstClient = await connectClient({ url: host.url, token, windowId: 21 });
+    const firstResult = await firstClient.callTool({
+      name: 'project.status',
+      arguments: {},
+    });
+    assert.equal(firstResult.structuredContent.command, 'project.status');
+    await firstClient.close();
+
+    const secondClient = await connectClient({ url: host.url, token, windowId: 22 });
+    try {
+      const secondResult = await secondClient.callTool({
+        name: 'project.status',
+        arguments: {},
+      });
+      assert.equal(secondResult.structuredContent.command, 'project.status');
+    } finally {
+      await secondClient.close();
+    }
+
+    const statusCalls = rendererBridge.calls.filter(
+      call => call.command === 'project.status'
+    );
+    assert.deepEqual(
+      statusCalls.map(call => call.windowId),
+      ['21', '22']
+    );
+  } finally {
+    await host.stop();
+  }
+});
+
 test('rejects missing auth and non-local origins before MCP dispatch', async () => {
   const rendererBridge = makeBridge();
   const host = await startMcpHttpServer({
