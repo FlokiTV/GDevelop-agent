@@ -80,10 +80,13 @@ describe('AgentIntegration CheckpointTools', () => {
       label: 'agent edit',
       hadUnsavedChanges: false,
     });
-    expect(getTransactionStatus(project).active).toBe(true);
+    expect(getTransactionStatus(project)).toMatchObject({
+      active: true,
+      transactionId: transaction.id,
+    });
 
     project.insertNewLayout('AddedDuringTransaction', 1);
-    const committed = commitTransaction(project);
+    const committed = commitTransaction(project, transaction.id);
     expect(committed.committed).toBe(true);
     expect(committed.checkpoint.id).toBe(transaction.id);
     expect(committed.diff.scenes.added).toContain('AddedDuringTransaction');
@@ -100,13 +103,31 @@ describe('AgentIntegration CheckpointTools', () => {
     });
     project.setName('Broken Edit');
 
-    const prepared = prepareTransactionRollback(project);
+    const prepared = prepareTransactionRollback(project, transaction.id);
     expect(prepared.checkpoint.id).toBe(transaction.id);
     expect(prepared.diff.changed).toBe(true);
     expect(getTransactionStatus(project).active).toBe(true);
 
     completeTransactionRollback(project.getProjectUuid(), transaction.id);
     expect(getTransactionStatus(project).active).toBe(false);
+    project.delete();
+  });
+
+  it('rejects commit or rollback preparation from another transaction handle', () => {
+    const project = createProject();
+    const transaction = beginTransaction({
+      project,
+      fileIdentifier: null,
+      hadUnsavedChanges: false,
+    });
+
+    expect(() => commitTransaction(project, 'other-transaction')).toThrow(
+      `transaction_handle_mismatch:${transaction.id}`
+    );
+    expect(() =>
+      prepareTransactionRollback(project, 'other-transaction')
+    ).toThrow(`transaction_handle_mismatch:${transaction.id}`);
+    expect(getTransactionStatus(project).transactionId).toBe(transaction.id);
     project.delete();
   });
 

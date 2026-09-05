@@ -86,12 +86,21 @@ describe('SafetyService', () => {
   });
 
   test('rolls back and only completes transaction state after restore', async () => {
+    checkpointTools.getTransactionStatus.mockReturnValue({
+      active: true,
+      transactionId: 'tx-cp',
+      checkpoint: { id: 'tx-cp' },
+    });
     checkpointTools.prepareTransactionRollback.mockReturnValue({
       checkpoint: { id: 'tx-cp' },
       diff: { changed: true },
     });
-    const { service, restoreProjectCheckpoint } = makeService();
-    const result = await service.rollbackTransaction();
+    const { service, project, restoreProjectCheckpoint } = makeService();
+    const result = await service.rollbackTransaction({ transactionId: 'tx-cp' });
+    expect(checkpointTools.prepareTransactionRollback).toHaveBeenCalledWith(
+      project,
+      'tx-cp'
+    );
     expect(restoreProjectCheckpoint).toHaveBeenCalledWith({ id: 'tx-cp' });
     expect(checkpointTools.completeTransactionRollback).toHaveBeenCalledWith(
       'project-uuid',
@@ -102,6 +111,32 @@ describe('SafetyService', () => {
       checkpointId: 'tx-cp',
       diff: { changed: true },
     });
+  });
+
+  test('rejects transaction handles from another client', async () => {
+    checkpointTools.getTransactionStatus.mockReturnValue({
+      active: true,
+      transactionId: 'tx-owner',
+      checkpoint: { id: 'tx-owner' },
+    });
+    const { service } = makeService();
+
+    expect(() =>
+      service.commitTransaction({ transactionId: 'tx-other' })
+    ).toThrow(
+      expect.objectContaining({
+        code: 'transaction_handle_mismatch',
+        details: {
+          transactionId: 'tx-other',
+          activeTransactionId: 'tx-owner',
+        },
+      })
+    );
+    await expect(
+      service.rollbackTransaction({ transactionId: 'tx-other' })
+    ).rejects.toMatchObject({ code: 'transaction_handle_mismatch' });
+    expect(checkpointTools.commitTransaction).not.toHaveBeenCalled();
+    expect(checkpointTools.prepareTransactionRollback).not.toHaveBeenCalled();
   });
 
   test('requires a live project for safety operations', () => {

@@ -294,39 +294,61 @@ export const beginTransaction = ({
   store.activeTransactionId = checkpoint.id;
   return {
     ...checkpoint,
+    transactionId: checkpoint.id,
     activeTransaction: true,
   };
 };
 
 export const getTransactionStatus = (project: gdProject) => {
   const store = getStore(project);
-  if (!store.activeTransactionId) return { active: false, checkpoint: null };
+  if (!store.activeTransactionId) {
+    return { active: false, transactionId: null, checkpoint: null };
+  }
   const checkpoint = getCheckpoint(project, store.activeTransactionId);
   return {
     active: true,
+    transactionId: store.activeTransactionId,
     checkpoint: getCheckpointSummary(checkpoint, store.activeTransactionId),
   };
 };
 
-export const commitTransaction = (project: gdProject) => {
+const requireActiveTransaction = (
+  project: gdProject,
+  transactionId: string
+): { store: ProjectCheckpointStore, checkpoint: ProjectCheckpoint } => {
   const store = getStore(project);
   if (!store.activeTransactionId) throw new Error('no_active_transaction');
-  const checkpoint = getCheckpoint(project, store.activeTransactionId);
+  if (store.activeTransactionId !== transactionId) {
+    throw new Error(`transaction_handle_mismatch:${store.activeTransactionId}`);
+  }
+  return {
+    store,
+    checkpoint: getCheckpoint(project, store.activeTransactionId),
+  };
+};
+
+export const commitTransaction = (
+  project: gdProject,
+  transactionId: string
+) => {
+  const { store, checkpoint } = requireActiveTransaction(project, transactionId);
   const diff = diffSnapshots(checkpoint.snapshot, serializeProject(project));
   store.activeTransactionId = null;
   return {
     committed: true,
+    transactionId,
     checkpoint: getCheckpointSummary(checkpoint, null),
     diff,
   };
 };
 
-export const prepareTransactionRollback = (project: gdProject) => {
-  const store = getStore(project);
-  if (!store.activeTransactionId) throw new Error('no_active_transaction');
-  const checkpoint = getCheckpoint(project, store.activeTransactionId);
+export const prepareTransactionRollback = (
+  project: gdProject,
+  transactionId: string
+) => {
+  const { checkpoint } = requireActiveTransaction(project, transactionId);
   const diff = diffSnapshots(checkpoint.snapshot, serializeProject(project));
-  return { checkpoint, diff };
+  return { transactionId, checkpoint, diff };
 };
 
 export const completeTransactionRollback = (

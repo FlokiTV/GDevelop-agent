@@ -11,8 +11,8 @@ const makeHost = (project: any = {}) => {
     restoreCheckpoint: jest.fn(async input => ({ restored: true, input })),
     getTransactionStatus: jest.fn(() => ({ active: false })),
     beginTransaction: jest.fn(input => ({ begun: true, input })),
-    commitTransaction: jest.fn(() => ({ committed: true })),
-    rollbackTransaction: jest.fn(async () => ({ rolledBack: true })),
+    commitTransaction: jest.fn(input => ({ committed: true, input })),
+    rollbackTransaction: jest.fn(async input => ({ rolledBack: true, input })),
   };
   return {
     safetyService,
@@ -51,22 +51,35 @@ describe('SafetyCommands', () => {
     });
   });
 
-  test('routes transaction begin/commit/rollback through the service', async () => {
+  test('routes transaction begin/commit/rollback through the service with explicit handles', async () => {
     const { host, safetyService } = makeHost();
     await host.execute('safety.transactions.begin', { label: 'tx' });
-    await host.execute('safety.transactions.commit', {});
-    await host.execute('safety.transactions.rollback', {});
+    await host.execute('safety.transactions.commit', { transactionId: 'tx-1' });
+    await host.execute('safety.transactions.rollback', { transactionId: 'tx-1' });
     expect(safetyService.beginTransaction).toHaveBeenCalledWith({ label: 'tx' });
-    expect(safetyService.commitTransaction).toHaveBeenCalledTimes(1);
-    expect(safetyService.rollbackTransaction).toHaveBeenCalledTimes(1);
+    expect(safetyService.commitTransaction).toHaveBeenCalledWith({
+      transactionId: 'tx-1',
+    });
+    expect(safetyService.rollbackTransaction).toHaveBeenCalledWith({
+      transactionId: 'tx-1',
+    });
   });
 
-  test('requires checkpoint ids and an open project', async () => {
+  test('requires checkpoint ids, transaction ids and an open project', async () => {
     const { host, safetyService } = makeHost();
     await expect(
       host.execute('safety.checkpoints.restore', {})
     ).rejects.toMatchObject({ code: 'missing_checkpoint_id' });
     expect(safetyService.restoreCheckpoint).not.toHaveBeenCalled();
+
+    await expect(
+      host.execute('safety.transactions.commit', {})
+    ).rejects.toMatchObject({ code: 'missing_transaction_id' });
+    await expect(
+      host.execute('safety.transactions.rollback', {})
+    ).rejects.toMatchObject({ code: 'missing_transaction_id' });
+    expect(safetyService.commitTransaction).not.toHaveBeenCalled();
+    expect(safetyService.rollbackTransaction).not.toHaveBeenCalled();
 
     const projectless = makeHost(null);
     await expect(

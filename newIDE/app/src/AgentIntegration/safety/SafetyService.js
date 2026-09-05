@@ -32,6 +32,32 @@ const requireCheckpointId = (checkpointId: any): string => {
   return checkpointId;
 };
 
+const requireTransactionId = (transactionId: any): string => {
+  if (!transactionId || typeof transactionId !== 'string') {
+    throw new AgentError({ code: 'missing_transaction_id' });
+  }
+  return transactionId;
+};
+
+const assertTransactionHandle = (
+  project: gdProject,
+  transactionId: string
+) => {
+  const status = getTransactionStatus(project);
+  if (!status.active || !status.transactionId) {
+    throw new AgentError({ code: 'no_active_transaction' });
+  }
+  if (status.transactionId !== transactionId) {
+    throw new AgentError({
+      code: 'transaction_handle_mismatch',
+      details: {
+        transactionId,
+        activeTransactionId: status.transactionId,
+      },
+    });
+  }
+};
+
 export const createSafetyService = ({
   project,
   fileIdentifier,
@@ -98,17 +124,28 @@ export const createSafetyService = ({
       label: typeof label === 'string' && label ? label : null,
       hadUnsavedChanges: hasUnsavedChanges,
     });
-    return { begun: true, checkpoint };
+    return {
+      begun: true,
+      transactionId: checkpoint.transactionId,
+      checkpoint,
+    };
   },
 
-  commitTransaction: () => commitTransaction(requireProject(project)),
-
-  rollbackTransaction: async () => {
+  commitTransaction: ({ transactionId }: any = {}) => {
     const currentProject = requireProject(project);
+    const id = requireTransactionId(transactionId);
+    assertTransactionHandle(currentProject, id);
+    return commitTransaction(currentProject, id);
+  },
+
+  rollbackTransaction: async ({ transactionId }: any = {}) => {
+    const currentProject = requireProject(project);
+    const id = requireTransactionId(transactionId);
+    assertTransactionHandle(currentProject, id);
     const projectUuid = currentProject.getProjectUuid();
-    const { checkpoint, diff } = prepareTransactionRollback(currentProject);
+    const { checkpoint, diff } = prepareTransactionRollback(currentProject, id);
     const restored = await restoreProjectCheckpoint(checkpoint);
     completeTransactionRollback(projectUuid, checkpoint.id);
-    return { rolledBack: true, ...restored, diff };
+    return { rolledBack: true, transactionId: id, ...restored, diff };
   },
 });

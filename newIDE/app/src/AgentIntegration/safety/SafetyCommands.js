@@ -24,9 +24,22 @@ const LABEL_SCHEMA = {
   properties: { label: { type: 'string' } },
 };
 
+const TRANSACTION_ID_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['transactionId'],
+  properties: { transactionId: { type: 'string', minLength: 1 } },
+};
+
 const assertCheckpointId = input => {
   if (!input.checkpointId || typeof input.checkpointId !== 'string') {
     throw new AgentError({ code: 'missing_checkpoint_id' });
+  }
+};
+
+const assertTransactionId = input => {
+  if (!input.transactionId || typeof input.transactionId !== 'string') {
+    throw new AgentError({ code: 'missing_transaction_id' });
   }
 };
 
@@ -112,20 +125,22 @@ export const createSafetyCommandDescriptors = ({
   },
   {
     name: 'safety.transactions.commit',
-    description: 'Commit the active transaction and discard its rollback checkpoint.',
-    inputSchema: EMPTY_SCHEMA,
+    description:
+      'Commit the specified active transaction and discard its rollback checkpoint.',
+    inputSchema: TRANSACTION_ID_SCHEMA,
     metadata: makeCommandMetadata({
       readOnly: false,
       idempotent: false,
       requiresProject: true,
     }),
-    execute: () => safetyService.commitTransaction(),
+    validateInput: assertTransactionId,
+    execute: ({ input }) => safetyService.commitTransaction(input),
   },
   {
     name: 'safety.transactions.rollback',
     description:
-      'Rollback the active transaction and restore the previous editor context.',
-    inputSchema: EMPTY_SCHEMA,
+      'Rollback the specified active transaction and restore the previous editor context.',
+    inputSchema: TRANSACTION_ID_SCHEMA,
     metadata: makeCommandMetadata({
       readOnly: false,
       destructive: true,
@@ -133,6 +148,7 @@ export const createSafetyCommandDescriptors = ({
       requiresProject: true,
       modifiesProject: true,
     }),
-    execute: () => safetyService.rollbackTransaction(),
+    validateInput: assertTransactionId,
+    execute: ({ input }) => safetyService.rollbackTransaction(input),
   },
 ];
