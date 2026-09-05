@@ -14,6 +14,7 @@ const DEFAULT_HOST = '127.0.0.1';
 const DEFAULT_PORT = 38473;
 const MCP_PATH = '/mcp';
 const DEFAULT_MAX_BODY_BYTES = 4 * 1024 * 1024;
+const DEFAULT_MAX_JSON_DEPTH = 64;
 const DEFAULT_MAX_CONCURRENT_REQUESTS = 32;
 
 const makeJsonRpcErrorResponse = ({
@@ -37,7 +38,30 @@ const makeJsonRpcErrorResponse = ({
   );
 };
 
-const readJsonBodyWithLimit = async (request, maxBodyBytes) => {
+const assertJsonDepthWithinLimit = (value, maxJsonDepth) => {
+  const stack = [{ value, depth: 1 }];
+  while (stack.length) {
+    const current = stack.pop();
+    if (!current) continue;
+    const { value: currentValue, depth } = current;
+    if (depth > maxJsonDepth) {
+      const error = new Error('request_json_too_deep');
+      error.code = 'request_json_too_deep';
+      throw error;
+    }
+    if (!currentValue || typeof currentValue !== 'object') continue;
+    const children = Array.isArray(currentValue)
+      ? currentValue
+      : Object.values(currentValue);
+    children.forEach(child => stack.push({ value: child, depth: depth + 1 }));
+  }
+};
+
+const readJsonBodyWithLimit = async (
+  request,
+  maxBodyBytes,
+  maxJsonDepth = DEFAULT_MAX_JSON_DEPTH
+) => {
   const contentLength = Number(request.headers['content-length']);
   if (Number.isFinite(contentLength) && contentLength > maxBodyBytes) {
     const error = new Error('request_body_too_large');
@@ -58,7 +82,11 @@ const readJsonBodyWithLimit = async (request, maxBodyBytes) => {
     chunks.push(buffer);
   }
   if (chunks.length === 0) return undefined;
-  return JSON.parse(Buffer.concat(chunks, totalBytes).toString('utf8'));
+  const parsedBody = JSON.parse(
+    Buffer.concat(chunks, totalBytes).toString('utf8')
+  );
+  assertJsonDepthWithinLimit(parsedBody, maxJsonDepth);
+  return parsedBody;
 };
 
 const makeUnauthorizedResponse = response =>
@@ -107,6 +135,7 @@ const startMcpHttpServer = async ({
   host = DEFAULT_HOST,
   port = DEFAULT_PORT,
   maxBodyBytes = DEFAULT_MAX_BODY_BYTES,
+  maxJsonDepth = DEFAULT_MAX_JSON_DEPTH,
   maxConcurrentRequests = DEFAULT_MAX_CONCURRENT_REQUESTS,
   log = null,
 }) => {
@@ -163,7 +192,7 @@ const startMcpHttpServer = async ({
       try {
         const parsedBody =
           request.method === 'POST'
-            ? await readJsonBodyWithLimit(request, maxBodyBytes)
+            ? await readJsonBodyWithLimit(request, maxBodyBytes, maxJsonDepth)
             : undefined;
         await nodeHandler(request, response, parsedBody);
       } finally {
@@ -180,6 +209,19 @@ const startMcpHttpServer = async ({
           statusCode: 413,
           code: -32003,
           message: 'Request body too large',
+        });
+        return;
+      }
+      if (
+        !response.headersSent &&
+        error &&
+        error.code === 'request_json_too_deep'
+      ) {
+        makeJsonRpcErrorResponse({
+          response,
+          statusCode: 400,
+          code: -32600,
+          message: 'Request JSON nesting too deep',
         });
         return;
       }
@@ -239,6 +281,7 @@ module.exports = {
   DEFAULT_HOST,
   DEFAULT_PORT,
   DEFAULT_MAX_BODY_BYTES,
+  DEFAULT_MAX_JSON_DEPTH,
   DEFAULT_MAX_CONCURRENT_REQUESTS,
   MCP_PATH,
   isAuthorized,

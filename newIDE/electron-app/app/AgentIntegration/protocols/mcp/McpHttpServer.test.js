@@ -280,6 +280,7 @@ test('rejects malformed and oversized authenticated POST bodies before MCP dispa
     token: 'security-token',
     port: 0,
     maxBodyBytes: 128,
+    maxJsonDepth: 4,
   });
   try {
     const malformed = await fetch(host.url, {
@@ -305,6 +306,18 @@ test('rejects malformed and oversized authenticated POST bodies before MCP dispa
     assert.equal(oversized.status, 413);
     const oversizedBody = await oversized.json();
     assert.equal(oversizedBody.error.code, -32003);
+
+    const tooDeep = await fetch(host.url, {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer security-token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ a: { b: { c: { d: { e: true } } } } }),
+    });
+    assert.equal(tooDeep.status, 400);
+    const tooDeepBody = await tooDeep.json();
+    assert.equal(tooDeepBody.error.code, -32600);
     assert.equal(rendererBridge.calls.length, 0);
   } finally {
     await host.stop();
