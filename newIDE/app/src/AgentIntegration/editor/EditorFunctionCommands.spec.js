@@ -1,5 +1,9 @@
 // @flow
 import { AgentHost } from '../core/AgentHost';
+import {
+  getFunctionMetadata,
+  listFunctionMetadata,
+} from '../FunctionMetadata';
 import { createEditorFunctionCommandDescriptors } from './EditorFunctionCommands';
 
 const makeHost = ({ project = {}, run = jest.fn(async options => options) } = {}) => ({
@@ -39,6 +43,21 @@ describe('EditorFunctionCommands', () => {
         arguments: { scope: 'global' },
       },
     ]);
+  });
+
+  test('keeps list and describe in exact parity with generated FunctionMetadata', async () => {
+    const { host } = makeHost();
+    const listed = await host.execute('editor.functions.list', {
+      executableOnly: false,
+    });
+    expect(listed.data.functions).toEqual(
+      listFunctionMetadata({ executableOnly: false })
+    );
+
+    for (const name of ['inspect_variables', 'create_scene', 'search_docs']) {
+      const described = await host.execute('editor.functions.describe', { name });
+      expect(described.data.function).toEqual(getFunctionMetadata(name));
+    }
   });
 
   test('describes a known editor function', async () => {

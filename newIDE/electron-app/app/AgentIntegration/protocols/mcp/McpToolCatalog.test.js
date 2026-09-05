@@ -102,6 +102,64 @@ test('adds mutation controls only to project-mutating MCP schemas', () => {
   assert.equal(readOnlyProperties.idempotencyKey, undefined);
 });
 
+test('keeps CommandRegistry metadata and MCP projection in exact parity', () => {
+  const descriptors = [
+    descriptor('project.status', {
+      cacheScope: 'project-revision',
+      ttlMs: 250,
+    }),
+    descriptor('project.save', {
+      readOnly: false,
+      destructive: true,
+      idempotent: false,
+      longRunning: true,
+      requiresProject: true,
+      modifiesProject: true,
+      defaultTimeoutMs: 90000,
+    }),
+  ];
+
+  const registrations = descriptorsToToolRegistrations(descriptors);
+  for (const source of descriptors) {
+    const registration = registrations.find(item => item.name === source.name);
+    assert.ok(registration);
+    assert.equal(registration.config.description, source.description);
+    assert.deepEqual(registration.config.annotations, {
+      readOnlyHint: source.metadata.readOnly,
+      destructiveHint: source.metadata.destructive,
+      idempotentHint: source.metadata.idempotent,
+      openWorldHint: false,
+    });
+    assert.equal(registration.config._meta['gdevelop/command'], source.name);
+    assert.equal(
+      registration.config._meta['gdevelop/requiresProject'],
+      source.metadata.requiresProject
+    );
+    assert.equal(
+      registration.config._meta['gdevelop/modifiesProject'],
+      source.metadata.modifiesProject
+    );
+    assert.equal(
+      registration.config._meta['gdevelop/longRunning'],
+      source.metadata.longRunning
+    );
+    assert.equal(
+      registration.config._meta['gdevelop/defaultTimeoutMs'],
+      source.metadata.defaultTimeoutMs
+    );
+    assert.equal(
+      registration.config._meta['gdevelop/cacheScope'],
+      source.metadata.cacheScope
+    );
+    assert.equal(
+      registration.config._meta['gdevelop/ttlMs'],
+      source.metadata.ttlMs
+    );
+    assert.equal(registration.timeoutMs, source.metadata.defaultTimeoutMs);
+    assert.ok(registration.config.outputSchema);
+  }
+});
+
 test('keeps tool order deterministic', () => {
   const names = descriptorsToToolRegistrations([
     descriptor('zeta.command'),
