@@ -7,19 +7,12 @@ import { processEditorFunctionCalls } from '../EditorFunctions/EditorFunctionCal
 import { listAllExamples } from '../Utils/GDevelopServices/Example';
 import UrlStorageProvider from '../ProjectsStorage/UrlStorageProvider';
 import { type ResourceManagementProps } from '../ResourcesList/ResourceSource';
-import { createAssetTools } from './AssetTools';
 import { createRuntimeTelemetry } from './RuntimeTelemetry';
-import {
-  createEditorVisualTools,
-  restoreOpenSceneEditors,
-} from './EditorVisualTools';
-import { createEventTools } from './EventTools';
 import {
   prepareGameplayTestRunForAgent,
   watchGameplayTestFrameForAgent,
 } from './GameplayTestLifecycleTools';
 import { clearGameplayTestFramePreview } from '../GameplayTests/GameplayTestFrame';
-import { createDiagnosticsTools } from './DiagnosticsTools';
 import {
   type SceneEventsOutsideEditorChanges,
   type InstancesOutsideEditorChanges,
@@ -38,17 +31,9 @@ import { ObjectStoreContext } from '../AssetStore/ObjectStoreContext';
 import { ExtensionStoreContext } from '../AssetStore/ExtensionStore/ExtensionStoreContext';
 import { enumerateObjectTypes } from '../ObjectsList/EnumerateObjects';
 import { type FileMetadata } from '../ProjectsStorage';
-import { createEditorFunctionService } from '../AgentIntegration/editor/EditorFunctionService';
-import { createProjectLifecycleService } from '../AgentIntegration/editor/ProjectLifecycleService';
-import { createExportService } from '../AgentIntegration/editor/ExportService';
-import { createEditorVisualService } from '../AgentIntegration/editor/EditorVisualService';
-import { createValidationService } from '../AgentIntegration/editor/ValidationService';
-import { createPreviewService } from '../AgentIntegration/runtime/PreviewService';
-import { createSafetyService } from '../AgentIntegration/safety/SafetyService';
-import { createRendererAgentHost } from '../AgentIntegration/RendererAgentHost';
+import { createRendererIntegration } from '../AgentIntegration/RendererIntegrationFactory';
 import { attachRendererAgentHostToIpc } from '../AgentIntegration/RendererCommandAdapter';
 
-const gd: libGDevelop = global.gd;
 const electron = optionalRequire('electron');
 const ipcRenderer = electron ? electron.ipcRenderer : null;
 const path = optionalRequire('path');
@@ -272,78 +257,15 @@ export default function useAgentApi({
     () => {
       if (!ipcRenderer) return;
 
-      const assetTools = project
-        ? createAssetTools({
-            project,
-            resourceManagementProps,
-            triggerUnsavedChanges,
-            forceUpdate,
-          })
-        : null;
-      const editorVisualTools = project
-        ? createEditorVisualTools({ project, editorTabs })
-        : null;
-      const eventTools = project
-        ? createEventTools({
-            project,
-            triggerUnsavedChanges,
-            onSceneEventsModifiedOutsideEditor,
-          })
-        : null;
-      const diagnosticsTools = project
-        ? createDiagnosticsTools({ project, i18n, assetTools })
-        : null;
-
-      const restoreProjectCheckpoint = async (checkpoint: any) => {
-        const openSceneEditors = editorVisualTools
-          ? editorVisualTools.listOpenSceneEditors()
-          : [];
-        const serializedProject = gd.Serializer.fromJSObject(
-          checkpoint.snapshot
-        );
-        let restoredState;
-        try {
-          restoredState = await loadFromSerializedProject(
-            serializedProject,
-            fileMetadata
-          );
-        } finally {
-          serializedProject.delete();
-        }
-
-        // loadFromSerializedProject safely replaces the whole project and seals
-        // unsaved changes as part of the normal open lifecycle. Restore the
-        // checkpoint's previous dirty state after the new project is mounted.
-        if (checkpoint.hadUnsavedChanges) triggerUnsavedChanges();
-
-        const restoredProject = restoredState && restoredState.currentProject;
-        const restoredEditorContext = restoredProject
-          ? restoreOpenSceneEditors({
-              project: restoredProject,
-              openSceneEditors,
-              onOpenLayout,
-            })
-          : { sceneNames: [], activeSceneName: null };
-        return {
-          restored: true,
-          checkpointId: checkpoint.id,
-          projectName: restoredProject ? restoredProject.getName() : null,
-          projectUuid: restoredProject
-            ? restoredProject.getProjectUuid()
-            : null,
-          fileIdentifier:
-            restoredState && restoredState.currentFileMetadata
-              ? restoredState.currentFileMetadata.fileIdentifier
-              : null,
-          hasUnsavedChanges: checkpoint.hadUnsavedChanges,
-          restoredEditorContext,
-          restoreStrategy: 'safe-project-reload',
-        };
-      };
-
-      const editorFunctionService = createEditorFunctionService({
+      const { agentHost } = createRendererIntegration({
         project,
+        editorTabs,
+        fileIdentifier,
+        fileMetadata,
+        loadFromSerializedProject,
         i18n,
+        resourceManagementProps,
+        hasUnsavedChanges,
         editorCallbacks,
         processEditorFunctionCalls,
         generateEvents,
@@ -364,86 +286,25 @@ export default function useAgentApi({
         triggerUnsavedChanges,
         forceUpdate,
         saveProject,
+        saveProjectAsWithStorageProvider,
+        openFromFileMetadataWithStorageProvider,
+        closeProject,
+        createProjectForAgent,
+        launchNewPreview,
+        launchHotReloadPreview,
+        previewDebuggerServer,
+        runtimeTelemetry,
+        ipcRenderer,
+        pathModule: path,
+        onOpenLayout,
         prepareGameplayTestRun: prepareGameplayTestRunForAgent,
         watchGameplayTestFrame: watchGameplayTestFrameForAgent,
         clearGameplayTestFramePreview,
         documentObject: document,
       });
-      const projectLifecycleService = createProjectLifecycleService({
-        project,
-        fileIdentifier,
-        hasUnsavedChanges,
-        createProjectForAgent,
-        openFromFileMetadataWithStorageProvider,
-        closeProject,
-        saveProject,
-        saveProjectAsWithStorageProvider,
-        pathModule: path,
-      });
-      const safetyService = createSafetyService({
-        project,
-        fileIdentifier,
-        hasUnsavedChanges,
-        restoreProjectCheckpoint,
-      });
-      const exportService = createExportService({ project, i18n });
-      const editorVisualService = createEditorVisualService({
-        project,
-        editorVisualTools,
-        onOpenLayout,
-      });
-      const previewService = createPreviewService({
-        project,
-        previewDebuggerServer,
-        launchNewPreview,
-        launchHotReloadPreview,
-        ipcRenderer,
-      });
-      const validationService = createValidationService({
-        project,
-        diagnosticsTools,
-        safetyService,
-        runtimeTelemetry,
-        editorFunctionService,
-        exportService,
-        getPreviewStatus: previewService.getStatus,
-      });
-
-      const rendererAgentHost = createRendererAgentHost({
-        environment: {
-          project,
-          fileIdentifier,
-          hasUnsavedChanges,
-          getProjectStatus: () => ({
-            projectOpen: !!project,
-            fileIdentifier,
-            projectName: project ? project.getName() : null,
-            projectUuid: project ? project.getProjectUuid() : null,
-            sceneNames: project
-              ? Array.from(
-                  { length: project.getLayoutsCount() },
-                  (_, index) => project.getLayoutAt(index).getName()
-                )
-              : [],
-            hasUnsavedChanges,
-            preview: previewService.getStatus(),
-          }),
-        },
-        assetTools,
-        diagnosticsTools,
-        editorFunctionService,
-        editorVisualService,
-        eventTools,
-        exportService,
-        previewService,
-        projectLifecycleService,
-        runtimeTelemetry,
-        safetyService,
-        validationService,
-      });
       const detachRendererAgentHost = attachRendererAgentHostToIpc({
         ipcRenderer,
-        agentHost: rendererAgentHost,
+        agentHost,
       });
 
       return () => {
