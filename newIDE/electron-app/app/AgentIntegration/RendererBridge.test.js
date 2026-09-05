@@ -13,8 +13,9 @@ const makeFixture = () => {
   const windows = new Map();
   const BrowserWindow = {
     fromWebContents: sender =>
-      Array.from(windows.values()).find(window => window.webContents === sender) ||
-      null,
+      Array.from(windows.values()).find(
+        window => window.webContents === sender
+      ) || null,
   };
   const sent = [];
   const targetWindow = {
@@ -122,9 +123,39 @@ test('rejects pending requests and removes command listener on dispose', async (
   const fixture = makeFixture();
   const promise = fixture.bridge.executeCommand({ command: 'project.status' });
   fixture.bridge.dispose();
-  await assert.rejects(promise, error => error.code === 'renderer_bridge_stopped');
+  await assert.rejects(
+    promise,
+    error => error.code === 'renderer_bridge_stopped'
+  );
   assert.equal(fixture.ipcMain.listenerCount(COMMAND_RESPONSE_CHANNEL), 0);
   assert.equal(fixture.bridge.pendingCount, 0);
+});
+
+test('cleans up a timed-out request and executes the next command without restarting the bridge', async () => {
+  const fixture = makeFixture();
+  const timedOut = fixture.bridge.executeCommand({
+    command: 'runtime.snapshot',
+    timeoutMs: 5,
+  });
+
+  await assert.rejects(
+    timedOut,
+    error => error.code === 'renderer_request_timeout'
+  );
+  assert.equal(fixture.bridge.pendingCount, 0);
+
+  const recovered = fixture.bridge.executeCommand({
+    command: 'project.status',
+  });
+  assert.equal(fixture.bridge.pendingCount, 1);
+  fixture.ipcMain.emit(
+    COMMAND_RESPONSE_CHANNEL,
+    { sender: fixture.targetWindow.webContents },
+    { requestId: 'request-2', ok: true, result: { recovered: true } }
+  );
+  assert.deepEqual(await recovered, { recovered: true });
+  assert.equal(fixture.bridge.pendingCount, 0);
+  fixture.bridge.dispose();
 });
 
 test('normalizes timeout values and enforces the ten minute ceiling', () => {

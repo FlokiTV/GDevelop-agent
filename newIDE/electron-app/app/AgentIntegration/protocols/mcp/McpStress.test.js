@@ -221,3 +221,122 @@ test('runs 50 mutate hot-reload snapshot cycles over one MCP server without rest
     await host.stop();
   }
 });
+
+test('reconnects a fresh MCP client and continues the same project revision without reopening', async () => {
+  let projectRevision = 0;
+  const calls = [];
+  const descriptors = [
+    descriptor({
+      name: 'events.update',
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['sceneName', 'handle', 'eventJson'],
+        properties: {
+          sceneName: { type: 'string' },
+          handle: { type: 'string' },
+          eventJson: { type: 'object' },
+        },
+      },
+      metadata: {
+        readOnly: false,
+        idempotent: false,
+        requiresProject: true,
+        modifiesProject: true,
+      },
+    }),
+  ];
+  const rendererBridge = {
+    executeCommand: async options => {
+      calls.push(options);
+      if (options.command === 'agent.commands.list') {
+        return {
+          command: options.command,
+          data: { commands: descriptors },
+          meta: { traceId: null, readOnly: true, modifiesProject: false },
+        };
+      }
+      if (options.command !== 'events.update') {
+        throw new Error(`unexpected_command:${options.command}`);
+      }
+      assert.equal(options.expectedRevision, projectRevision);
+      projectRevision++;
+      return {
+        command: options.command,
+        data: { updated: true },
+        meta: {
+          traceId: options.traceId || null,
+          readOnly: false,
+          modifiesProject: true,
+          projectRevision,
+        },
+      };
+    },
+  };
+  const token = 'stress-reconnect-token';
+  const host = await startMcpHttpServer({ rendererBridge, token, port: 0 });
+
+  try {
+    const firstClient = await connectClient({ url: host.url, token });
+    try {
+      for (let revision = 0; revision < 10; revision++) {
+        const result = await firstClient.callTool({
+          name: 'events.update',
+          arguments: {
+            sceneName: 'Game',
+            handle: 'event:id:reconnect-loop',
+            eventJson: { type: 'BuiltinCommonInstructions::Standard' },
+            expectedRevision: revision,
+            idempotencyKey: `before-reconnect-${revision}`,
+          },
+        });
+        assert.equal(
+          result.structuredContent.meta.projectRevision,
+          revision + 1
+        );
+      }
+    } finally {
+      await firstClient.close();
+    }
+
+    const secondClient = await connectClient({ url: host.url, token });
+    try {
+      for (let revision = 10; revision < 20; revision++) {
+        const result = await secondClient.callTool({
+          name: 'events.update',
+          arguments: {
+            sceneName: 'Game',
+            handle: 'event:id:reconnect-loop',
+            eventJson: {
+              type: 'BuiltinCommonInstructions::Standard',
+              disabled: revision % 2 === 0,
+            },
+            expectedRevision: revision,
+            idempotencyKey: `after-reconnect-${revision}`,
+          },
+        });
+        assert.equal(
+          result.structuredContent.meta.projectRevision,
+          revision + 1
+        );
+      }
+    } finally {
+      await secondClient.close();
+    }
+
+    assert.equal(projectRevision, 20);
+    const executed = calls.filter(
+      call => call.command !== 'agent.commands.list'
+    );
+    assert.equal(executed.length, 20);
+    assert.equal(
+      executed.some(
+        call =>
+          call.command === 'project.open' || call.command === 'project.close'
+      ),
+      false
+    );
+  } finally {
+    await host.stop();
+  }
+});
