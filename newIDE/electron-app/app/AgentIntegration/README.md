@@ -181,6 +181,24 @@ For material 3D work, use the dedicated quality guidance:
 - [`docs/MAP_BUILDER.md`](./docs/MAP_BUILDER.md) — mechanics-first level construction;
 - [`docs/3D_QUALITY_GATE.md`](./docs/3D_QUALITY_GATE.md) — structural, visual and gameplay acceptance evidence.
 
+## Live read-only gate
+
+With the desktop editor already running, the repository includes a read-only client that connects through the same discovery/token files used by external MCP hosts and generates a sanitized replay without printing credentials:
+
+```text
+cd newIDE/electron-app
+node app/AgentIntegration/scripts/McpLiveGate.js
+```
+
+Useful targeting/output options:
+
+```text
+node app/AgentIntegration/scripts/McpLiveGate.js --window-id 1 --output mcp-live-replay.json
+node app/AgentIntegration/scripts/McpLiveGate.js --project-path C:\\path\\to\\game.json
+```
+
+The gate calls only read-only discovery/status surfaces: `tools/list`, `agent.capabilities`, `project.status`, `desktop.windows.list`, `editor.visual.status`, `preview.status` and `runtime.status` when each is available. It does not mutate or save the project. Use it to prove that a real external-style client can discover and inspect the currently running editor before running any canonical mutation scenario.
+
 ## Tests and upstream isolation
 
 The MCP adapter is covered with the official MCP client for protocol negotiation, `tools/list`, `tools/call`, auth/Origin rejection, renderer dispatch, desktop capture and preview input. Renderer services retain characterization tests for project authoring, safety, runtime, resources, diagnostics and visual operations.
