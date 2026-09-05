@@ -4,6 +4,7 @@ const { EventEmitter } = require('events');
 const {
   COMMAND_REQUEST_CHANNEL,
   COMMAND_RESPONSE_CHANNEL,
+  COMMAND_CANCEL_CHANNEL,
   createRendererBridge,
   normalizeTimeoutMs,
 } = require('./RendererBridge');
@@ -155,6 +156,29 @@ test('cleans up a timed-out request and executes the next command without restar
   );
   assert.deepEqual(await recovered, { recovered: true });
   assert.equal(fixture.bridge.pendingCount, 0);
+  fixture.bridge.dispose();
+});
+
+test('propagates AbortSignal cancellation to the renderer and clears pending state', async () => {
+  const fixture = makeFixture();
+  const controller = new AbortController();
+  const promise = fixture.bridge.executeCommand({
+    command: 'validation.run',
+    signal: controller.signal,
+  });
+
+  assert.equal(fixture.bridge.pendingCount, 1);
+  controller.abort();
+
+  await assert.rejects(
+    promise,
+    error => error.code === 'renderer_request_cancelled'
+  );
+  assert.equal(fixture.bridge.pendingCount, 0);
+  assert.deepEqual(fixture.sent[1], {
+    channel: COMMAND_CANCEL_CHANNEL,
+    payload: { requestId: 'request-1' },
+  });
   fixture.bridge.dispose();
 });
 

@@ -3,6 +3,7 @@ import {
   attachRendererAgentHostToIpc,
   COMMAND_REQUEST_CHANNEL,
   COMMAND_RESPONSE_CHANNEL,
+  COMMAND_CANCEL_CHANNEL,
 } from './RendererCommandAdapter';
 
 describe('RendererCommandAdapter', () => {
@@ -42,6 +43,7 @@ describe('RendererCommandAdapter', () => {
       traceId: 'request-1',
       expectedRevision: 7,
       idempotencyKey: 'retry-1',
+      signal: expect.anything(),
     });
     expect(ipcRenderer.send).toHaveBeenCalledWith(COMMAND_RESPONSE_CHANNEL, {
       requestId: 'request-1',
@@ -51,6 +53,36 @@ describe('RendererCommandAdapter', () => {
 
     detach();
     expect(ipcRenderer.listeners.has(COMMAND_REQUEST_CHANNEL)).toBe(false);
+  });
+
+  test('aborts an in-flight AgentHost command when the desktop bridge cancels it', async () => {
+    const ipcRenderer = createIpcRenderer();
+    let capturedSignal;
+    let release;
+    const agentHost = {
+      execute: jest.fn((command, input, context) => {
+        capturedSignal = context.signal;
+        return new Promise(resolve => {
+          release = resolve;
+        });
+      }),
+    };
+    attachRendererAgentHostToIpc({ ipcRenderer, agentHost });
+
+    const listener = ipcRenderer.listeners.get(COMMAND_REQUEST_CHANNEL);
+    const commandPromise = listener(null, {
+      requestId: 'request-cancel',
+      command: 'validation.run',
+      input: {},
+    });
+    expect(capturedSignal.aborted).toBe(false);
+
+    const cancelListener = ipcRenderer.listeners.get(COMMAND_CANCEL_CHANNEL);
+    cancelListener(null, { requestId: 'request-cancel' });
+    expect(capturedSignal.aborted).toBe(true);
+
+    release({ command: 'validation.run', data: {}, meta: {} });
+    await commandPromise;
   });
 
   test('serializes command failures for the desktop bridge', async () => {

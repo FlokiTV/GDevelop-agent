@@ -78,7 +78,9 @@ const createMcpServerFactory = ({
     ...targeting,
   });
   const rendererDescriptors =
-    catalogResult && catalogResult.data && Array.isArray(catalogResult.data.commands)
+    catalogResult &&
+    catalogResult.data &&
+    Array.isArray(catalogResult.data.commands)
       ? catalogResult.data.commands
       : [];
   const desktopDescriptors = desktopCommandRegistry
@@ -98,11 +100,16 @@ const createMcpServerFactory = ({
     server.registerTool(
       registration.name,
       registration.config,
-      async input => {
+      async (input, requestContext) => {
         const normalizedInput = input && typeof input === 'object' ? input : {};
-        const { expectedRevision, idempotencyKey, ...commandInput } = normalizedInput;
+        const {
+          expectedRevision,
+          idempotencyKey,
+          ...commandInput
+        } = normalizedInput;
         const result =
-          desktopCommandRegistry && desktopCommandRegistry.has(registration.name)
+          desktopCommandRegistry &&
+          desktopCommandRegistry.has(registration.name)
             ? await desktopCommandRegistry.execute({
                 command: registration.name,
                 input: commandInput,
@@ -122,6 +129,7 @@ const createMcpServerFactory = ({
                   ? { idempotencyKey }
                   : {}),
                 timeoutMs: registration.timeoutMs,
+                signal: requestContext && requestContext.signal,
                 ...targeting,
               });
         return toMcpToolResult(result);

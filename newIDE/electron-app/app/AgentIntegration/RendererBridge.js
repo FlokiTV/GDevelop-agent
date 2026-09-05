@@ -2,6 +2,7 @@ const crypto = require('crypto');
 
 const COMMAND_REQUEST_CHANNEL = 'gdevelop-agent-integration:command';
 const COMMAND_RESPONSE_CHANNEL = 'gdevelop-agent-integration:command-response';
+const COMMAND_CANCEL_CHANNEL = 'gdevelop-agent-integration:command-cancel';
 const DEFAULT_TIMEOUT_MS = 30000;
 const MAX_TIMEOUT_MS = 10 * 60 * 1000;
 
@@ -27,13 +28,23 @@ const createRendererBridge = ({
   const pendingRequests = new Map();
   let installed = false;
 
+  const cleanupPending = pending => {
+    clearTimeout(pending.timeout);
+    if (pending.abortCleanup) pending.abortCleanup();
+  };
+
+  const cancelRendererRequest = (targetWindow, requestId) => {
+    if (!targetWindow || !targetWindow.webContents) return;
+    targetWindow.webContents.send(COMMAND_CANCEL_CHANNEL, { requestId });
+  };
+
   const onCommandResponse = (event, payload = {}) => {
     const pending = pendingRequests.get(payload.requestId);
     if (!pending) return;
     const sourceWindow = BrowserWindow.fromWebContents(event.sender);
     if (!sourceWindow || sourceWindow.id !== pending.windowId) return;
 
-    clearTimeout(pending.timeout);
+    cleanupPending(pending);
     pendingRequests.delete(payload.requestId);
     if (payload.ok) {
       pending.resolve(payload.result);
@@ -64,8 +75,12 @@ const createRendererBridge = ({
   };
 
   const rejectAll = code => {
-    for (const pending of pendingRequests.values()) {
-      clearTimeout(pending.timeout);
+    for (const [requestId, pending] of pendingRequests.entries()) {
+      cleanupPending(pending);
+      const targetWindow = BrowserWindow.fromId
+        ? BrowserWindow.fromId(pending.windowId)
+        : null;
+      cancelRendererRequest(targetWindow, requestId);
       pending.reject(makeError(code));
     }
     pendingRequests.clear();
@@ -88,6 +103,7 @@ const createRendererBridge = ({
     projectPath,
     windowId,
     timeoutMs,
+    signal,
   }) => {
     const targetWindow = windowRegistry.select({ projectPath, windowId });
     if (!targetWindow) {
@@ -101,19 +117,41 @@ const createRendererBridge = ({
       );
     }
 
+    if (signal && signal.aborted) {
+      return Promise.reject(makeError('renderer_request_cancelled'));
+    }
+
     const requestId = makeRequestId();
     const requestTimeoutMs = normalizeTimeoutMs(timeoutMs);
     return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
+      const finishWithError = code => {
+        const current = pendingRequests.get(requestId);
+        if (!current) return;
+        cleanupPending(current);
         pendingRequests.delete(requestId);
-        reject(makeError('renderer_request_timeout'));
-      }, requestTimeoutMs);
-      pendingRequests.set(requestId, {
+        cancelRendererRequest(targetWindow, requestId);
+        reject(makeError(code));
+      };
+      const timeout = setTimeout(
+        () => finishWithError('renderer_request_timeout'),
+        requestTimeoutMs
+      );
+      const onAbort = () => finishWithError('renderer_request_cancelled');
+      const abortCleanup =
+        signal && typeof signal.addEventListener === 'function'
+          ? (() => {
+              signal.addEventListener('abort', onAbort, { once: true });
+              return () => signal.removeEventListener('abort', onAbort);
+            })()
+          : null;
+      const pending = {
         resolve,
         reject,
         timeout,
+        abortCleanup,
         windowId: targetWindow.id,
-      });
+      };
+      pendingRequests.set(requestId, pending);
       targetWindow.webContents.send(COMMAND_REQUEST_CHANNEL, {
         requestId,
         command,
@@ -144,6 +182,7 @@ const createRendererBridge = ({
 module.exports = {
   COMMAND_REQUEST_CHANNEL,
   COMMAND_RESPONSE_CHANNEL,
+  COMMAND_CANCEL_CHANNEL,
   DEFAULT_TIMEOUT_MS,
   MAX_TIMEOUT_MS,
   normalizeTimeoutMs,
