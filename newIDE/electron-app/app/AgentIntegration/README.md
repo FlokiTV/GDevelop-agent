@@ -199,9 +199,11 @@ node app/AgentIntegration/scripts/McpLiveGate.js --project-path C:\\path\\to\\ga
 
 The gate calls only read-only discovery/status surfaces: `tools/list`, `agent.capabilities`, `project.status`, `desktop.windows.list`, `editor.visual.status`, `preview.status` and `runtime.status` when each is available. It does not mutate or save the project. Use it to prove that a real external-style client can discover and inspect the currently running editor before running any canonical mutation scenario.
 
-## Tests and upstream isolation
+## Compatibility and tests
 
-The MCP adapter is covered with the official MCP client for protocol negotiation, `tools/list`, `tools/call`, auth/Origin rejection, renderer dispatch, desktop capture and preview input. Renderer services retain characterization tests for project authoring, safety, runtime, resources, diagnostics and visual operations.
+See [`docs/MCP_COMPATIBILITY.md`](./docs/MCP_COMPATIBILITY.md) for the automated client matrix, live-host acceptance gate, protocol policy and host configuration rules.
+
+The MCP adapter is covered with the official MCP client for protocol negotiation, `tools/list`, `tools/call`, `prompts/list`, `prompts/get`, `resources/list`, `resources/read`, auth/Origin rejection, renderer dispatch, desktop capture and preview input. Renderer services retain characterization tests for project authoring, safety, runtime, resources, diagnostics and visual operations.
 
 Until the final naming consolidation moves the guard, run from the repository root:
 
