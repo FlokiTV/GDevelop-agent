@@ -1,5 +1,13 @@
 // @flow
+import { processEditorFunctionCalls as processRealEditorFunctionCalls } from '../../EditorFunctions/EditorFunctionCallRunner';
 import { createEditorFunctionService } from './EditorFunctionService';
+
+jest.mock('../../ObjectsRendering/PixiResourcesLoader', () => ({
+  __esModule: true,
+  default: {},
+}));
+
+const gd: libGDevelop = global.gd;
 
 const createService = (overrides = {}) => {
   const processEditorFunctionCalls = jest.fn(async ({ functionCalls }) => ({
@@ -141,6 +149,75 @@ describe('EditorFunctionService', () => {
     expect(triggerUnsavedChanges).toHaveBeenCalledTimes(1);
     expect(forceUpdate).toHaveBeenCalledTimes(1);
     expect(result.didModifyProject).toBe(true);
+  });
+
+  it('mutates the live project with the real runner, invalidates the scene editor, and never autosaves', async () => {
+    const project = gd.ProjectHelper.createNewGDJSProject();
+    const scene = project.insertNewLayout('TestScene', 0);
+    scene.getObjects().insertNewObject(project, 'Sprite', 'Player', 0);
+    const onInstancesModifiedOutsideEditor = jest.fn();
+    const triggerUnsavedChanges = jest.fn();
+    const forceUpdate = jest.fn();
+    const saveProject = jest.fn(async () => ({ fileIdentifier: 'project.json' }));
+
+    const service = createEditorFunctionService({
+      project,
+      i18n: {},
+      editorCallbacks: {},
+      processEditorFunctionCalls: processRealEditorFunctionCalls,
+      generateEvents: jest.fn(),
+      onSceneEventsModifiedOutsideEditor: jest.fn(),
+      onInstancesModifiedOutsideEditor,
+      onObjectsModifiedOutsideEditor: jest.fn(),
+      onObjectGroupsModifiedOutsideEditor: jest.fn(),
+      onProjectItemRenamedOutsideEditor: jest.fn(),
+      onWillDeleteScene: jest.fn(),
+      onWillDeleteGameplayTest: jest.fn(),
+      onWillDeleteObject: jest.fn(),
+      ensureExtensionInstalled: jest.fn(async () => {}),
+      onWillInstallExtension: jest.fn(),
+      onExtensionInstalled: jest.fn(),
+      searchAndInstallAsset: jest.fn(),
+      searchAndInstallResources: jest.fn(),
+      getAssetStoreTagForNewObject: jest.fn(() => null),
+      triggerUnsavedChanges,
+      forceUpdate,
+      saveProject,
+      prepareGameplayTestRun: jest.fn(async () => {}),
+      watchGameplayTestFrame: jest.fn(() => () => {}),
+      clearGameplayTestFramePreview: jest.fn(),
+      documentObject: {},
+      makeCallId: index => `live-${index}`,
+    });
+
+    try {
+      expect(scene.getInitialInstances().getInstancesCount()).toBe(0);
+
+      const result = await service.run({
+        calls: [
+          {
+            name: 'put_2d_instances',
+            arguments: {
+              scene_name: 'TestScene',
+              object_name: 'Player',
+              layer_name: '',
+              brush_kind: 'point',
+              brush_position: '100,200',
+              new_instances_count: 1,
+            },
+          },
+        ],
+      });
+
+      expect(scene.getInitialInstances().getInstancesCount()).toBe(1);
+      expect(onInstancesModifiedOutsideEditor).toHaveBeenCalledWith({ scene });
+      expect(triggerUnsavedChanges).toHaveBeenCalledTimes(1);
+      expect(forceUpdate).toHaveBeenCalledTimes(1);
+      expect(saveProject).not.toHaveBeenCalled();
+      expect(result).toMatchObject({ didModifyProject: true, saved: false });
+    } finally {
+      project.delete();
+    }
   });
 
   it('serializes gameplay tests so each run gets a fresh disposable frame', async () => {
