@@ -93,6 +93,24 @@ describe('AgentIntegration RuntimeTelemetry', () => {
     expect(snapshot.truncatedInstances).toBe(snapshot.totalInstances - 3);
   });
 
+  it('keeps snapshots bounded with hundreds of runtime instances', () => {
+    const dump = cloneDump();
+    const scene = dump._sceneStack._stack[0];
+    const template = scene._instances.items.Player[0];
+    scene._instances.items.StressObject = Array.from({ length: 500 }, (_, index) => ({
+      ...template,
+      id: `stress-${index}`,
+      x: index,
+      y: index * 2,
+    }));
+
+    const snapshot = summarizeRuntimeDump(dump, { maxInstances: 100 });
+    expect(snapshot.totalInstances).toBeGreaterThanOrEqual(500);
+    expect(snapshot.includedInstances).toBe(100);
+    expect(snapshot.truncatedInstances).toBe(snapshot.totalInstances - 100);
+    expect(snapshot.objects.StressObject.count).toBe(500);
+  });
+
   it('transforms typed runtime variables', () => {
     const variables = transformVariablesContainer({
       _variables: {

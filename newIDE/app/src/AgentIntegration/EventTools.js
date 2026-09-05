@@ -505,12 +505,40 @@ export const createEventTools = ({
       typeof request.sceneName === 'string' ? request.sceneName : '';
     const scene = requireScene(project, sceneName);
     const canonicalState = getCanonicalSceneEventsState(scene);
+    const total = canonicalState.events.length;
+    const hasPagination =
+      Number.isInteger(request.offset) || Number.isInteger(request.limit);
+    if (!hasPagination) {
+      return {
+        sceneName,
+        eventsJson: canonicalState.eventsJson,
+        eventsCount: scene.getEvents().getEventsCount(),
+        eventsRevision: canonicalState.eventsRevision,
+        events: canonicalState.events,
+      };
+    }
+
+    const offset = Number.isInteger(request.offset)
+      ? Math.max(0, request.offset)
+      : 0;
+    const limit = Number.isInteger(request.limit)
+      ? Math.min(200, Math.max(1, request.limit))
+      : 50;
+    const end = Math.min(total, offset + limit);
     return {
       sceneName,
-      eventsJson: canonicalState.eventsJson,
+      eventsJson: canonicalState.eventsJson.slice(offset, end),
       eventsCount: scene.getEvents().getEventsCount(),
       eventsRevision: canonicalState.eventsRevision,
-      events: canonicalState.events,
+      events: canonicalState.events.slice(offset, end),
+      pagination: {
+        offset,
+        limit,
+        total,
+        returned: Math.max(0, end - offset),
+        hasMore: end < total,
+        nextOffset: end < total ? end : null,
+      },
     };
   };
 

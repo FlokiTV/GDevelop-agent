@@ -51,6 +51,37 @@ describe('AgentIntegration EventTools', () => {
     expect(result.eventsJson).toHaveLength(1);
   });
 
+  it('paginates hundreds of root events while keeping full-tree revision and stable paths', () => {
+    const largeScene = project.insertNewLayout('LargeEvents', 2);
+    for (let index = 0; index < 350; index++) {
+      largeScene
+        .getEvents()
+        .insertNewEvent(project, 'BuiltinCommonInstructions::Comment', index);
+    }
+    const tools = makeTools();
+    const full = tools.readSceneEventsJson({ sceneName: 'LargeEvents' });
+    const page = tools.readSceneEventsJson({
+      sceneName: 'LargeEvents',
+      offset: 200,
+      limit: 50,
+    });
+
+    expect(full.events).toHaveLength(350);
+    expect(page.events).toHaveLength(50);
+    expect(page.eventsJson).toHaveLength(50);
+    expect(page.eventsRevision).toBe(full.eventsRevision);
+    expect(page.events[0].path).toEqual([200]);
+    expect(page.events[49].path).toEqual([249]);
+    expect(page.pagination).toEqual({
+      offset: 200,
+      limit: 50,
+      total: 350,
+      returned: 50,
+      hasMore: true,
+      nextOffset: 250,
+    });
+  });
+
   it('returns canonical handles and a tree revision that changes with the event tree', () => {
     const tools = makeTools();
     const first = tools.readSceneEventsJson({ sceneName: 'Source' });
