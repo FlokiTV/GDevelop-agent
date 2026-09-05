@@ -5,6 +5,8 @@ import { createEventCommandDescriptors } from './EventCommands';
 const makeHost = (project: any = {}) => {
   const eventTools = {
     readSceneEventsJson: jest.fn(input => ({ sceneName: input.sceneName })),
+    insertSceneEvents: jest.fn(input => ({ inserted: 1, ...input })),
+    deleteSceneEvent: jest.fn(input => ({ deleted: true, ...input })),
     applySceneEventsJson: jest.fn(input => ({ applied: true, ...input })),
   };
   return {
@@ -17,12 +19,24 @@ const makeHost = (project: any = {}) => {
 };
 
 describe('EventCommands', () => {
-  test('marks event reads as read-only and apply as project mutation', () => {
+  test('marks reads as read-only and localized edits as project mutations', () => {
     const { host } = makeHost();
     expect(host.describeCommand('events.read').metadata).toMatchObject({
       readOnly: true,
       requiresProject: true,
       modifiesProject: false,
+    });
+    expect(host.describeCommand('events.insert').metadata).toMatchObject({
+      readOnly: false,
+      destructive: false,
+      requiresProject: true,
+      modifiesProject: true,
+    });
+    expect(host.describeCommand('events.delete').metadata).toMatchObject({
+      readOnly: false,
+      destructive: true,
+      requiresProject: true,
+      modifiesProject: true,
     });
     expect(host.describeCommand('events.apply').metadata).toMatchObject({
       readOnly: false,
@@ -31,9 +45,20 @@ describe('EventCommands', () => {
     });
   });
 
-  test('routes canonical read and apply through EventTools', async () => {
+  test('routes canonical read, localized edits and bulk fallback through EventTools', async () => {
     const { host, eventTools } = makeHost();
     await host.execute('events.read', { sceneName: 'Scene' });
+    await host.execute('events.insert', {
+      sceneName: 'Scene',
+      expectedEventsRevision: 'events:abc',
+      eventsJson: [{ type: 'BuiltinCommonInstructions::Comment' }],
+      afterHandle: 'event:fp:abc',
+    });
+    await host.execute('events.delete', {
+      sceneName: 'Scene',
+      expectedEventsRevision: 'events:def',
+      handle: 'event:fp:def',
+    });
     await host.execute('events.apply', {
       sceneName: 'Scene',
       eventsJson: [],
@@ -41,6 +66,17 @@ describe('EventCommands', () => {
     });
     expect(eventTools.readSceneEventsJson).toHaveBeenCalledWith({
       sceneName: 'Scene',
+    });
+    expect(eventTools.insertSceneEvents).toHaveBeenCalledWith({
+      sceneName: 'Scene',
+      expectedEventsRevision: 'events:abc',
+      eventsJson: [{ type: 'BuiltinCommonInstructions::Comment' }],
+      afterHandle: 'event:fp:abc',
+    });
+    expect(eventTools.deleteSceneEvent).toHaveBeenCalledWith({
+      sceneName: 'Scene',
+      expectedEventsRevision: 'events:def',
+      handle: 'event:fp:def',
     });
     expect(eventTools.applySceneEventsJson).toHaveBeenCalledWith({
       sceneName: 'Scene',

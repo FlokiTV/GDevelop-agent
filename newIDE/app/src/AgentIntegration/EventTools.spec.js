@@ -112,6 +112,91 @@ describe('AgentIntegration EventTools', () => {
     });
   });
 
+  it('inserts after a stable handle without replacing existing events', () => {
+    const tools = makeTools();
+    const sourceEvents = tools.readSceneEventsJson({ sceneName: 'Source' });
+    const before = tools.readSceneEventsJson({ sceneName: 'Target' });
+    const result = tools.insertSceneEvents({
+      sceneName: 'Target',
+      expectedEventsRevision: before.eventsRevision,
+      eventsJson: sourceEvents.eventsJson,
+      afterHandle: before.events[0].handle,
+    });
+
+    expect(result.inserted).toBe(1);
+    expect(result.beforeEventsRevision).toBe(before.eventsRevision);
+    expect(result.eventsRevision).not.toBe(before.eventsRevision);
+    expect(target.getEvents().getEventsCount()).toBe(2);
+    expect(target.getEvents().getEventAt(0).getType()).toBe(
+      'BuiltinCommonInstructions::Comment'
+    );
+    expect(target.getEvents().getEventAt(1).getType()).toBe(
+      'BuiltinCommonInstructions::Standard'
+    );
+    expect(result.events[0].path).toEqual([1]);
+    expect(triggerUnsavedChanges).toHaveBeenCalledTimes(1);
+    expect(onSceneEventsModifiedOutsideEditor).toHaveBeenCalledWith({
+      scene: target,
+      newOrChangedAiGeneratedEventIds: expect.any(Set),
+    });
+  });
+
+  it('inserts and deletes a nested subevent by handle with revision preconditions', () => {
+    const tools = makeTools();
+    const parentRead = tools.readSceneEventsJson({ sceneName: 'Source' });
+    const commentRead = tools.readSceneEventsJson({ sceneName: 'Target' });
+    const inserted = tools.insertSceneEvents({
+      sceneName: 'Source',
+      expectedEventsRevision: parentRead.eventsRevision,
+      eventsJson: commentRead.eventsJson,
+      parentHandle: parentRead.events[0].handle,
+    });
+
+    expect(inserted.events[0].path).toEqual([0, 0]);
+    expect(source.getEvents().getEventAt(0).getSubEvents().getEventsCount()).toBe(
+      1
+    );
+
+    const deleted = tools.deleteSceneEvent({
+      sceneName: 'Source',
+      expectedEventsRevision: inserted.eventsRevision,
+      handle: inserted.events[0].handle,
+    });
+
+    expect(deleted.deleted).toBe(true);
+    expect(deleted.deletedEvent.path).toEqual([0, 0]);
+    expect(deleted.eventsRevision).not.toBe(inserted.eventsRevision);
+    expect(source.getEvents().getEventAt(0).getSubEvents().getEventsCount()).toBe(
+      0
+    );
+  });
+
+  it('rejects localized edits when the scene event revision is stale', () => {
+    const tools = makeTools();
+    const read = tools.readSceneEventsJson({ sceneName: 'Target' });
+    target
+      .getEvents()
+      .insertNewEvent(project, 'BuiltinCommonInstructions::Standard', 1);
+
+    expect(() =>
+      tools.deleteSceneEvent({
+        sceneName: 'Target',
+        expectedEventsRevision: read.eventsRevision,
+        handle: read.events[0].handle,
+      })
+    ).toThrow(
+      expect.objectContaining({
+        code: 'events_revision_conflict',
+        details: expect.objectContaining({
+          expectedEventsRevision: read.eventsRevision,
+        }),
+      })
+    );
+    expect(target.getEvents().getEventsCount()).toBe(2);
+    expect(triggerUnsavedChanges).not.toHaveBeenCalled();
+    expect(onSceneEventsModifiedOutsideEditor).not.toHaveBeenCalled();
+  });
+
   it('replaces scene events from native serialized JSON', () => {
     const tools = makeTools();
     const sourceEvents = tools.readSceneEventsJson({ sceneName: 'Source' });

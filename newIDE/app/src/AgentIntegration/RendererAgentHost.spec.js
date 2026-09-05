@@ -14,6 +14,8 @@ const EXPECTED_PUBLIC_COMMANDS = [
   'editor.selection.focus',
   'editor.visual.status',
   'events.apply',
+  'events.delete',
+  'events.insert',
   'events.read',
   'export.html5',
   'preview.close-all',

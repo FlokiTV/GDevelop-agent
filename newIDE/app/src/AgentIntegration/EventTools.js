@@ -109,10 +109,104 @@ const createCanonicalEventIndex = (eventsJson: Array<any>) => {
   };
 };
 
-const makeError = (code: string, message?: string): Error => {
+const flattenCanonicalEvents = (events: Array<any>): Array<any> => {
+  const flattened = [];
+  const visit = nodes => {
+    nodes.forEach(node => {
+      flattened.push(node);
+      visit(node.children || []);
+    });
+  };
+  visit(events);
+  return flattened;
+};
+
+const makeError = (code: string, message?: string, details?: any): Error => {
   const error: any = new Error(message || code);
   error.code = code;
+  if (details !== undefined) error.details = details;
   return error;
+};
+
+const getCanonicalSceneEventsState = (scene: gdLayout) => {
+  const eventsJson = serializeToJSObject(scene.getEvents(), 'serializeTo', {
+    canonicalEventSerialization: true,
+  });
+  const canonicalIndex = createCanonicalEventIndex(eventsJson);
+  return {
+    eventsJson,
+    eventsRevision: canonicalIndex.eventsRevision,
+    events: canonicalIndex.events,
+    flatEvents: flattenCanonicalEvents(canonicalIndex.events),
+  };
+};
+
+const assertExpectedEventsRevision = (
+  expectedEventsRevision: any,
+  currentEventsRevision: string
+) => {
+  if (
+    typeof expectedEventsRevision !== 'string' ||
+    expectedEventsRevision !== currentEventsRevision
+  ) {
+    throw makeError(
+      'events_revision_conflict',
+      'The scene event tree changed since it was read.',
+      { expectedEventsRevision, currentEventsRevision }
+    );
+  }
+};
+
+const resolveEventHandle = (
+  canonicalState: any,
+  handle: any
+): Array<number> => {
+  if (!handle || typeof handle !== 'string') {
+    throw makeError('invalid_event_handle');
+  }
+  const exact = canonicalState.flatEvents.find(event => event.handle === handle);
+  if (exact) return exact.path;
+
+  const fingerprintMatch = /^event:fp:([0-9a-f]{32})(?::path:([0-9.]+))?$/.exec(
+    handle
+  );
+  if (fingerprintMatch) {
+    const fingerprint = fingerprintMatch[1];
+    const candidates = canonicalState.flatEvents.filter(
+      event => event.fingerprint === fingerprint
+    );
+    if (candidates.length === 1) return candidates[0].path;
+    throw makeError('ambiguous_event_handle', undefined, {
+      handle,
+      matches: candidates.map(candidate => candidate.path),
+    });
+  }
+
+  throw makeError('event_handle_not_found', undefined, { handle });
+};
+
+const getParentListAndIndex = (
+  rootEvents: gdEventsList,
+  path: Array<number>
+): {| parentList: gdEventsList, index: number |} => {
+  if (!path.length) throw makeError('invalid_event_path');
+  let parentList = rootEvents;
+  for (let depth = 0; depth < path.length - 1; depth++) {
+    const index = path[depth];
+    if (index < 0 || index >= parentList.getEventsCount()) {
+      throw makeError('event_path_not_found');
+    }
+    const parentEvent = parentList.getEventAt(index);
+    if (!parentEvent.canHaveSubEvents()) {
+      throw makeError('event_cannot_have_subevents');
+    }
+    parentList = parentEvent.getSubEvents();
+  }
+  const index = path[path.length - 1];
+  if (index < 0 || index >= parentList.getEventsCount()) {
+    throw makeError('event_path_not_found');
+  }
+  return { parentList, index };
 };
 
 const requireScene = (project: gdProject, sceneName: string): gdLayout => {
@@ -120,6 +214,31 @@ const requireScene = (project: gdProject, sceneName: string): gdLayout => {
     throw makeError('scene_not_found');
   }
   return project.getLayout(sceneName);
+};
+
+const findCanonicalNodeByPath = (
+  canonicalState: any,
+  path: Array<number>
+): any =>
+  canonicalState.flatEvents.find(
+    event =>
+      event.path.length === path.length &&
+      event.path.every((index, depth) => index === path[depth])
+  ) || null;
+
+const collectAiGeneratedEventIds = (
+  eventsList: gdEventsList,
+  ids: Set<string> = new Set()
+): Set<string> => {
+  for (let index = 0; index < eventsList.getEventsCount(); index++) {
+    const event = eventsList.getEventAt(index);
+    const id = event.getAiGeneratedEventId();
+    if (id) ids.add(id);
+    if (event.canHaveSubEvents()) {
+      collectAiGeneratedEventIds(event.getSubEvents(), ids);
+    }
+  }
+  return ids;
 };
 
 const deserializeEvents = (
@@ -155,16 +274,148 @@ export const createEventTools = ({
     const sceneName =
       typeof request.sceneName === 'string' ? request.sceneName : '';
     const scene = requireScene(project, sceneName);
-    const eventsJson = serializeToJSObject(scene.getEvents(), 'serializeTo', {
-      canonicalEventSerialization: true,
-    });
-    const canonicalIndex = createCanonicalEventIndex(eventsJson);
+    const canonicalState = getCanonicalSceneEventsState(scene);
     return {
       sceneName,
-      eventsJson,
+      eventsJson: canonicalState.eventsJson,
       eventsCount: scene.getEvents().getEventsCount(),
-      eventsRevision: canonicalIndex.eventsRevision,
-      events: canonicalIndex.events,
+      eventsRevision: canonicalState.eventsRevision,
+      events: canonicalState.events,
+    };
+  };
+
+  const insertSceneEvents = (request: any): any => {
+    const sceneName =
+      typeof request.sceneName === 'string' ? request.sceneName : '';
+    const scene = requireScene(project, sceneName);
+    const beforeState = getCanonicalSceneEventsState(scene);
+    assertExpectedEventsRevision(
+      request.expectedEventsRevision,
+      beforeState.eventsRevision
+    );
+
+    const placementHandles = [
+      request.parentHandle,
+      request.beforeHandle,
+      request.afterHandle,
+    ].filter(handle => typeof handle === 'string' && handle);
+    if (placementHandles.length > 1) {
+      throw makeError('invalid_event_placement');
+    }
+
+    const incomingEvents = deserializeEvents(project, request.eventsJson);
+    const incomingCount = incomingEvents.getEventsCount();
+    if (incomingCount === 0) {
+      incomingEvents.delete();
+      throw makeError('empty_events_patch');
+    }
+    const aiGeneratedEventIds = collectAiGeneratedEventIds(incomingEvents);
+    const rootEvents = scene.getEvents();
+    let targetList = rootEvents;
+    let insertionIndex = rootEvents.getEventsCount();
+    let parentPath = [];
+
+    try {
+      if (request.parentHandle) {
+        const parentEventPath = resolveEventHandle(
+          beforeState,
+          request.parentHandle
+        );
+        const { parentList, index } = getParentListAndIndex(
+          rootEvents,
+          parentEventPath
+        );
+        const parentEvent = parentList.getEventAt(index);
+        if (!parentEvent.canHaveSubEvents()) {
+          throw makeError('event_cannot_have_subevents', undefined, {
+            handle: request.parentHandle,
+          });
+        }
+        targetList = parentEvent.getSubEvents();
+        insertionIndex = targetList.getEventsCount();
+        parentPath = parentEventPath;
+      } else if (request.beforeHandle || request.afterHandle) {
+        const targetHandle = request.beforeHandle || request.afterHandle;
+        const targetPath = resolveEventHandle(beforeState, targetHandle);
+        const location = getParentListAndIndex(rootEvents, targetPath);
+        targetList = location.parentList;
+        insertionIndex =
+          location.index + (request.afterHandle ? 1 : 0);
+        parentPath = targetPath.slice(0, -1);
+      }
+
+      targetList.insertEvents(
+        incomingEvents,
+        0,
+        incomingCount,
+        insertionIndex
+      );
+    } finally {
+      incomingEvents.delete();
+    }
+
+    triggerUnsavedChanges();
+    onSceneEventsModifiedOutsideEditor({
+      scene,
+      newOrChangedAiGeneratedEventIds: aiGeneratedEventIds,
+    });
+
+    const afterState = getCanonicalSceneEventsState(scene);
+    const inserted = Array.from({ length: incomingCount }, (_, offset) => {
+      const path = [...parentPath, insertionIndex + offset];
+      const node = findCanonicalNodeByPath(afterState, path);
+      return node
+        ? {
+            handle: node.handle,
+            path: node.path,
+            fingerprint: node.fingerprint,
+          }
+        : { handle: null, path, fingerprint: null };
+    });
+    return {
+      inserted: incomingCount,
+      sceneName,
+      beforeEventsRevision: beforeState.eventsRevision,
+      eventsRevision: afterState.eventsRevision,
+      events: inserted,
+    };
+  };
+
+  const deleteSceneEvent = (request: any): any => {
+    const sceneName =
+      typeof request.sceneName === 'string' ? request.sceneName : '';
+    const scene = requireScene(project, sceneName);
+    const beforeState = getCanonicalSceneEventsState(scene);
+    assertExpectedEventsRevision(
+      request.expectedEventsRevision,
+      beforeState.eventsRevision
+    );
+    const path = resolveEventHandle(beforeState, request.handle);
+    const { parentList, index } = getParentListAndIndex(
+      scene.getEvents(),
+      path
+    );
+    const deletedNode = findCanonicalNodeByPath(beforeState, path);
+    parentList.removeEventAt(index);
+
+    triggerUnsavedChanges();
+    onSceneEventsModifiedOutsideEditor({
+      scene,
+      newOrChangedAiGeneratedEventIds: new Set(),
+    });
+    const afterState = getCanonicalSceneEventsState(scene);
+    return {
+      deleted: true,
+      sceneName,
+      deletedEvent: deletedNode
+        ? {
+            handle: deletedNode.handle,
+            path: deletedNode.path,
+            fingerprint: deletedNode.fingerprint,
+          }
+        : { handle: request.handle, path, fingerprint: null },
+      beforeEventsRevision: beforeState.eventsRevision,
+      eventsRevision: afterState.eventsRevision,
     };
   };
 
@@ -216,6 +467,8 @@ export const createEventTools = ({
 
   return {
     readSceneEventsJson,
+    insertSceneEvents,
+    deleteSceneEvent,
     applySceneEventsJson,
   };
 };

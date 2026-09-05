@@ -12,6 +12,31 @@ const READ_SCHEMA = {
   properties: { sceneName: { type: 'string', minLength: 1 } },
 };
 
+const INSERT_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['sceneName', 'expectedEventsRevision', 'eventsJson'],
+  properties: {
+    sceneName: { type: 'string', minLength: 1 },
+    expectedEventsRevision: { type: 'string', minLength: 1 },
+    eventsJson: { type: 'array', minItems: 1 },
+    parentHandle: { type: 'string', minLength: 1 },
+    beforeHandle: { type: 'string', minLength: 1 },
+    afterHandle: { type: 'string', minLength: 1 },
+  },
+};
+
+const DELETE_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['sceneName', 'expectedEventsRevision', 'handle'],
+  properties: {
+    sceneName: { type: 'string', minLength: 1 },
+    expectedEventsRevision: { type: 'string', minLength: 1 },
+    handle: { type: 'string', minLength: 1 },
+  },
+};
+
 const APPLY_SCHEMA = {
   type: 'object',
   additionalProperties: false,
@@ -44,9 +69,68 @@ export const createEventCommandDescriptors = ({
     execute: ({ input }) => eventTools.readSceneEventsJson(input),
   },
   {
+    name: 'events.insert',
+    description:
+      'Insert canonical serialized events into the live event tree at root, as subevents, or before/after a stable event handle.',
+    inputSchema: INSERT_SCHEMA,
+    metadata: makeCommandMetadata({
+      readOnly: false,
+      idempotent: false,
+      requiresProject: true,
+      modifiesProject: true,
+    }),
+    validateInput: input => {
+      assertSceneName(input.sceneName);
+      if (
+        !input.expectedEventsRevision ||
+        typeof input.expectedEventsRevision !== 'string'
+      ) {
+        throw new AgentError({ code: 'missing_events_revision' });
+      }
+      if (!Array.isArray(input.eventsJson) || input.eventsJson.length === 0) {
+        throw new AgentError({ code: 'invalid_events_json' });
+      }
+      const placements = [
+        input.parentHandle,
+        input.beforeHandle,
+        input.afterHandle,
+      ].filter(value => typeof value === 'string' && value);
+      if (placements.length > 1) {
+        throw new AgentError({ code: 'invalid_event_placement' });
+      }
+    },
+    execute: ({ input }) => eventTools.insertSceneEvents(input),
+  },
+  {
+    name: 'events.delete',
+    description:
+      'Delete one event or subevent by stable handle from the live event tree after checking the scene event revision.',
+    inputSchema: DELETE_SCHEMA,
+    metadata: makeCommandMetadata({
+      readOnly: false,
+      destructive: true,
+      idempotent: false,
+      requiresProject: true,
+      modifiesProject: true,
+    }),
+    validateInput: input => {
+      assertSceneName(input.sceneName);
+      if (
+        !input.expectedEventsRevision ||
+        typeof input.expectedEventsRevision !== 'string'
+      ) {
+        throw new AgentError({ code: 'missing_events_revision' });
+      }
+      if (!input.handle || typeof input.handle !== 'string') {
+        throw new AgentError({ code: 'invalid_event_handle' });
+      }
+    },
+    execute: ({ input }) => eventTools.deleteSceneEvent(input),
+  },
+  {
     name: 'events.apply',
     description:
-      'Replace or append canonical serialized events in a live scene and refresh the open Events Sheet.',
+      'Explicit bulk fallback: replace or append canonical serialized events when a localized events.insert/delete/update/move operation is not suitable.',
     inputSchema: APPLY_SCHEMA,
     metadata: makeCommandMetadata({
       readOnly: false,
