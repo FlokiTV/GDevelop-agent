@@ -349,46 +349,70 @@ test('rejects malformed and oversized authenticated POST bodies before MCP dispa
   }
 });
 
-test('applies backpressure before dispatch when the authenticated request limit is saturated', async () => {
+test('applies global and per-client backpressure before MCP dispatch', async () => {
   const rendererBridge = makeBridge();
   const host = await startMcpHttpServer({
     rendererBridge,
     token: 'backpressure-token',
     port: 0,
-    maxConcurrentRequests: 1,
+    maxConcurrentRequests: 2,
+    maxConcurrentRequestsPerClient: 1,
   });
   const target = new URL(host.url);
-  const heldRequest = http.request({
-    hostname: target.hostname,
-    port: target.port,
-    path: target.pathname,
-    method: 'POST',
-    headers: {
-      Authorization: 'Bearer backpressure-token',
-      'Content-Type': 'application/json',
-      'Content-Length': '64',
-    },
-  });
-  heldRequest.on('error', () => {});
-  heldRequest.write('{');
-
-  try {
-    await new Promise(resolve => setTimeout(resolve, 20));
-    const saturated = await fetch(host.url, {
+  const makeHeldRequest = clientId => {
+    const request = http.request({
+      hostname: target.hostname,
+      port: target.port,
+      path: target.pathname,
       method: 'POST',
       headers: {
         Authorization: 'Bearer backpressure-token',
+        'X-GDevelop-Client-Id': clientId,
+        'Content-Type': 'application/json',
+        'Content-Length': '64',
+      },
+    });
+    request.on('error', () => {});
+    request.write('{');
+    return request;
+  };
+  const heldClientA = makeHeldRequest('client-a');
+  let heldClientB = null;
+
+  try {
+    await new Promise(resolve => setTimeout(resolve, 20));
+    const clientASaturated = await fetch(host.url, {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer backpressure-token',
+        'X-GDevelop-Client-Id': 'client-a',
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({}),
     });
-    assert.equal(saturated.status, 429);
-    assert.equal(saturated.headers.get('retry-after'), '1');
-    const saturatedBody = await saturated.json();
-    assert.equal(saturatedBody.error.code, -32002);
+    assert.equal(clientASaturated.status, 429);
+    assert.equal(clientASaturated.headers.get('retry-after'), '1');
+    const clientABody = await clientASaturated.json();
+    assert.equal(clientABody.error.code, -32004);
+
+    heldClientB = makeHeldRequest('client-b');
+    await new Promise(resolve => setTimeout(resolve, 20));
+    const globallySaturated = await fetch(host.url, {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer backpressure-token',
+        'X-GDevelop-Client-Id': 'client-c',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({}),
+    });
+    assert.equal(globallySaturated.status, 429);
+    const globalBody = await globallySaturated.json();
+    assert.equal(globalBody.error.code, -32002);
     assert.equal(rendererBridge.calls.length, 0);
   } finally {
-    heldRequest.destroy();
+    heldClientA.destroy();
+    if (heldClientB) heldClientB.destroy();
     await host.stop();
   }
 });

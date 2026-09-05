@@ -16,6 +16,7 @@ const MCP_PATH = '/mcp';
 const DEFAULT_MAX_BODY_BYTES = 4 * 1024 * 1024;
 const DEFAULT_MAX_JSON_DEPTH = 64;
 const DEFAULT_MAX_CONCURRENT_REQUESTS = 32;
+const DEFAULT_MAX_CONCURRENT_REQUESTS_PER_CLIENT = 8;
 
 const makeJsonRpcErrorResponse = ({
   response,
@@ -104,6 +105,27 @@ const isAuthorized = (request, token) => {
   return authorization === `Bearer ${token}`;
 };
 
+const getClientAdmissionKey = request => {
+  const explicitClientId = request.headers['x-gdevelop-client-id'];
+  if (
+    typeof explicitClientId === 'string' &&
+    /^[A-Za-z0-9._:-]{1,128}$/.test(explicitClientId)
+  ) {
+    return `client:${explicitClientId}`;
+  }
+
+  const windowId = request.headers['x-gdevelop-window-id'];
+  if (typeof windowId === 'string' && /^\d{1,12}$/.test(windowId)) {
+    return `window:${windowId}`;
+  }
+
+  const remoteAddress =
+    request.socket && typeof request.socket.remoteAddress === 'string'
+      ? request.socket.remoteAddress
+      : 'unknown';
+  return `remote:${remoteAddress}`;
+};
+
 const listen = (server, port, host) =>
   new Promise((resolve, reject) => {
     const onError = error => {
@@ -137,6 +159,7 @@ const startMcpHttpServer = async ({
   maxBodyBytes = DEFAULT_MAX_BODY_BYTES,
   maxJsonDepth = DEFAULT_MAX_JSON_DEPTH,
   maxConcurrentRequests = DEFAULT_MAX_CONCURRENT_REQUESTS,
+  maxConcurrentRequestsPerClient = DEFAULT_MAX_CONCURRENT_REQUESTS_PER_CLIENT,
   log = null,
 }) => {
   const handler = createMcpHandler(
@@ -156,6 +179,7 @@ const startMcpHttpServer = async ({
   const validateHost = localhostHostValidation();
   const validateOrigin = localhostOriginValidation();
   let activeRequests = 0;
+  const activeRequestsByClient = new Map();
 
   const server = http.createServer(async (request, response) => {
     try {
@@ -188,7 +212,22 @@ const startMcpHttpServer = async ({
         return;
       }
 
+      const clientAdmissionKey = getClientAdmissionKey(request);
+      const activeClientRequests =
+        activeRequestsByClient.get(clientAdmissionKey) || 0;
+      if (activeClientRequests >= maxConcurrentRequestsPerClient) {
+        makeJsonRpcErrorResponse({
+          response,
+          statusCode: 429,
+          code: -32004,
+          message: 'Too many concurrent requests for this client',
+          headers: { 'Retry-After': '1' },
+        });
+        return;
+      }
+
       activeRequests++;
+      activeRequestsByClient.set(clientAdmissionKey, activeClientRequests + 1);
       try {
         const parsedBody =
           request.method === 'POST'
@@ -197,6 +236,16 @@ const startMcpHttpServer = async ({
         await nodeHandler(request, response, parsedBody);
       } finally {
         activeRequests--;
+        const remainingClientRequests =
+          (activeRequestsByClient.get(clientAdmissionKey) || 1) - 1;
+        if (remainingClientRequests > 0) {
+          activeRequestsByClient.set(
+            clientAdmissionKey,
+            remainingClientRequests
+          );
+        } else {
+          activeRequestsByClient.delete(clientAdmissionKey);
+        }
       }
     } catch (error) {
       if (
@@ -283,6 +332,7 @@ module.exports = {
   DEFAULT_MAX_BODY_BYTES,
   DEFAULT_MAX_JSON_DEPTH,
   DEFAULT_MAX_CONCURRENT_REQUESTS,
+  DEFAULT_MAX_CONCURRENT_REQUESTS_PER_CLIENT,
   MCP_PATH,
   isAuthorized,
   readJsonBodyWithLimit,

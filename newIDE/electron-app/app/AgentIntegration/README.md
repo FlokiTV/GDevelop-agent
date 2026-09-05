@@ -93,7 +93,7 @@ The threat model explicitly covers:
 - **DNS rebinding / forged Host**: the Node HTTP boundary accepts only localhost/loopback Host values;
 - **browser CSRF / hostile Origin**: requests with a non-local `Origin` are rejected before authentication or MCP dispatch;
 - **token leakage**: a new cryptographically random token is created on every startup, stored in a private token file, never embedded in discovery JSON and never intentionally written to request/result logs;
-- **resource exhaustion**: authenticated HTTP bodies are capped at 4 MiB, JSON nesting at 64 levels, concurrent authenticated requests at 32, local resource source files at 256 MiB and PNG capture results at 16 MiB;
+- **resource exhaustion**: authenticated HTTP bodies are capped at 4 MiB, JSON nesting at 64 levels, concurrent authenticated requests at 32 globally and 8 per admission client, local resource source files at 256 MiB and PNG capture results at 16 MiB;
 - **filesystem traversal and unsafe deletion**: local resource imports operate only on an explicitly supplied source path and copy into the project by default; physical resource deletion is allowed only for a resolved project-local file that is not shared or still referenced;
 - **stale or replayed mutations**: project/event revision preconditions reject stale writes, while `idempotencyKey` deduplicates retry-safe mutation replay and rejects reuse with different input;
 - **destructive operations**: destructive metadata is projected to MCP annotations for client UX, but server-side checks remain authoritative. Opening/closing over dirty work requires explicit `discardUnsavedChanges`; resource deletion refuses in-use/shared/outside-project files; checkpoint restore/transaction rollback remain explicit destructive commands.
@@ -109,9 +109,12 @@ MCP calls are stateless with respect to editor selection. A client can explicitl
 ```text
 X-GDevelop-Window-Id: <Electron BrowserWindow id>
 X-GDevelop-Project-Path: <absolute project path>
+X-GDevelop-Client-Id: <optional stable local client id>
 ```
 
-If neither is supplied, `WindowRegistry` prefers the focused registered editor and otherwise accepts the only unambiguous registered editor. Use `desktop.windows.list` when multiple editor/preview windows are open.
+`X-GDevelop-Client-Id` is optional and used only for cooperative per-client admission fairness; it is not authentication and is never trusted as a security boundary. Invalid/missing client ids fall back to editor-window/remote identity, while the global concurrency cap remains authoritative against clients that rotate ids.
+
+If neither editor target is supplied, `WindowRegistry` prefers the focused registered editor and otherwise accepts the only unambiguous registered editor. Use `desktop.windows.list` when multiple editor/preview windows are open.
 
 ## Discovering commands
 
