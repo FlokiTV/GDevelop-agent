@@ -1,8 +1,8 @@
 // @flow
-import { exportLocalHtml5ForAgent } from '../../AgentApi/ExportTools';
+import { exportLocalHtml5ForAgent } from '../ExportTools';
 import { createExportService } from './ExportService';
 
-jest.mock('../../AgentApi/ExportTools', () => ({
+jest.mock('../ExportTools', () => ({
   exportLocalHtml5ForAgent: jest.fn(async options => ({
     outputDir: options.outputDir || 'default',
   })),

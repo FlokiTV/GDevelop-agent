@@ -1,11 +1,11 @@
 // @flow
-import { createAssetTools } from '../AgentApi/AssetTools';
-import { createDiagnosticsTools } from '../AgentApi/DiagnosticsTools';
+import { createAssetTools } from './AssetTools';
+import { createDiagnosticsTools } from './DiagnosticsTools';
 import {
   createEditorVisualTools,
   restoreOpenSceneEditors,
-} from '../AgentApi/EditorVisualTools';
-import { createEventTools } from '../AgentApi/EventTools';
+} from './EditorVisualTools';
+import { createEventTools } from './EventTools';
 import { createEditorFunctionService } from './editor/EditorFunctionService';
 import { createEditorVisualService } from './editor/EditorVisualService';
 import { createExportService } from './editor/ExportService';

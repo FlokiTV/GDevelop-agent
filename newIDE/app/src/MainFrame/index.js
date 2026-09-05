@@ -172,7 +172,7 @@ import useForceUpdate from '../Utils/UseForceUpdate';
 import useStateWithCallback from '../Utils/UseSetStateWithCallback';
 import { useKeyboardShortcuts, useShortcutMap } from '../KeyboardShortcuts';
 import useMainFrameCommands from './MainFrameCommands';
-import useAgentApi from '../AgentApi/useAgentApi';
+import useAgentIntegration from '../AgentIntegration/useAgentIntegration';
 import {
   installCliInPath,
   isCliInPathInstallSupported,
@@ -5635,7 +5635,7 @@ const MainFrame = (props: Props): React.MixedElement => {
     ]
   );
 
-  useAgentApi({
+  useAgentIntegration({
     project: state.currentProject,
     editorTabs: state.editorTabs,
     fileIdentifier,

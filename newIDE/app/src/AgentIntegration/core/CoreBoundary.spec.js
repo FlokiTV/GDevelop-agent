@@ -9,11 +9,10 @@ const FORBIDDEN_IMPORT_PATTERNS = [
   /(?:from\s+|require\()['"]http['"]?/,
   /(?:from\s+|require\()['"]https['"]?/,
   /(?:from\s+|require\()['"]@modelcontextprotocol\//,
-  /(?:from\s+|require\().*AgentApi\//,
 ];
 
 describe('AgentIntegration core dependency boundary', () => {
-  it('does not import React, Electron, HTTP, MCP or legacy AgentApi', () => {
+  it('does not import React, Electron, HTTP or MCP', () => {
     const productionFiles = fs
       .readdirSync(CORE_DIRECTORY)
       .filter(fileName => fileName.endsWith('.js'))

@@ -11,7 +11,7 @@ import {
   getTransactionStatus,
   listCheckpoints,
   prepareTransactionRollback,
-} from '../../AgentApi/CheckpointTools';
+} from '../CheckpointTools';
 
 type Options = {|
   project: ?gdProject,

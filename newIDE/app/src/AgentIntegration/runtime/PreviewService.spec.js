@@ -1,8 +1,8 @@
 // @flow
-import { closeAllPreviewWindowsForAgent } from '../../AgentApi/PreviewLifecycleTools';
+import { closeAllPreviewWindowsForAgent } from '../PreviewLifecycleTools';
 import { createPreviewService, getPreviewStatus } from './PreviewService';
 
-jest.mock('../../AgentApi/PreviewLifecycleTools', () => ({
+jest.mock('../PreviewLifecycleTools', () => ({
   closeAllPreviewWindowsForAgent: jest.fn(async () => ({ closed: 2 })),
 }));
 

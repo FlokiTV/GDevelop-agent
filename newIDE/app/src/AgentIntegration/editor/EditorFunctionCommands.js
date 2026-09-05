@@ -8,7 +8,7 @@ import {
   getFunctionMetadata,
   getFunctionMetadataStats,
   listFunctionMetadata,
-} from '../../AgentApi/FunctionMetadata';
+} from '../FunctionMetadata';
 
 const assertFunctionName = (name: any) => {
   if (!name || typeof name !== 'string') {

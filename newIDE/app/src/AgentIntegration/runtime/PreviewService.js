@@ -1,6 +1,6 @@
 // @flow
 import { AgentError } from '../core/AgentError';
-import { closeAllPreviewWindowsForAgent } from '../../AgentApi/PreviewLifecycleTools';
+import { closeAllPreviewWindowsForAgent } from '../PreviewLifecycleTools';
 
 type Options = {|
   project: ?gdProject,

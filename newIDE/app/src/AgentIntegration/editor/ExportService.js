@@ -1,6 +1,6 @@
 // @flow
 import { AgentError } from '../core/AgentError';
-import { exportLocalHtml5ForAgent } from '../../AgentApi/ExportTools';
+import { exportLocalHtml5ForAgent } from '../ExportTools';
 
 type Options = {|
   project: ?gdProject,

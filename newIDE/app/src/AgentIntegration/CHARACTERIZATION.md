@@ -1,6 +1,6 @@
 # AgentIntegration Characterization Baseline
 
-This document freezes the behavior that must survive the AgentApi -> AgentIntegration/MCP migration. It does **not** freeze the legacy REST `/v1` protocol, which is intentionally being removed.
+This document freezes the behavior that must survive the AgentIntegration/MCP refactor. It does **not** freeze the removed REST `/v1` protocol.
 
 ## Baseline commit
 
@@ -116,16 +116,16 @@ Command:
 
 ```text
 npm test -- --runTestsByPath \
-  src/AgentApi/AssetTools.spec.js \
-  src/AgentApi/CheckpointTools.spec.js \
-  src/AgentApi/DiagnosticsTools.spec.js \
-  src/AgentApi/EditorVisualTools.spec.js \
-  src/AgentApi/EventTools.spec.js \
-  src/AgentApi/ExportTools.spec.js \
-  src/AgentApi/FunctionMetadata.spec.js \
-  src/AgentApi/GameplayTestLifecycleTools.spec.js \
-  src/AgentApi/PreviewLifecycleTools.spec.js \
-  src/AgentApi/RuntimeTelemetry.spec.js \
+  src/AgentIntegration/AssetTools.spec.js \
+  src/AgentIntegration/CheckpointTools.spec.js \
+  src/AgentIntegration/DiagnosticsTools.spec.js \
+  src/AgentIntegration/EditorVisualTools.spec.js \
+  src/AgentIntegration/EventTools.spec.js \
+  src/AgentIntegration/ExportTools.spec.js \
+  src/AgentIntegration/FunctionMetadata.spec.js \
+  src/AgentIntegration/GameplayTestLifecycleTools.spec.js \
+  src/AgentIntegration/PreviewLifecycleTools.spec.js \
+  src/AgentIntegration/RuntimeTelemetry.spec.js \
   --watchAll=false
 ```
 

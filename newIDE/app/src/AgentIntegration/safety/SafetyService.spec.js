@@ -1,8 +1,8 @@
 // @flow
-import * as checkpointTools from '../../AgentApi/CheckpointTools';
+import * as checkpointTools from '../CheckpointTools';
 import { createSafetyService } from './SafetyService';
 
-jest.mock('../../AgentApi/CheckpointTools', () => ({
+jest.mock('../CheckpointTools', () => ({
   beginTransaction: jest.fn(),
   commitTransaction: jest.fn(),
   completeTransactionRollback: jest.fn(),

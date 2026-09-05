@@ -31,11 +31,11 @@ import { ObjectStoreContext } from '../AssetStore/ObjectStoreContext';
 import { ExtensionStoreContext } from '../AssetStore/ExtensionStore/ExtensionStoreContext';
 import { enumerateObjectTypes } from '../ObjectsList/EnumerateObjects';
 import { type FileMetadata } from '../ProjectsStorage';
-import { createRendererIntegration } from '../AgentIntegration/RendererIntegrationFactory';
+import { createRendererIntegration } from './RendererIntegrationFactory';
 import {
   attachRendererIntegrationHost,
   registerRendererIntegration,
-} from '../AgentIntegration/RendererIntegrationLifecycle';
+} from './RendererIntegrationLifecycle';
 
 const electron = optionalRequire('electron');
 const ipcRenderer = electron ? electron.ipcRenderer : null;
@@ -105,7 +105,7 @@ type Props = {|
   onExtensionInstalled: (extensionNames: Array<string>) => void,
 |};
 
-export default function useAgentApi({
+export default function useAgentIntegration({
   project,
   editorTabs,
   fileIdentifier,

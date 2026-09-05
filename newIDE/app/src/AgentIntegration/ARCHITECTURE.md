@@ -37,7 +37,7 @@ newIDE/electron-app/app/AgentIntegration/
   mcp/           # MCP 2026-07-28 transport and protocol projection
 ```
 
-During migration, legacy `AgentApi` directories may coexist temporarily. They must disappear before the upstream-ready gate.
+The renderer and Electron integration now live exclusively under `AgentIntegration`; no parallel legacy feature tree is kept.
 
 ## Dependency rule
 
