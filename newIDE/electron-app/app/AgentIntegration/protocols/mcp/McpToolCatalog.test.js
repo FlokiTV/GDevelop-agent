@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
+  withCommandResultEnvelope,
   withRevisionPrecondition,
   descriptorToToolRegistration,
   descriptorsToToolRegistrations,
@@ -13,6 +14,12 @@ const descriptor = (name, metadata = {}) => ({
     type: 'object',
     additionalProperties: false,
     properties: { value: { type: 'string' } },
+  },
+  outputSchema: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['ok'],
+    properties: { ok: { type: 'boolean' } },
   },
   metadata: {
     readOnly: true,
@@ -53,7 +60,24 @@ test('projects command metadata to MCP annotations without duplicating schemas',
   assert.equal(registration.config._meta['gdevelop/defaultTimeoutMs'], 90000);
   assert.equal(registration.config._meta['gdevelop/cacheScope'], 'process');
   assert.equal(registration.config._meta['gdevelop/ttlMs'], 60000);
+  assert.ok(registration.config.outputSchema);
   assert.equal(registration.timeoutMs, 90000);
+});
+
+test('wraps command data output schemas in the shared AgentIntegration envelope', () => {
+  const dataSchema = {
+    type: 'object',
+    required: ['ok'],
+    properties: { ok: { type: 'boolean' } },
+  };
+  const envelope = withCommandResultEnvelope(dataSchema);
+  assert.deepEqual(envelope.required, ['command', 'data', 'meta']);
+  assert.equal(envelope.properties.data, dataSchema);
+  assert.deepEqual(envelope.properties.meta.required, [
+    'readOnly',
+    'modifiesProject',
+  ]);
+  assert.equal(withCommandResultEnvelope(null), null);
 });
 
 test('adds mutation controls only to project-mutating MCP schemas', () => {

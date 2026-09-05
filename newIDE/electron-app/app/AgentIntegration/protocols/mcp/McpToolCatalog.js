@@ -2,6 +2,30 @@ const { fromJsonSchema } = require('@modelcontextprotocol/server');
 
 const MCP_META_PREFIX = 'gdevelop/';
 
+const withCommandResultEnvelope = outputSchema => {
+  if (!outputSchema || typeof outputSchema !== 'object') return null;
+  return {
+    type: 'object',
+    additionalProperties: false,
+    required: ['command', 'data', 'meta'],
+    properties: {
+      command: { type: 'string' },
+      data: outputSchema,
+      meta: {
+        type: 'object',
+        additionalProperties: true,
+        required: ['readOnly', 'modifiesProject'],
+        properties: {
+          traceId: { type: ['string', 'null'] },
+          readOnly: { type: 'boolean' },
+          modifiesProject: { type: 'boolean' },
+          projectRevision: { type: ['integer', 'null'], minimum: 0 },
+        },
+      },
+    },
+  };
+};
+
 const withRevisionPrecondition = (inputSchema, modifiesProject) => {
   const schema = inputSchema || {
     type: 'object',
@@ -40,6 +64,13 @@ const descriptorToToolRegistration = descriptor => {
       inputSchema: fromJsonSchema(
         withRevisionPrecondition(descriptor.inputSchema, modifiesProject)
       ),
+      ...(descriptor.outputSchema
+        ? {
+            outputSchema: fromJsonSchema(
+              withCommandResultEnvelope(descriptor.outputSchema)
+            ),
+          }
+        : {}),
       annotations: {
         readOnlyHint: !!metadata.readOnly,
         destructiveHint: !!metadata.destructive,
@@ -80,6 +111,7 @@ const descriptorsToToolRegistrations = descriptors =>
 
 module.exports = {
   MCP_META_PREFIX,
+  withCommandResultEnvelope,
   withRevisionPrecondition,
   descriptorToToolRegistration,
   descriptorsToToolRegistrations,

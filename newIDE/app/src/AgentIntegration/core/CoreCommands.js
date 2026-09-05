@@ -16,12 +16,43 @@ const DISCOVERY_METADATA = makeCommandMetadata({
   ttlMs: 60000,
 });
 
+const COMMAND_SUMMARY_SCHEMA = {
+  type: 'object',
+  additionalProperties: true,
+  required: ['name', 'description', 'inputSchema', 'metadata'],
+  properties: {
+    name: { type: 'string' },
+    description: { type: 'string' },
+    inputSchema: { type: 'object' },
+    outputSchema: { type: 'object' },
+    metadata: { type: 'object' },
+  },
+};
+
+const COMMANDS_OUTPUT_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['commands'],
+  properties: {
+    commands: { type: 'array', items: COMMAND_SUMMARY_SCHEMA },
+  },
+};
+
 export const createCoreCommandDescriptors = (): Array<CommandDescriptor> => [
   {
     name: 'agent.capabilities',
     description:
       'Return protocol-independent AgentIntegration capabilities and command metadata.',
     inputSchema: EMPTY_OBJECT_SCHEMA,
+    outputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['commandCount', 'commands'],
+      properties: {
+        commandCount: { type: 'integer', minimum: 0 },
+        commands: { type: 'array', items: COMMAND_SUMMARY_SCHEMA },
+      },
+    },
     metadata: DISCOVERY_METADATA,
     execute: ({ registry }) => ({
       commandCount: registry.size,
@@ -38,6 +69,7 @@ export const createCoreCommandDescriptors = (): Array<CommandDescriptor> => [
         query: { type: 'string' },
       },
     },
+    outputSchema: COMMANDS_OUTPUT_SCHEMA,
     metadata: DISCOVERY_METADATA,
     validateInput: input => {
       if (input.query !== undefined && typeof input.query !== 'string') {
@@ -62,6 +94,12 @@ export const createCoreCommandDescriptors = (): Array<CommandDescriptor> => [
         name: { type: 'string', minLength: 1 },
       },
     },
+    outputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['command'],
+      properties: { command: COMMAND_SUMMARY_SCHEMA },
+    },
     metadata: DISCOVERY_METADATA,
     validateInput: input => {
       if (!input.name || typeof input.name !== 'string') {
@@ -80,6 +118,19 @@ export const createCoreCommandDescriptors = (): Array<CommandDescriptor> => [
     description:
       'Return the status of the GDevelop editor and currently open project.',
     inputSchema: EMPTY_OBJECT_SCHEMA,
+    outputSchema: {
+      type: 'object',
+      additionalProperties: true,
+      required: ['projectOpen'],
+      properties: {
+        projectOpen: { type: 'boolean' },
+        projectName: { type: ['string', 'null'] },
+        projectUuid: { type: ['string', 'null'] },
+        fileIdentifier: { type: ['string', 'null'] },
+        hasUnsavedChanges: { type: 'boolean' },
+        projectRevision: { type: ['integer', 'null'], minimum: 0 },
+      },
+    },
     metadata: makeCommandMetadata(),
     execute: ({ environment }) => {
       if (typeof environment.getProjectStatus === 'function') {

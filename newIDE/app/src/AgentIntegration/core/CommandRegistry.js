@@ -24,6 +24,7 @@ export type CommandDescriptor = {|
   name: string,
   description: string,
   inputSchema: { [string]: any },
+  outputSchema?: { [string]: any },
   metadata: CommandMetadata,
   validateInput?: (input: { [string]: any }) => void,
   execute: (context: CommandExecutionContext) => any | Promise<any>,
@@ -66,6 +67,15 @@ const assertDescriptor = (descriptor: CommandDescriptor) => {
   if (!descriptor.inputSchema || typeof descriptor.inputSchema !== 'object') {
     throw new AgentError({
       code: 'missing_command_input_schema',
+      details: { name: descriptor.name },
+    });
+  }
+  if (
+    descriptor.outputSchema !== undefined &&
+    (!descriptor.outputSchema || typeof descriptor.outputSchema !== 'object')
+  ) {
+    throw new AgentError({
+      code: 'invalid_command_output_schema',
       details: { name: descriptor.name },
     });
   }
@@ -134,6 +144,7 @@ const publicDescriptor = (descriptor: CommandDescriptor) => ({
   name: descriptor.name,
   description: descriptor.description,
   inputSchema: descriptor.inputSchema,
+  ...(descriptor.outputSchema ? { outputSchema: descriptor.outputSchema } : {}),
   metadata: descriptor.metadata,
   ...(descriptor.deprecated ? { deprecated: descriptor.deprecated } : {}),
 });

@@ -62,6 +62,25 @@ describe('CommandRegistry', () => {
     ).toThrow(expect.objectContaining({ code: 'invalid_command_metadata' }));
   });
 
+  it('exposes and validates optional output schemas centrally', () => {
+    const outputSchema = {
+      type: 'object',
+      properties: { ok: { type: 'boolean' } },
+    };
+    const registry = new CommandRegistry([
+      makeDescriptor('project.status', { outputSchema }),
+    ]);
+    expect(registry.describe('project.status').outputSchema).toBe(outputSchema);
+
+    expect(() =>
+      new CommandRegistry([
+        makeDescriptor('project.invalid-output', {
+          outputSchema: ('invalid': any),
+        }),
+      ])
+    ).toThrow(expect.objectContaining({ code: 'invalid_command_output_schema' }));
+  });
+
   it('validates optional cache metadata centrally', () => {
     expect(
       new CommandRegistry([
