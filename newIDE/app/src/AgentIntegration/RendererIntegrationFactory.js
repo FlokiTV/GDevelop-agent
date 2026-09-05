@@ -121,15 +121,16 @@ export const createRendererIntegration = ({
   const editorVisualTools = project
     ? createEditorVisualTools({ project, editorTabs })
     : null;
+  const diagnosticsTools = project
+    ? createDiagnosticsTools({ project, i18n, assetTools })
+    : null;
   const eventTools = project
     ? createEventTools({
         project,
+        diagnosticsTools,
         triggerUnsavedChanges,
         onSceneEventsModifiedOutsideEditor,
       })
-    : null;
-  const diagnosticsTools = project
-    ? createDiagnosticsTools({ project, i18n, assetTools })
     : null;
 
   const restoreProjectCheckpoint = async (checkpoint: any) => {

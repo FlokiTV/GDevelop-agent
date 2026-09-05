@@ -7,6 +7,7 @@ describe('AgentIntegration EventTools', () => {
   let project: gdProject;
   let source: gdLayout;
   let target: gdLayout;
+  let diagnosticsTools;
   let triggerUnsavedChanges;
   let onSceneEventsModifiedOutsideEditor;
 
@@ -20,6 +21,12 @@ describe('AgentIntegration EventTools', () => {
     target
       .getEvents()
       .insertNewEvent(project, 'BuiltinCommonInstructions::Comment', 0);
+    diagnosticsTools = {
+      inspect: jest.fn(() => ({
+        issues: [],
+        summary: { ok: true, errors: 0, warnings: 0 },
+      })),
+    };
     triggerUnsavedChanges = jest.fn();
     onSceneEventsModifiedOutsideEditor = jest.fn();
   });
@@ -31,6 +38,7 @@ describe('AgentIntegration EventTools', () => {
   const makeTools = () =>
     createEventTools({
       project,
+      diagnosticsTools,
       triggerUnsavedChanges,
       onSceneEventsModifiedOutsideEditor,
     });
@@ -134,10 +142,66 @@ describe('AgentIntegration EventTools', () => {
       'BuiltinCommonInstructions::Standard'
     );
     expect(result.events[0].path).toEqual([1]);
+    expect(result.validation).toEqual({ ok: true, issues: [] });
+    expect(result.diff).toMatchObject({
+      operation: 'insert',
+      beforeEventsRevision: before.eventsRevision,
+      eventsRevision: result.eventsRevision,
+      beforeEventCount: 1,
+      afterEventCount: 2,
+      inserted: [{ path: [1] }],
+    });
+    expect(diagnosticsTools.inspect).toHaveBeenCalledWith({
+      includeNativeReport: false,
+      includeAssets: false,
+    });
     expect(triggerUnsavedChanges).toHaveBeenCalledTimes(1);
     expect(onSceneEventsModifiedOutsideEditor).toHaveBeenCalledWith({
       scene: target,
       newOrChangedAiGeneratedEventIds: expect.any(Set),
+    });
+  });
+
+  it('returns only native event validation issues for the mutated scene', () => {
+    diagnosticsTools.inspect.mockReturnValue({
+      issues: [
+        {
+          severity: 'error',
+          category: 'events-validation',
+          code: 'invalid-parameter',
+          message: 'Invalid target scene parameter',
+          details: { locationName: 'Target', eventPath: [0] },
+        },
+        {
+          severity: 'error',
+          category: 'events-validation',
+          code: 'invalid-parameter',
+          message: 'Different scene issue',
+          details: { locationName: 'Source', eventPath: [0] },
+        },
+        {
+          severity: 'error',
+          category: 'resources',
+          code: 'missing-resource-file',
+          message: 'Unrelated issue',
+        },
+      ],
+    });
+    const tools = makeTools();
+    const sourceEvents = tools.readSceneEventsJson({ sceneName: 'Source' });
+    const before = tools.readSceneEventsJson({ sceneName: 'Target' });
+
+    const result = tools.insertSceneEvents({
+      sceneName: 'Target',
+      expectedEventsRevision: before.eventsRevision,
+      eventsJson: sourceEvents.eventsJson,
+    });
+
+    expect(result.validation.ok).toBe(false);
+    expect(result.validation.issues).toHaveLength(1);
+    expect(result.validation.issues[0]).toMatchObject({
+      category: 'events-validation',
+      message: 'Invalid target scene parameter',
     });
   });
 

@@ -353,13 +353,51 @@ const deserializeEvents = (
 
 export const createEventTools = ({
   project,
+  diagnosticsTools,
   triggerUnsavedChanges,
   onSceneEventsModifiedOutsideEditor,
 }: {|
   project: gdProject,
+  diagnosticsTools?: ?any,
   triggerUnsavedChanges: () => void,
   onSceneEventsModifiedOutsideEditor: (changes: any) => void,
 |}): any => {
+  const getPostPatchValidation = (sceneName: string) => {
+    if (!diagnosticsTools) return { ok: true, issues: [] };
+    const diagnostics = diagnosticsTools.inspect({
+      includeNativeReport: false,
+      includeAssets: false,
+    });
+    const issues = (diagnostics.issues || []).filter(issue => {
+      if (!issue || issue.category !== 'events-validation') return false;
+      const locationName = issue.details && issue.details.locationName;
+      return locationName === sceneName || issue.sceneName === sceneName;
+    });
+    return {
+      ok: !issues.some(issue => issue.severity === 'error'),
+      issues,
+    };
+  };
+
+  const makePatchDiff = ({
+    operation,
+    beforeState,
+    afterState,
+    details,
+  }: {|
+    operation: string,
+    beforeState: any,
+    afterState: any,
+    details?: any,
+  |}) => ({
+    operation,
+    beforeEventsRevision: beforeState.eventsRevision,
+    eventsRevision: afterState.eventsRevision,
+    beforeEventCount: beforeState.flatEvents.length,
+    afterEventCount: afterState.flatEvents.length,
+    ...(details || {}),
+  });
+
   const readSceneEventsJson = (request: any): any => {
     const sceneName =
       typeof request.sceneName === 'string' ? request.sceneName : '';
@@ -436,6 +474,18 @@ export const createEventTools = ({
       beforeEventsRevision: beforeState.eventsRevision,
       eventsRevision: afterState.eventsRevision,
       events: inserted,
+      validation: getPostPatchValidation(sceneName),
+      diff: makePatchDiff({
+        operation: 'insert',
+        beforeState,
+        afterState,
+        details: {
+          inserted: inserted.map(event => ({
+            handle: event.handle,
+            path: event.path,
+          })),
+        },
+      }),
     };
   };
 
@@ -462,18 +512,28 @@ export const createEventTools = ({
       newOrChangedAiGeneratedEventIds: new Set(),
     });
     const afterState = getCanonicalSceneEventsState(scene);
+    const deletedEvent = deletedNode
+      ? {
+          handle: deletedNode.handle,
+          path: deletedNode.path,
+          fingerprint: deletedNode.fingerprint,
+        }
+      : { handle: request.handle, path, fingerprint: null };
     return {
       deleted: true,
       sceneName,
-      deletedEvent: deletedNode
-        ? {
-            handle: deletedNode.handle,
-            path: deletedNode.path,
-            fingerprint: deletedNode.fingerprint,
-          }
-        : { handle: request.handle, path, fingerprint: null },
+      deletedEvent,
       beforeEventsRevision: beforeState.eventsRevision,
       eventsRevision: afterState.eventsRevision,
+      validation: getPostPatchValidation(sceneName),
+      diff: makePatchDiff({
+        operation: 'delete',
+        beforeState,
+        afterState,
+        details: {
+          deleted: { handle: deletedEvent.handle, path: deletedEvent.path },
+        },
+      }),
     };
   };
 
@@ -546,19 +606,31 @@ export const createEventTools = ({
     const afterState = getCanonicalSceneEventsState(scene);
     const newPath = [...placement.parentPath, insertionIndex];
     const movedNode = findCanonicalNodeByPath(afterState, newPath);
+    const movedEvent = movedNode
+      ? {
+          handle: movedNode.handle,
+          path: movedNode.path,
+          fingerprint: movedNode.fingerprint,
+        }
+      : { handle: null, path: newPath, fingerprint: null };
     return {
       moved: true,
       sceneName,
       beforeEventsRevision: beforeState.eventsRevision,
       eventsRevision: afterState.eventsRevision,
       fromPath: sourcePath,
-      event: movedNode
-        ? {
-            handle: movedNode.handle,
-            path: movedNode.path,
-            fingerprint: movedNode.fingerprint,
-          }
-        : { handle: null, path: newPath, fingerprint: null },
+      event: movedEvent,
+      validation: getPostPatchValidation(sceneName),
+      diff: makePatchDiff({
+        operation: 'move',
+        beforeState,
+        afterState,
+        details: {
+          handle: request.handle,
+          fromPath: sourcePath,
+          toPath: movedEvent.path,
+        },
+      }),
     };
   };
 
@@ -625,18 +697,30 @@ export const createEventTools = ({
     });
     const afterState = getCanonicalSceneEventsState(scene);
     const updatedNode = findCanonicalNodeByPath(afterState, path);
+    const updatedEvent = updatedNode
+      ? {
+          handle: updatedNode.handle,
+          path: updatedNode.path,
+          fingerprint: updatedNode.fingerprint,
+        }
+      : { handle: null, path, fingerprint: null };
     return {
       updated: true,
       sceneName,
       beforeEventsRevision: beforeState.eventsRevision,
       eventsRevision: afterState.eventsRevision,
-      event: updatedNode
-        ? {
-            handle: updatedNode.handle,
-            path: updatedNode.path,
-            fingerprint: updatedNode.fingerprint,
-          }
-        : { handle: null, path, fingerprint: null },
+      event: updatedEvent,
+      validation: getPostPatchValidation(sceneName),
+      diff: makePatchDiff({
+        operation: 'update',
+        beforeState,
+        afterState,
+        details: {
+          handle: request.handle,
+          path: updatedEvent.path,
+          preserveSubevents,
+        },
+      }),
     };
   };
 
