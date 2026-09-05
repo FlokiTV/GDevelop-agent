@@ -26,9 +26,10 @@ export const attachRendererAgentHostToIpc = ({
       command: string,
       input?: any,
       traceId?: string,
+      expectedRevision?: number,
     |}
   ) => {
-    const { requestId, command, input, traceId } = payload || {};
+    const { requestId, command, input, traceId, expectedRevision } = payload || {};
     if (!requestId || typeof requestId !== 'string') return;
 
     try {
@@ -38,6 +39,9 @@ export const attachRendererAgentHostToIpc = ({
       const result = await agentHost.execute(command, input, {
         traceId:
           typeof traceId === 'string' && traceId ? traceId : requestId,
+        ...(Number.isInteger(expectedRevision) && expectedRevision >= 0
+          ? { expectedRevision }
+          : {}),
       });
       ipcRenderer.send(COMMAND_RESPONSE_CHANNEL, {
         requestId,

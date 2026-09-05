@@ -32,6 +32,7 @@ import { ExtensionStoreContext } from '../AssetStore/ExtensionStore/ExtensionSto
 import { enumerateObjectTypes } from '../ObjectsList/EnumerateObjects';
 import { type FileMetadata } from '../ProjectsStorage';
 import { createRendererIntegration } from './RendererIntegrationFactory';
+import { ProjectRevisionTracker } from './core/ProjectRevisionTracker';
 import {
   attachRendererIntegrationHost,
   registerRendererIntegration,
@@ -62,6 +63,7 @@ type Props = {|
   ) => Promise<void>,
   closeProject: () => Promise<void>,
   hasUnsavedChanges: boolean,
+  getChangesCount: () => number,
   createEmptyProject: (newProjectSetup: any) => Promise<any>,
   createProjectFromExample: (exampleProjectSetup: any) => Promise<any>,
   launchNewPreview: (options?: any) => Promise<void>,
@@ -118,6 +120,7 @@ export default function useAgentIntegration({
   openFromFileMetadataWithStorageProvider,
   closeProject,
   hasUnsavedChanges,
+  getChangesCount,
   createEmptyProject,
   createProjectFromExample,
   launchNewPreview,
@@ -230,6 +233,18 @@ export default function useAgentIntegration({
     [previewDebuggerServer]
   );
 
+  const projectRevisionTrackerRef = React.useRef<?ProjectRevisionTracker>(null);
+  if (!projectRevisionTrackerRef.current) {
+    projectRevisionTrackerRef.current = new ProjectRevisionTracker({
+      getChangesCount,
+    });
+  }
+  const projectRevisionTracker = projectRevisionTrackerRef.current;
+  projectRevisionTracker.setSource({
+    projectKey: project ? project.getProjectUuid() : null,
+    getChangesCount,
+  });
+
   React.useEffect(
     () => () => {
       if (runtimeTelemetry) runtimeTelemetry.dispose();
@@ -260,6 +275,7 @@ export default function useAgentIntegration({
         i18n,
         resourceManagementProps,
         hasUnsavedChanges,
+        projectRevisionTracker,
         editorCallbacks,
         processEditorFunctionCalls,
         generateEvents,
@@ -333,6 +349,7 @@ export default function useAgentIntegration({
       openFromFileMetadataWithStorageProvider,
       closeProject,
       hasUnsavedChanges,
+      projectRevisionTracker,
       createProjectForAgent,
       launchNewPreview,
       launchHotReloadPreview,

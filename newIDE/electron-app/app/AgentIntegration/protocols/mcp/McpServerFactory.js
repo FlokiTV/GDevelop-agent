@@ -99,16 +99,23 @@ const createMcpServerFactory = ({
       registration.name,
       registration.config,
       async input => {
+        const normalizedInput = input && typeof input === 'object' ? input : {};
+        const { expectedRevision, ...commandInput } = normalizedInput;
         const result =
           desktopCommandRegistry && desktopCommandRegistry.has(registration.name)
             ? await desktopCommandRegistry.execute({
                 command: registration.name,
-                input,
+                input: commandInput,
               })
             : await rendererBridge.executeCommand({
                 command: registration.name,
-                input,
+                input: commandInput,
                 traceId: crypto.randomUUID(),
+                ...(registration.modifiesProject &&
+                Number.isInteger(expectedRevision) &&
+                expectedRevision >= 0
+                  ? { expectedRevision }
+                  : {}),
                 timeoutMs: registration.timeoutMs,
                 ...targeting,
               });

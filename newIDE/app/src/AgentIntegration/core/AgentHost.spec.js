@@ -3,6 +3,7 @@ import { AgentError, serializeAgentError } from './AgentError';
 import { AgentHost } from './AgentHost';
 import { makeCommandMetadata } from './CommandRegistry';
 import { createCoreCommandDescriptors } from './CoreCommands';
+import { ProjectRevisionTracker } from './ProjectRevisionTracker';
 
 const makeDescriptor = (name, overrides = {}) => ({
   name,
@@ -28,6 +29,7 @@ describe('AgentHost', () => {
         traceId: 'trace-1',
         readOnly: true,
         modifiesProject: false,
+        projectRevision: null,
       },
     });
   });
@@ -60,6 +62,70 @@ describe('AgentHost', () => {
     host.setEnvironment({ project: {} });
     await host.execute('scene.create');
     expect(execute).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects stale mutating commands and returns the current project revision', async () => {
+    let changesCount = 0;
+    const projectRevisionTracker = new ProjectRevisionTracker({
+      getChangesCount: () => changesCount,
+    });
+    projectRevisionTracker.setSource({ projectKey: 'project-1' });
+    const execute = jest.fn(() => ({ created: true }));
+    const host = new AgentHost({
+      environment: { project: {}, projectRevisionTracker },
+      descriptors: [
+        makeDescriptor('scene.create', {
+          metadata: makeCommandMetadata({
+            readOnly: false,
+            idempotent: false,
+            requiresProject: true,
+            modifiesProject: true,
+          }),
+          execute,
+        }),
+      ],
+    });
+
+    changesCount = 1;
+    await expect(
+      host.execute('scene.create', {}, { expectedRevision: 0, traceId: 'stale' })
+    ).rejects.toMatchObject({
+      code: 'revision_conflict',
+      retryable: true,
+      currentRevision: 1,
+      details: { expectedRevision: 0 },
+      traceId: 'stale',
+    });
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it('advances revision after successful mutation and exposes it on later reads', async () => {
+    let changesCount = 0;
+    const projectRevisionTracker = new ProjectRevisionTracker({
+      getChangesCount: () => changesCount,
+    });
+    projectRevisionTracker.setSource({ projectKey: 'project-1' });
+    const host = new AgentHost({
+      environment: { project: {}, projectRevisionTracker },
+      descriptors: [
+        makeDescriptor('scene.create', {
+          metadata: makeCommandMetadata({
+            readOnly: false,
+            idempotent: false,
+            requiresProject: true,
+            modifiesProject: true,
+          }),
+          execute: () => ({ created: true }),
+        }),
+        makeDescriptor('scene.inspect'),
+      ],
+    });
+
+    const mutation = await host.execute('scene.create', {}, { expectedRevision: 0 });
+    expect(mutation.meta.projectRevision).toBe(1);
+
+    const read = await host.execute('scene.inspect');
+    expect(read.meta.projectRevision).toBe(1);
   });
 
   it('centralizes input validation and normalizes handler failures', async () => {

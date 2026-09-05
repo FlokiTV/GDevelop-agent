@@ -26,6 +26,7 @@ type Options = {|
   i18n: any,
   resourceManagementProps: any,
   hasUnsavedChanges: boolean,
+  projectRevisionTracker: any,
   editorCallbacks: any,
   processEditorFunctionCalls: (options: any) => Promise<any>,
   generateEvents: any,
@@ -72,6 +73,7 @@ export const createRendererIntegration = ({
   i18n,
   resourceManagementProps,
   hasUnsavedChanges,
+  projectRevisionTracker,
   editorCallbacks,
   processEditorFunctionCalls,
   generateEvents,
@@ -246,6 +248,7 @@ export const createRendererIntegration = ({
         project,
         fileIdentifier,
         hasUnsavedChanges,
+        projectRevisionTracker,
         getProjectStatus: () => ({
           projectOpen: !!project,
           fileIdentifier,
@@ -258,6 +261,7 @@ export const createRendererIntegration = ({
               )
             : [],
           hasUnsavedChanges,
+          projectRevision: projectRevisionTracker.synchronize(),
           preview: previewService.getStatus(),
         }),
       },

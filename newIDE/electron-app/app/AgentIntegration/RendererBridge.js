@@ -83,6 +83,7 @@ const createRendererBridge = ({
     command,
     input,
     traceId,
+    expectedRevision,
     projectPath,
     windowId,
     timeoutMs,
@@ -117,6 +118,9 @@ const createRendererBridge = ({
         command,
         input: input && typeof input === 'object' ? input : {},
         ...(typeof traceId === 'string' && traceId ? { traceId } : {}),
+        ...(Number.isInteger(expectedRevision) && expectedRevision >= 0
+          ? { expectedRevision }
+          : {}),
       });
     });
   };

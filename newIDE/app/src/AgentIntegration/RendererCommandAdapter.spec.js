@@ -34,10 +34,12 @@ describe('RendererCommandAdapter', () => {
       requestId: 'request-1',
       command: 'project.status',
       input: {},
+      expectedRevision: 7,
     });
 
     expect(agentHost.execute).toHaveBeenCalledWith('project.status', {}, {
       traceId: 'request-1',
+      expectedRevision: 7,
     });
     expect(ipcRenderer.send).toHaveBeenCalledWith(COMMAND_RESPONSE_CHANNEL, {
       requestId: 'request-1',

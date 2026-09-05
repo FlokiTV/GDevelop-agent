@@ -660,6 +660,7 @@ const MainFrame = (props: Props): React.MixedElement => {
     hasUnsavedChanges,
     sealUnsavedChanges,
     triggerUnsavedChanges,
+    getChangesCount,
   } = unsavedChanges;
   const {
     currentlyRunningInAppTutorial,
@@ -5648,6 +5649,7 @@ const MainFrame = (props: Props): React.MixedElement => {
     openFromFileMetadataWithStorageProvider,
     closeProject,
     hasUnsavedChanges,
+    getChangesCount,
     createEmptyProject,
     createProjectFromExample,
     launchNewPreview,

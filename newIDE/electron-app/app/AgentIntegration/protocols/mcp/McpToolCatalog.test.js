@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
+  withRevisionPrecondition,
   descriptorToToolRegistration,
   descriptorsToToolRegistrations,
 } = require('./McpToolCatalog');
@@ -49,6 +50,23 @@ test('projects command metadata to MCP annotations without duplicating schemas',
   assert.equal(registration.config._meta['gdevelop/modifiesProject'], true);
   assert.equal(registration.config._meta['gdevelop/defaultTimeoutMs'], 90000);
   assert.equal(registration.timeoutMs, 90000);
+});
+
+test('adds expectedRevision only to project-mutating MCP schemas', () => {
+  const baseSchema = descriptor('events.patch').inputSchema;
+  assert.deepEqual(
+    withRevisionPrecondition(baseSchema, true).properties.expectedRevision,
+    {
+      type: 'integer',
+      minimum: 0,
+      description:
+        'Optional optimistic concurrency precondition. The command fails with revision_conflict if the open project changed since this revision was read.',
+    }
+  );
+  assert.equal(
+    withRevisionPrecondition(baseSchema, false).properties.expectedRevision,
+    undefined
+  );
 });
 
 test('keeps tool order deterministic', () => {
