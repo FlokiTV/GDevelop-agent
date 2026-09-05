@@ -96,7 +96,8 @@ const argumentOverrides: {
     },
     persist: {
       type: 'boolean',
-      description: 'Set false to run supplied source without saving it.',
+      description:
+        'AgentIntegration defaults this to false; set true only when the gameplay test should be saved.',
     },
     screenshots: {
       type: 'string',

@@ -305,6 +305,27 @@ describe('EditorFunctionService', () => {
     expect(stopWatching).toHaveBeenCalledTimes(2);
   });
 
+  it('defaults MCP gameplay tests to non-persistent execution and preserves explicit persist=true', async () => {
+    const { service, processEditorFunctionCalls } = createService();
+
+    await service.run({
+      calls: [
+        { name: 'run_gameplay_test', arguments: { test_name: 'Ephemeral' } },
+        {
+          name: 'run_gameplay_test',
+          arguments: { test_name: 'Saved', persist: true },
+        },
+      ],
+    });
+
+    expect(
+      JSON.parse(processEditorFunctionCalls.mock.calls[0][0].functionCalls[0].arguments)
+    ).toMatchObject({ test_name: 'Ephemeral', persist: false });
+    expect(
+      JSON.parse(processEditorFunctionCalls.mock.calls[1][0].functionCalls[0].arguments)
+    ).toMatchObject({ test_name: 'Saved', persist: true });
+  });
+
   it('stops watching gameplay frames even when processing fails', async () => {
     const failure = new Error('runner failed');
     const processEditorFunctionCalls = jest.fn(async () => {

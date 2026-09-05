@@ -134,13 +134,19 @@ export const createEditorFunctionService = ({
       if (!call || typeof call.name !== 'string' || !call.name) {
         throw new Error(`invalid_function_call_at_index:${index}`);
       }
+      const normalizedArguments =
+        call.arguments && typeof call.arguments === 'object'
+          ? { ...call.arguments }
+          : {};
+      if (
+        call.name === 'run_gameplay_test' &&
+        normalizedArguments.persist === undefined
+      ) {
+        normalizedArguments.persist = false;
+      }
       return {
         name: call.name,
-        arguments: JSON.stringify(
-          call.arguments && typeof call.arguments === 'object'
-            ? call.arguments
-            : {}
-        ),
+        arguments: JSON.stringify(normalizedArguments),
         call_id: call.callId || makeCallId(index),
       };
     });
