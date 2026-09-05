@@ -9,6 +9,7 @@ const EMPTY_OBJECT_SCHEMA = {
   type: 'object',
   additionalProperties: false,
   properties: {},
+  examples: [{}],
 };
 
 const DISCOVERY_METADATA = makeCommandMetadata({
@@ -68,6 +69,7 @@ export const createCoreCommandDescriptors = (): Array<CommandDescriptor> => [
       properties: {
         query: { type: 'string' },
       },
+      examples: [{ query: 'scene' }],
     },
     outputSchema: COMMANDS_OUTPUT_SCHEMA,
     metadata: DISCOVERY_METADATA,
@@ -93,6 +95,7 @@ export const createCoreCommandDescriptors = (): Array<CommandDescriptor> => [
       properties: {
         name: { type: 'string', minLength: 1 },
       },
+      examples: [{ name: 'project.status' }],
     },
     outputSchema: {
       type: 'object',

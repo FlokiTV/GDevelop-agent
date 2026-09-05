@@ -19,6 +19,7 @@ const makeDescriptor = (name, metadata = {}) => ({
     type: 'object',
     additionalProperties: false,
     properties: {},
+    examples: [{}],
   },
   outputSchema: {
     type: 'object',
@@ -131,6 +132,7 @@ test('official MCP client initializes, lists registry tools and calls them direc
     assert.equal(saveTool.annotations.readOnlyHint, false);
     assert.equal(saveTool.annotations.idempotentHint, false);
     assert.equal(saveTool._meta['gdevelop/defaultTimeoutMs'], 90000);
+    assert.deepEqual(saveTool.inputSchema.examples, [{}]);
     assert.equal(saveTool.outputSchema.type, 'object');
     assert.deepEqual(saveTool.outputSchema.required, ['command', 'data', 'meta']);
 

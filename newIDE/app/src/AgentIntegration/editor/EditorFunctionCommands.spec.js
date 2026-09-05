@@ -28,6 +28,19 @@ describe('EditorFunctionCommands', () => {
     ).toBe(true);
   });
 
+  test('publishes agent-oriented examples from the command registry schemas', () => {
+    const { host } = makeHost();
+    expect(host.describeCommand('editor.functions.list').inputSchema.examples).toEqual([
+      { query: 'instance', executableOnly: true },
+    ]);
+    expect(host.describeCommand('editor.functions.call').inputSchema.examples).toEqual([
+      {
+        name: 'inspect_variables',
+        arguments: { scope: 'global' },
+      },
+    ]);
+  });
+
   test('describes a known editor function', async () => {
     const { host } = makeHost();
     const result = await host.execute('editor.functions.describe', {

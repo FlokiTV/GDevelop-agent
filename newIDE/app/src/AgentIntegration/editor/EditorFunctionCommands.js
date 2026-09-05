@@ -50,6 +50,7 @@ const LIST_SCHEMA = {
     query: { type: 'string' },
     executableOnly: { type: 'boolean' },
   },
+  examples: [{ query: 'instance', executableOnly: true }],
 };
 
 const CALL_SCHEMA = {
@@ -62,6 +63,12 @@ const CALL_SCHEMA = {
     callId: { type: 'string' },
     save: { type: 'boolean' },
   },
+  examples: [
+    {
+      name: 'inspect_variables',
+      arguments: { scope: 'global' },
+    },
+  ],
 };
 
 const EDITOR_FUNCTION_DISCOVERY_METADATA = makeCommandMetadata({
@@ -90,6 +97,14 @@ const BATCH_SCHEMA = {
     },
     save: { type: 'boolean' },
   },
+  examples: [
+    {
+      calls: [
+        { name: 'inspect_variables', arguments: { scope: 'global' } },
+        { name: 'describe_instances', arguments: { scene_name: 'Scene' } },
+      ],
+    },
+  ],
 };
 
 type Options = {|
@@ -135,6 +150,7 @@ export const createEditorFunctionCommandDescriptors = ({
       additionalProperties: false,
       required: ['name'],
       properties: { name: { type: 'string', minLength: 1 } },
+      examples: [{ name: 'inspect_variables' }],
     },
     metadata: EDITOR_FUNCTION_DISCOVERY_METADATA,
     validateInput: input => assertFunctionName(input.name),
