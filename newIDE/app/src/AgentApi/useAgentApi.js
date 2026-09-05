@@ -32,7 +32,10 @@ import { ExtensionStoreContext } from '../AssetStore/ExtensionStore/ExtensionSto
 import { enumerateObjectTypes } from '../ObjectsList/EnumerateObjects';
 import { type FileMetadata } from '../ProjectsStorage';
 import { createRendererIntegration } from '../AgentIntegration/RendererIntegrationFactory';
-import { attachRendererAgentHostToIpc } from '../AgentIntegration/RendererCommandAdapter';
+import {
+  attachRendererIntegrationHost,
+  registerRendererIntegration,
+} from '../AgentIntegration/RendererIntegrationLifecycle';
 
 const electron = optionalRequire('electron');
 const ipcRenderer = electron ? electron.ipcRenderer : null;
@@ -239,16 +242,7 @@ export default function useAgentApi({
       if (!ipcRenderer) return;
       // Keep this renderer registered even when no project is open, so callers
       // can invoke projectless functions such as initialize_project.
-      ipcRenderer.send('gdevelop-agent-integration:register', {
-        fileIdentifier,
-        active: true,
-      });
-      return () => {
-        ipcRenderer.send('gdevelop-agent-integration:register', {
-          fileIdentifier: null,
-          active: false,
-        });
-      };
+      return registerRendererIntegration({ ipcRenderer, fileIdentifier });
     },
     [fileIdentifier]
   );
@@ -302,7 +296,7 @@ export default function useAgentApi({
         clearGameplayTestFramePreview,
         documentObject: document,
       });
-      const detachRendererAgentHost = attachRendererAgentHostToIpc({
+      const detachRendererAgentHost = attachRendererIntegrationHost({
         ipcRenderer,
         agentHost,
       });
