@@ -305,6 +305,50 @@ describe('EditorFunctionService', () => {
     expect(stopWatching).toHaveBeenCalledTimes(2);
   });
 
+  it('runs 50 gameplay tests sequentially without accumulating frame watchers', async () => {
+    let activeWatchers = 0;
+    let maxActiveWatchers = 0;
+    const watchGameplayTestFrame = jest.fn(() => {
+      activeWatchers += 1;
+      maxActiveWatchers = Math.max(maxActiveWatchers, activeWatchers);
+      let stopped = false;
+      return () => {
+        if (stopped) throw new Error('gameplay_frame_watcher_double_stop');
+        stopped = true;
+        activeWatchers -= 1;
+      };
+    });
+    const processEditorFunctionCalls = jest.fn(async ({ functionCalls }) => {
+      expect(activeWatchers).toBe(1);
+      return {
+        results: functionCalls.map(() => ({
+          status: 'finished',
+          didModifyProject: false,
+          success: true,
+        })),
+        createdSceneNames: [],
+        createdProject: null,
+      };
+    });
+    const { service, prepareGameplayTestRun } = createService({
+      watchGameplayTestFrame,
+      processEditorFunctionCalls,
+    });
+
+    await service.run({
+      calls: Array.from({ length: 50 }, (_, index) => ({
+        name: 'run_gameplay_test',
+        arguments: { test_name: `Stress ${index}` },
+      })),
+    });
+
+    expect(processEditorFunctionCalls).toHaveBeenCalledTimes(50);
+    expect(prepareGameplayTestRun).toHaveBeenCalledTimes(50);
+    expect(watchGameplayTestFrame).toHaveBeenCalledTimes(50);
+    expect(maxActiveWatchers).toBe(1);
+    expect(activeWatchers).toBe(0);
+  });
+
   it('defaults MCP gameplay tests to non-persistent execution and preserves explicit persist=true', async () => {
     const { service, processEditorFunctionCalls } = createService();
 
