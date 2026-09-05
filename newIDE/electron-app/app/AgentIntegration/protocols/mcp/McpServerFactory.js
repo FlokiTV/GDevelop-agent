@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const { McpServer } = require('@modelcontextprotocol/server');
 const { descriptorsToToolRegistrations } = require('./McpToolCatalog');
+const { registerGDevelopPrompts } = require('./McpPrompts');
 
 const SERVER_INFO = {
   name: 'gdevelop-live-editor',
@@ -95,6 +96,7 @@ const createMcpServerFactory = ({
     instructions:
       'Operate the currently open GDevelop editor live. Mutations affect the in-memory project; save explicitly when requested.',
   });
+  registerGDevelopPrompts(server);
 
   descriptorsToToolRegistrations(descriptors).forEach(registration => {
     server.registerTool(
