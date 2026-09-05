@@ -27,9 +27,17 @@ export const attachRendererAgentHostToIpc = ({
       input?: any,
       traceId?: string,
       expectedRevision?: number,
+      idempotencyKey?: string,
     |}
   ) => {
-    const { requestId, command, input, traceId, expectedRevision } = payload || {};
+    const {
+      requestId,
+      command,
+      input,
+      traceId,
+      expectedRevision,
+      idempotencyKey,
+    } = payload || {};
     if (!requestId || typeof requestId !== 'string') return;
 
     try {
@@ -41,6 +49,9 @@ export const attachRendererAgentHostToIpc = ({
           typeof traceId === 'string' && traceId ? traceId : requestId,
         ...(Number.isInteger(expectedRevision) && expectedRevision >= 0
           ? { expectedRevision }
+          : {}),
+        ...(typeof idempotencyKey === 'string' && idempotencyKey
+          ? { idempotencyKey }
           : {}),
       });
       ipcRenderer.send(COMMAND_RESPONSE_CHANNEL, {

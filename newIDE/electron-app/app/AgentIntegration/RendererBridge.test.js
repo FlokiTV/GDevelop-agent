@@ -46,6 +46,7 @@ test('executes commands only over AgentIntegration channels', async () => {
     input: {},
     traceId: 'trace-1',
     expectedRevision: 7,
+    idempotencyKey: 'retry-1',
   });
   assert.deepEqual(fixture.sent[0], {
     channel: COMMAND_REQUEST_CHANNEL,
@@ -55,6 +56,7 @@ test('executes commands only over AgentIntegration channels', async () => {
       input: {},
       traceId: 'trace-1',
       expectedRevision: 7,
+      idempotencyKey: 'retry-1',
     },
   });
   fixture.ipcMain.emit(

@@ -100,7 +100,7 @@ const createMcpServerFactory = ({
       registration.config,
       async input => {
         const normalizedInput = input && typeof input === 'object' ? input : {};
-        const { expectedRevision, ...commandInput } = normalizedInput;
+        const { expectedRevision, idempotencyKey, ...commandInput } = normalizedInput;
         const result =
           desktopCommandRegistry && desktopCommandRegistry.has(registration.name)
             ? await desktopCommandRegistry.execute({
@@ -115,6 +115,11 @@ const createMcpServerFactory = ({
                 Number.isInteger(expectedRevision) &&
                 expectedRevision >= 0
                   ? { expectedRevision }
+                  : {}),
+                ...(registration.modifiesProject &&
+                typeof idempotencyKey === 'string' &&
+                idempotencyKey
+                  ? { idempotencyKey }
                   : {}),
                 timeoutMs: registration.timeoutMs,
                 ...targeting,

@@ -52,21 +52,26 @@ test('projects command metadata to MCP annotations without duplicating schemas',
   assert.equal(registration.timeoutMs, 90000);
 });
 
-test('adds expectedRevision only to project-mutating MCP schemas', () => {
+test('adds mutation controls only to project-mutating MCP schemas', () => {
   const baseSchema = descriptor('events.patch').inputSchema;
-  assert.deepEqual(
-    withRevisionPrecondition(baseSchema, true).properties.expectedRevision,
-    {
-      type: 'integer',
-      minimum: 0,
-      description:
-        'Optional optimistic concurrency precondition. The command fails with revision_conflict if the open project changed since this revision was read.',
-    }
-  );
-  assert.equal(
-    withRevisionPrecondition(baseSchema, false).properties.expectedRevision,
-    undefined
-  );
+  const mutatingProperties = withRevisionPrecondition(baseSchema, true).properties;
+  assert.deepEqual(mutatingProperties.expectedRevision, {
+    type: 'integer',
+    minimum: 0,
+    description:
+      'Optional optimistic concurrency precondition. The command fails with revision_conflict if the open project changed since this revision was read.',
+  });
+  assert.deepEqual(mutatingProperties.idempotencyKey, {
+    type: 'string',
+    minLength: 1,
+    maxLength: 200,
+    description:
+      'Optional retry key. Repeating the same mutating command with the same key and input returns the original result without applying the mutation again.',
+  });
+
+  const readOnlyProperties = withRevisionPrecondition(baseSchema, false).properties;
+  assert.equal(readOnlyProperties.expectedRevision, undefined);
+  assert.equal(readOnlyProperties.idempotencyKey, undefined);
 });
 
 test('keeps tool order deterministic', () => {

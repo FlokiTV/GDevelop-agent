@@ -4,6 +4,7 @@ import {
   CommandRegistry,
   type CommandDescriptor,
 } from './CommandRegistry';
+import { IdempotencyStore } from './IdempotencyStore';
 
 export type CommandResult = {|
   command: string,
@@ -20,6 +21,7 @@ type AgentHostOptions = {|
   environment?: any,
   descriptors?: Array<CommandDescriptor>,
   registry?: CommandRegistry,
+  idempotencyStore?: IdempotencyStore,
 |};
 
 const normalizeInput = (input: any): { [string]: any } => {
@@ -35,14 +37,17 @@ const normalizeInput = (input: any): { [string]: any } => {
 
 export class AgentHost {
   _environment: any;
+  _idempotencyStore: IdempotencyStore;
   registry: CommandRegistry;
 
   constructor({
     environment = {},
     descriptors = [],
     registry,
+    idempotencyStore,
   }: AgentHostOptions = {}) {
     this._environment = environment;
+    this._idempotencyStore = idempotencyStore || new IdempotencyStore();
     this.registry = registry || new CommandRegistry(descriptors);
   }
 
@@ -76,79 +81,98 @@ export class AgentHost {
     const normalizedInput = normalizeInput(input);
     const environment = this._environment || {};
     const revisionTracker = environment.projectRevisionTracker || null;
-    const currentRevision = revisionTracker
-      ? revisionTracker.synchronize()
-      : null;
+    const readCurrentRevision = () =>
+      revisionTracker ? revisionTracker.synchronize() : null;
 
-    if (descriptor.metadata.requiresProject && !environment.project) {
-      throw new AgentError({
-        code: 'no_project_open',
-        message: 'This command requires an open GDevelop project.',
-        hint: 'Open or create a project and retry the command.',
-        traceId:
-          typeof requestContext.traceId === 'string'
-            ? requestContext.traceId
-            : undefined,
-      });
-    }
+    const executeOnce = async () => {
+      const currentRevision = readCurrentRevision();
 
-    if (
-      descriptor.metadata.modifiesProject &&
-      requestContext.expectedRevision !== undefined &&
-      requestContext.expectedRevision !== null &&
-      requestContext.expectedRevision !== currentRevision
-    ) {
-      throw new AgentError({
-        code: 'revision_conflict',
-        message: 'The open project changed since it was last read.',
-        retryable: true,
-        hint: 'Read the project again and retry with the current revision.',
-        currentRevision,
-        details: { expectedRevision: requestContext.expectedRevision },
-        traceId:
-          typeof requestContext.traceId === 'string'
-            ? requestContext.traceId
-            : undefined,
-      });
-    }
-
-    try {
-      if (descriptor.validateInput) descriptor.validateInput(normalizedInput);
-      const data = await descriptor.execute({
-        environment,
-        input: normalizedInput,
-        requestContext,
-        registry: this.registry,
-      });
-      const projectRevision = descriptor.metadata.modifiesProject
-        ? revisionTracker
-          ? revisionTracker.markMutation()
-          : null
-        : revisionTracker
-        ? revisionTracker.synchronize()
-        : null;
-      return {
-        command: descriptor.name,
-        data,
-        meta: {
+      if (descriptor.metadata.requiresProject && !environment.project) {
+        throw new AgentError({
+          code: 'no_project_open',
+          message: 'This command requires an open GDevelop project.',
+          hint: 'Open or create a project and retry the command.',
           traceId:
             typeof requestContext.traceId === 'string'
               ? requestContext.traceId
-              : null,
-          readOnly: descriptor.metadata.readOnly,
-          modifiesProject: descriptor.metadata.modifiesProject,
-          projectRevision,
-        },
-      };
-    } catch (error) {
-      const normalizedError = normalizeAgentError(error);
-      if (
-        !normalizedError.traceId &&
-        typeof requestContext.traceId === 'string'
-      ) {
-        normalizedError.traceId = requestContext.traceId;
+              : undefined,
+        });
       }
-      throw normalizedError;
-    }
+
+      if (
+        descriptor.metadata.modifiesProject &&
+        requestContext.expectedRevision !== undefined &&
+        requestContext.expectedRevision !== null &&
+        requestContext.expectedRevision !== currentRevision
+      ) {
+        throw new AgentError({
+          code: 'revision_conflict',
+          message: 'The open project changed since it was last read.',
+          retryable: true,
+          hint: 'Read the project again and retry with the current revision.',
+          currentRevision,
+          details: { expectedRevision: requestContext.expectedRevision },
+          traceId:
+            typeof requestContext.traceId === 'string'
+              ? requestContext.traceId
+              : undefined,
+        });
+      }
+
+      try {
+        if (descriptor.validateInput) descriptor.validateInput(normalizedInput);
+        const data = await descriptor.execute({
+          environment,
+          input: normalizedInput,
+          requestContext,
+          registry: this.registry,
+        });
+        const projectRevision = descriptor.metadata.modifiesProject
+          ? revisionTracker
+            ? revisionTracker.markMutation()
+            : null
+          : readCurrentRevision();
+        return { data, projectRevision };
+      } catch (error) {
+        const normalizedError = normalizeAgentError(error);
+        if (
+          !normalizedError.traceId &&
+          typeof requestContext.traceId === 'string'
+        ) {
+          normalizedError.traceId = requestContext.traceId;
+        }
+        throw normalizedError;
+      }
+    };
+
+    const idempotencyKey =
+      descriptor.metadata.modifiesProject &&
+      typeof requestContext.idempotencyKey === 'string' &&
+      requestContext.idempotencyKey
+        ? requestContext.idempotencyKey
+        : null;
+    const execution = idempotencyKey
+      ? await this._idempotencyStore.execute({
+          command: descriptor.name,
+          key: idempotencyKey,
+          input: normalizedInput,
+          currentRevision: readCurrentRevision(),
+          execute: executeOnce,
+        })
+      : await executeOnce();
+
+    return {
+      command: descriptor.name,
+      data: execution.data,
+      meta: {
+        traceId:
+          typeof requestContext.traceId === 'string'
+            ? requestContext.traceId
+            : null,
+        readOnly: descriptor.metadata.readOnly,
+        modifiesProject: descriptor.metadata.modifiesProject,
+        projectRevision: execution.projectRevision,
+      },
+    };
   }
 }

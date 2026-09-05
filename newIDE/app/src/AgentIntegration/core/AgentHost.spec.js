@@ -128,6 +128,54 @@ describe('AgentHost', () => {
     expect(read.meta.projectRevision).toBe(1);
   });
 
+  it('deduplicates retries with idempotencyKey and rejects key reuse with different input', async () => {
+    const execute = jest.fn(async ({ input }) => ({ created: input.name }));
+    const host = new AgentHost({
+      environment: { project: {} },
+      descriptors: [
+        makeDescriptor('scene.create', {
+          metadata: makeCommandMetadata({
+            readOnly: false,
+            idempotent: false,
+            requiresProject: true,
+            modifiesProject: true,
+          }),
+          execute,
+        }),
+      ],
+    });
+
+    const first = await host.execute(
+      'scene.create',
+      { name: 'Game' },
+      { idempotencyKey: 'create-game', traceId: 'first' }
+    );
+    const retry = await host.execute(
+      'scene.create',
+      { name: 'Game' },
+      { idempotencyKey: 'create-game', traceId: 'retry' }
+    );
+
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(retry.data).toEqual(first.data);
+    expect(retry.meta.traceId).toBe('retry');
+
+    await expect(
+      host.execute(
+        'scene.create',
+        { name: 'Other' },
+        { idempotencyKey: 'create-game' }
+      )
+    ).rejects.toMatchObject({
+      code: 'idempotency_conflict',
+      details: {
+        command: 'scene.create',
+        idempotencyKey: 'create-game',
+      },
+    });
+    expect(execute).toHaveBeenCalledTimes(1);
+  });
+
   it('centralizes input validation and normalizes handler failures', async () => {
     const host = new AgentHost({
       descriptors: [

@@ -35,11 +35,13 @@ describe('RendererCommandAdapter', () => {
       command: 'project.status',
       input: {},
       expectedRevision: 7,
+      idempotencyKey: 'retry-1',
     });
 
     expect(agentHost.execute).toHaveBeenCalledWith('project.status', {}, {
       traceId: 'request-1',
       expectedRevision: 7,
+      idempotencyKey: 'retry-1',
     });
     expect(ipcRenderer.send).toHaveBeenCalledWith(COMMAND_RESPONSE_CHANNEL, {
       requestId: 'request-1',

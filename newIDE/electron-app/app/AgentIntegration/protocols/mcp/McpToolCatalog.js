@@ -19,6 +19,13 @@ const withRevisionPrecondition = (inputSchema, modifiesProject) => {
         description:
           'Optional optimistic concurrency precondition. The command fails with revision_conflict if the open project changed since this revision was read.',
       },
+      idempotencyKey: {
+        type: 'string',
+        minLength: 1,
+        maxLength: 200,
+        description:
+          'Optional retry key. Repeating the same mutating command with the same key and input returns the original result without applying the mutation again.',
+      },
     },
   };
 };

@@ -84,6 +84,7 @@ const createRendererBridge = ({
     input,
     traceId,
     expectedRevision,
+    idempotencyKey,
     projectPath,
     windowId,
     timeoutMs,
@@ -120,6 +121,9 @@ const createRendererBridge = ({
         ...(typeof traceId === 'string' && traceId ? { traceId } : {}),
         ...(Number.isInteger(expectedRevision) && expectedRevision >= 0
           ? { expectedRevision }
+          : {}),
+        ...(typeof idempotencyKey === 'string' && idempotencyKey
+          ? { idempotencyKey }
           : {}),
       });
     });
