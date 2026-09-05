@@ -151,6 +151,66 @@ describe('EditorFunctionService', () => {
     expect(result.didModifyProject).toBe(true);
   });
 
+  it('coalesces repeated scene invalidations within a batch without losing merged metadata', async () => {
+    const scene = {};
+    const onSceneEventsModifiedOutsideEditor = jest.fn();
+    const onInstancesModifiedOutsideEditor = jest.fn();
+    const onObjectsModifiedOutsideEditor = jest.fn();
+    const processEditorFunctionCalls = jest.fn(async options => {
+      options.onSceneEventsModifiedOutsideEditor({
+        scene,
+        newOrChangedAiGeneratedEventIds: new Set(['event-a']),
+      });
+      options.onSceneEventsModifiedOutsideEditor({
+        scene,
+        newOrChangedAiGeneratedEventIds: new Set(['event-b']),
+      });
+      options.onInstancesModifiedOutsideEditor({ scene });
+      options.onInstancesModifiedOutsideEditor({ scene });
+      options.onObjectsModifiedOutsideEditor({
+        scene,
+        isNewObjectTypeUsed: false,
+      });
+      options.onObjectsModifiedOutsideEditor({
+        scene,
+        isNewObjectTypeUsed: true,
+      });
+      return {
+        results: [
+          { status: 'finished', success: true, didModifyProject: true },
+          { status: 'finished', success: true, didModifyProject: true },
+        ],
+        createdSceneNames: [],
+        createdProject: null,
+      };
+    });
+    const { service, forceUpdate } = createService({
+      processEditorFunctionCalls,
+      onSceneEventsModifiedOutsideEditor,
+      onInstancesModifiedOutsideEditor,
+      onObjectsModifiedOutsideEditor,
+    });
+
+    await service.run({
+      calls: [{ name: 'first.mutation' }, { name: 'second.mutation' }],
+    });
+
+    expect(onSceneEventsModifiedOutsideEditor).toHaveBeenCalledTimes(1);
+    expect(
+      Array.from(
+        onSceneEventsModifiedOutsideEditor.mock.calls[0][0]
+          .newOrChangedAiGeneratedEventIds
+      ).sort()
+    ).toEqual(['event-a', 'event-b']);
+    expect(onInstancesModifiedOutsideEditor).toHaveBeenCalledTimes(1);
+    expect(onObjectsModifiedOutsideEditor).toHaveBeenCalledTimes(1);
+    expect(onObjectsModifiedOutsideEditor).toHaveBeenCalledWith({
+      scene,
+      isNewObjectTypeUsed: true,
+    });
+    expect(forceUpdate).toHaveBeenCalledTimes(1);
+  });
+
   it('mutates the live project with the real runner, invalidates the scene editor, and never autosaves', async () => {
     const project = gd.ProjectHelper.createNewGDJSProject();
     const scene = project.insertNewLayout('TestScene', 0);

@@ -146,24 +146,69 @@ export const createEditorFunctionService = ({
     });
 
     let didNotifyLiveMutation = false;
-    const observeLiveMutation = (callback: any) => (changes: any) => {
+    const pendingSceneEvents = new Map();
+    const pendingInstances = new Map();
+    const pendingObjects = new Map();
+    const pendingObjectGroups = new Map();
+
+    const queueSceneEventsMutation = (changes: any) => {
+      didNotifyLiveMutation = true;
+      const existing = pendingSceneEvents.get(changes.scene);
+      if (existing) {
+        changes.newOrChangedAiGeneratedEventIds.forEach(eventId =>
+          existing.newOrChangedAiGeneratedEventIds.add(eventId)
+        );
+        return;
+      }
+      pendingSceneEvents.set(changes.scene, {
+        scene: changes.scene,
+        newOrChangedAiGeneratedEventIds: new Set(
+          changes.newOrChangedAiGeneratedEventIds
+        ),
+      });
+    };
+    const queueSceneMutation = (pending: Map<any, any>) => (changes: any) => {
+      didNotifyLiveMutation = true;
+      pending.set(changes.scene, changes);
+    };
+    const queueObjectsMutation = (changes: any) => {
+      didNotifyLiveMutation = true;
+      const existing = pendingObjects.get(changes.scene);
+      pendingObjects.set(changes.scene, {
+        scene: changes.scene,
+        isNewObjectTypeUsed:
+          !!changes.isNewObjectTypeUsed ||
+          !!(existing && existing.isNewObjectTypeUsed),
+      });
+    };
+    const observeOrderedLiveMutation = (callback: any) => (changes: any) => {
       didNotifyLiveMutation = true;
       callback(changes);
     };
+    const flushLiveMutations = () => {
+      pendingSceneEvents.forEach(changes =>
+        onSceneEventsModifiedOutsideEditor(changes)
+      );
+      pendingInstances.forEach(changes =>
+        onInstancesModifiedOutsideEditor(changes)
+      );
+      pendingObjects.forEach(changes => onObjectsModifiedOutsideEditor(changes));
+      pendingObjectGroups.forEach(changes =>
+        onObjectGroupsModifiedOutsideEditor(changes)
+      );
+      pendingSceneEvents.clear();
+      pendingInstances.clear();
+      pendingObjects.clear();
+      pendingObjectGroups.clear();
+    };
     const liveMutationCallbacks = {
-      onSceneEventsModifiedOutsideEditor: observeLiveMutation(
-        onSceneEventsModifiedOutsideEditor
+      onSceneEventsModifiedOutsideEditor: queueSceneEventsMutation,
+      onInstancesModifiedOutsideEditor: queueSceneMutation(pendingInstances),
+      onObjectsModifiedOutsideEditor: queueObjectsMutation,
+      onObjectGroupsModifiedOutsideEditor: queueSceneMutation(
+        pendingObjectGroups
       ),
-      onInstancesModifiedOutsideEditor: observeLiveMutation(
-        onInstancesModifiedOutsideEditor
-      ),
-      onObjectsModifiedOutsideEditor: observeLiveMutation(
-        onObjectsModifiedOutsideEditor
-      ),
-      onObjectGroupsModifiedOutsideEditor: observeLiveMutation(
-        onObjectGroupsModifiedOutsideEditor
-      ),
-      onProjectItemRenamedOutsideEditor: observeLiveMutation(
+      onProjectItemRenamedOutsideEditor: observeOrderedLiveMutation(
         onProjectItemRenamedOutsideEditor
       ),
     };
@@ -190,6 +235,7 @@ export const createEditorFunctionService = ({
             liveMutationCallbacks
           );
         } finally {
+          flushLiveMutations();
           stopWatchingGameplayFrame();
         }
         results.push(...processedCall.results);
@@ -200,10 +246,14 @@ export const createEditorFunctionService = ({
       }
       processedCallsResult = { results, createdSceneNames, createdProject };
     } else {
-      processedCallsResult = await processCalls(
-        functionCalls,
-        liveMutationCallbacks
-      );
+      try {
+        processedCallsResult = await processCalls(
+          functionCalls,
+          liveMutationCallbacks
+        );
+      } finally {
+        flushLiveMutations();
+      }
     }
 
     const {
