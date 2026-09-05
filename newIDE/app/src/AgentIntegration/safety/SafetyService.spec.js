@@ -113,6 +113,35 @@ describe('SafetyService', () => {
     });
   });
 
+  test('skips project reload when rollback has no changes', async () => {
+    checkpointTools.getTransactionStatus.mockReturnValue({
+      active: true,
+      transactionId: 'tx-noop',
+      checkpoint: { id: 'tx-noop' },
+    });
+    checkpointTools.prepareTransactionRollback.mockReturnValue({
+      checkpoint: { id: 'tx-noop' },
+      diff: { changed: false },
+    });
+    const { service, restoreProjectCheckpoint } = makeService();
+
+    await expect(
+      service.rollbackTransaction({ transactionId: 'tx-noop' })
+    ).resolves.toEqual({
+      rolledBack: true,
+      transactionId: 'tx-noop',
+      restored: false,
+      checkpointId: 'tx-noop',
+      diff: { changed: false },
+      restoreStrategy: 'no-op-no-changes',
+    });
+    expect(restoreProjectCheckpoint).not.toHaveBeenCalled();
+    expect(checkpointTools.completeTransactionRollback).toHaveBeenCalledWith(
+      'project-uuid',
+      'tx-noop'
+    );
+  });
+
   test('rejects transaction handles from another client', async () => {
     checkpointTools.getTransactionStatus.mockReturnValue({
       active: true,

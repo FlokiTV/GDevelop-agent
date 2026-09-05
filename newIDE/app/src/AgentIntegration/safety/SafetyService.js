@@ -144,6 +144,18 @@ export const createSafetyService = ({
     assertTransactionHandle(currentProject, id);
     const projectUuid = currentProject.getProjectUuid();
     const { checkpoint, diff } = prepareTransactionRollback(currentProject, id);
+    if (!diff.changed) {
+      completeTransactionRollback(projectUuid, checkpoint.id);
+      return {
+        rolledBack: true,
+        transactionId: id,
+        restored: false,
+        checkpointId: checkpoint.id,
+        diff,
+        restoreStrategy: 'no-op-no-changes',
+      };
+    }
+
     const restored = await restoreProjectCheckpoint(checkpoint);
     completeTransactionRollback(projectUuid, checkpoint.id);
     return { rolledBack: true, transactionId: id, ...restored, diff };
