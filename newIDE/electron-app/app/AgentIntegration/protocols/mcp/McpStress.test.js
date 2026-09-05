@@ -160,6 +160,9 @@ test('runs 50 mutate hot-reload snapshot cycles over one MCP server without rest
   });
   const client = await connectClient({ url: host.url, token });
   const startedAt = Date.now();
+  const baselineHeapUsed = process.memoryUsage().heapUsed;
+  const baselineRequestListeners = host.server.listenerCount('request');
+  const baselineConnectionListeners = host.server.listenerCount('connection');
 
   try {
     for (let index = 0; index < 50; index++) {
@@ -214,6 +217,22 @@ test('runs 50 mutate hot-reload snapshot cycles over one MCP server without rest
           call.command === 'preview.close-all'
       ),
       false
+    );
+    const heapGrowthBytes = Math.max(
+      0,
+      process.memoryUsage().heapUsed - baselineHeapUsed
+    );
+    assert.ok(
+      heapGrowthBytes < 64 * 1024 * 1024,
+      `heap growth exceeded 64 MiB: ${heapGrowthBytes}`
+    );
+    assert.equal(
+      host.server.listenerCount('request'),
+      baselineRequestListeners
+    );
+    assert.equal(
+      host.server.listenerCount('connection'),
+      baselineConnectionListeners
     );
     assert.ok(Date.now() - startedAt < 15000);
   } finally {
