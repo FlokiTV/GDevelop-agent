@@ -36,7 +36,10 @@ const addImageResource = (
   resource.delete();
 };
 
-const makeTools = (project: gdProject) => {
+const makeTools = (
+  project: gdProject,
+  options: {| maxLocalFileBytes?: number |} = {}
+) => {
   const onNewResourcesAdded = jest.fn();
   const onResourceUsageChanged = jest.fn();
   const triggerUnsavedChanges = jest.fn();
@@ -51,6 +54,7 @@ const makeTools = (project: gdProject) => {
     },
     triggerUnsavedChanges,
     forceUpdate,
+    maxLocalFileBytes: options.maxLocalFileBytes,
   });
   return {
     tools,
@@ -187,6 +191,57 @@ describe('AgentIntegration AssetTools', () => {
 
     project.delete();
     fs.rmSync(projectFolder, { recursive: true, force: true });
+  });
+
+  it('rejects oversized local resource files before mutating the project', async () => {
+    const project = gd.ProjectHelper.createNewGDJSProject();
+    const sourceFolder = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'gd-agent-assets-size-')
+    );
+    const sourceFile = path.join(sourceFolder, 'oversized.png');
+    fs.writeFileSync(sourceFile, Buffer.alloc(32, 1));
+    const { tools, triggerUnsavedChanges } = makeTools(project, {
+      maxLocalFileBytes: 16,
+    });
+
+    await expect(
+      tools.importLocalResource({
+        filePath: sourceFile,
+        resourceName: 'oversized.png',
+      })
+    ).rejects.toThrow('resource_file_too_large:32:16');
+    expect(project.getResourcesManager().hasResource('oversized.png')).toBe(
+      false
+    );
+    expect(triggerUnsavedChanges).not.toHaveBeenCalled();
+
+    project.delete();
+    fs.rmSync(sourceFolder, { recursive: true, force: true });
+  });
+
+  it('refuses physical deletion for a resource file outside the project folder', () => {
+    const project = gd.ProjectHelper.createNewGDJSProject();
+    const projectFolder = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'gd-agent-assets-project-')
+    );
+    const outsideFolder = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'gd-agent-assets-outside-')
+    );
+    const outsideFile = path.join(outsideFolder, 'outside.png');
+    fs.writeFileSync(outsideFile, Buffer.from([1, 2, 3]));
+    project.setProjectFile(path.join(projectFolder, 'game.json'));
+    addImageResource(project, 'outside.png', outsideFile);
+    const { tools } = makeTools(project);
+
+    expect(() =>
+      tools.removeResource({ resourceName: 'outside.png', deleteFile: true })
+    ).toThrow('resource_file_outside_project_folder');
+    expect(project.getResourcesManager().hasResource('outside.png')).toBe(true);
+    expect(fs.existsSync(outsideFile)).toBe(true);
+
+    project.delete();
+    fs.rmSync(projectFolder, { recursive: true, force: true });
+    fs.rmSync(outsideFolder, { recursive: true, force: true });
   });
 
   it('refuses physical deletion when another resource shares the file', () => {

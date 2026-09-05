@@ -17,11 +17,14 @@ const gd: libGDevelop = global.gd;
 const fs = optionalRequire('fs');
 const path = optionalRequire('path');
 
+export const DEFAULT_MAX_LOCAL_RESOURCE_FILE_BYTES = 256 * 1024 * 1024;
+
 type AssetToolsOptions = {|
   project: gdProject,
   resourceManagementProps: ResourceManagementProps,
   triggerUnsavedChanges: () => void,
   forceUpdate: () => void,
+  maxLocalFileBytes?: number,
 |};
 
 type LocalFileDetails = {|
@@ -213,18 +216,27 @@ const prepareLocalFile = async ({
   project,
   sourcePath,
   copyToProject,
+  maxLocalFileBytes,
 }: {|
   project: gdProject,
   sourcePath: string,
   copyToProject: boolean,
+  maxLocalFileBytes: number,
 |}) => {
   if (!fs || !path) throw new Error('local_filesystem_unavailable');
+  if (sourcePath.includes('\u0000')) {
+    throw new Error('invalid_resource_file_path');
+  }
   const resolvedSourcePath = path.resolve(sourcePath);
-  if (
-    !fs.existsSync(resolvedSourcePath) ||
-    !fs.statSync(resolvedSourcePath).isFile()
-  ) {
+  if (!fs.existsSync(resolvedSourcePath)) {
     throw new Error('resource_file_not_found');
+  }
+  const sourceStat = fs.statSync(resolvedSourcePath);
+  if (!sourceStat.isFile()) {
+    throw new Error('resource_file_not_found');
+  }
+  if (sourceStat.size > maxLocalFileBytes) {
+    throw new Error(`resource_file_too_large:${sourceStat.size}:${maxLocalFileBytes}`);
   }
 
   const projectFolder = getProjectFolder(project);
@@ -285,6 +297,7 @@ export const createAssetTools = ({
   resourceManagementProps,
   triggerUnsavedChanges,
   forceUpdate,
+  maxLocalFileBytes = DEFAULT_MAX_LOCAL_RESOURCE_FILE_BYTES,
 }: AssetToolsOptions) => {
   const notifyChanged = (kind: 'added' | 'usage') => {
     if (kind === 'added') resourceManagementProps.onNewResourcesAdded();
@@ -348,6 +361,7 @@ export const createAssetTools = ({
       project,
       sourcePath,
       copyToProject: request.copyToProject !== false,
+      maxLocalFileBytes,
     });
     const resourcesManager = project.getResourcesManager();
     const resourceName =
@@ -427,6 +441,7 @@ export const createAssetTools = ({
       project,
       sourcePath: request.filePath,
       copyToProject: request.copyToProject !== false,
+      maxLocalFileBytes,
     });
 
     resource.setFile(preparedFile.storedFilePath);
