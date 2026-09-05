@@ -1,13 +1,26 @@
+const DEFAULT_MAX_CAPTURE_BYTES = 16 * 1024 * 1024;
+
 const makeError = code => {
   const error = new Error(code);
   error.code = code;
   return error;
 };
 
-const captureWindowPng = async ({ targetWindow, desktopCapturer }) => {
+const captureWindowPng = async ({
+  targetWindow,
+  desktopCapturer,
+  maxCaptureBytes = DEFAULT_MAX_CAPTURE_BYTES,
+}) => {
+  const ensureCaptureSize = buffer => {
+    if (buffer.length > maxCaptureBytes) {
+      throw makeError('window_capture_too_large');
+    }
+    return buffer;
+  };
+
   const image = await targetWindow.webContents.capturePage();
   const directBuffer = image && image.toPNG ? image.toPNG() : Buffer.alloc(0);
-  if (directBuffer.length > 0) return directBuffer;
+  if (directBuffer.length > 0) return ensureCaptureSize(directBuffer);
 
   if (!desktopCapturer || typeof desktopCapturer.getSources !== 'function') {
     throw makeError('window_capture_empty');
@@ -38,7 +51,7 @@ const captureWindowPng = async ({ targetWindow, desktopCapturer }) => {
     source && source.thumbnail && source.thumbnail.toPNG
       ? source.thumbnail.toPNG()
       : Buffer.alloc(0);
-  if (fallbackBuffer.length > 0) return fallbackBuffer;
+  if (fallbackBuffer.length > 0) return ensureCaptureSize(fallbackBuffer);
   throw makeError('window_capture_empty');
 };
 
@@ -47,6 +60,7 @@ const createWindowCaptureService = ({
   desktopCapturer,
   windowRegistry,
   isRegisteredPreviewWindow,
+  maxCaptureBytes = DEFAULT_MAX_CAPTURE_BYTES,
 }) => {
   const listWindows = () => {
     windowRegistry.prune();
@@ -81,7 +95,11 @@ const createWindowCaptureService = ({
     return {
       windowId: targetWindow.id,
       mimeType: 'image/png',
-      data: await captureWindowPng({ targetWindow, desktopCapturer }),
+      data: await captureWindowPng({
+        targetWindow,
+        desktopCapturer,
+        maxCaptureBytes,
+      }),
     };
   };
 

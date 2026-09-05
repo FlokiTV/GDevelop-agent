@@ -37,6 +37,22 @@ test('captureWindowPng uses desktopCapturer when capturePage is empty', async ()
   );
 });
 
+test('captureWindowPng rejects oversized PNG responses', async () => {
+  const targetWindow = {
+    webContents: {
+      capturePage: async () => ({ toPNG: () => Buffer.alloc(32, 1) }),
+    },
+  };
+  await assert.rejects(
+    captureWindowPng({
+      targetWindow,
+      desktopCapturer: null,
+      maxCaptureBytes: 16,
+    }),
+    error => error.code === 'window_capture_too_large'
+  );
+});
+
 test('capture service lists semantic window metadata and captures by id', async () => {
   const png = Buffer.from('png');
   const editorWindow = {
