@@ -265,4 +265,41 @@ describe('AgentIntegration AssetTools', () => {
     project.delete();
     fs.rmSync(projectFolder, { recursive: true, force: true });
   });
+
+  it('preserves resource identity metadata and origin when replacing its file', async () => {
+    const project = gd.ProjectHelper.createNewGDJSProject();
+    const projectFolder = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'gd-agent-assets-replace-')
+    );
+    const oldFile = path.join(projectFolder, 'old.png');
+    const replacementFile = path.join(projectFolder, 'replacement.png');
+    fs.writeFileSync(oldFile, Buffer.from([1, 2, 3]));
+    fs.writeFileSync(replacementFile, Buffer.from([4, 5, 6]));
+    project.setProjectFile(path.join(projectFolder, 'game.json'));
+    addImageResource(project, 'player.png', 'old.png');
+    const resource = project.getResourcesManager().getResource('player.png');
+    resource.setMetadata('keep-this-metadata');
+    resource.setOrigin('store-origin', 'store-id');
+    const { tools } = makeTools(project);
+
+    const result = await tools.replaceLocalResource({
+      resourceName: 'player.png',
+      filePath: replacementFile,
+      copyToProject: false,
+      preserveOrigin: true,
+    });
+
+    const replacedResource = project
+      .getResourcesManager()
+      .getResource('player.png');
+    expect(result.replaced).toBe(true);
+    expect(replacedResource.getName()).toBe('player.png');
+    expect(replacedResource.getMetadata()).toBe('keep-this-metadata');
+    expect(replacedResource.getOriginName()).toBe('store-origin');
+    expect(replacedResource.getOriginIdentifier()).toBe('store-id');
+    expect(replacedResource.getFile()).toBe('replacement.png');
+
+    project.delete();
+    fs.rmSync(projectFolder, { recursive: true, force: true });
+  });
 });
