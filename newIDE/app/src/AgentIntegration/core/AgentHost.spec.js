@@ -71,8 +71,17 @@ describe('AgentHost', () => {
     });
     projectRevisionTracker.setSource({ projectKey: 'project-1' });
     const execute = jest.fn(() => ({ created: true }));
+    const project = {
+      getProjectUuid: () => 'project-1',
+      getName: () => 'Concurrent Project',
+    };
     const host = new AgentHost({
-      environment: { project: {}, projectRevisionTracker },
+      environment: {
+        project,
+        projectRevisionTracker,
+        fileIdentifier: 'C:/game.json',
+        hasUnsavedChanges: true,
+      },
       descriptors: [
         makeDescriptor('scene.create', {
           metadata: makeCommandMetadata({
@@ -93,7 +102,22 @@ describe('AgentHost', () => {
       code: 'revision_conflict',
       retryable: true,
       currentRevision: 1,
-      details: { expectedRevision: 0 },
+      details: {
+        expectedRevision: 0,
+        currentRevision: 1,
+        revisionDelta: 1,
+        project: {
+          projectUuid: 'project-1',
+          projectName: 'Concurrent Project',
+          fileIdentifier: 'C:/game.json',
+          hasUnsavedChanges: true,
+        },
+        lastChange: {
+          source: 'external',
+          revision: 1,
+          revisionDelta: 1,
+        },
+      },
       traceId: 'stale',
     });
     expect(execute).not.toHaveBeenCalled();

@@ -35,6 +35,20 @@ const normalizeInput = (input: any): { [string]: any } => {
   return input;
 };
 
+const getProjectConflictContext = (environment: any) => {
+  const project = environment.project || null;
+  return {
+    projectUuid:
+      project && typeof project.getProjectUuid === 'function'
+        ? project.getProjectUuid()
+        : null,
+    projectName:
+      project && typeof project.getName === 'function' ? project.getName() : null,
+    fileIdentifier: environment.fileIdentifier || null,
+    hasUnsavedChanges: !!environment.hasUnsavedChanges,
+  };
+};
+
 export class AgentHost {
   _environment: any;
   _idempotencyStore: IdempotencyStore;
@@ -105,13 +119,29 @@ export class AgentHost {
         requestContext.expectedRevision !== null &&
         requestContext.expectedRevision !== currentRevision
       ) {
+        const expectedRevision = requestContext.expectedRevision;
+        const lastChange =
+          revisionTracker &&
+          typeof revisionTracker.getLastChangeContext === 'function'
+            ? revisionTracker.getLastChangeContext()
+            : null;
         throw new AgentError({
           code: 'revision_conflict',
           message: 'The open project changed since it was last read.',
           retryable: true,
           hint: 'Read the project again and retry with the current revision.',
           currentRevision,
-          details: { expectedRevision: requestContext.expectedRevision },
+          details: {
+            expectedRevision,
+            currentRevision,
+            revisionDelta:
+              typeof currentRevision === 'number' &&
+              typeof expectedRevision === 'number'
+                ? Math.max(0, currentRevision - expectedRevision)
+                : null,
+            project: getProjectConflictContext(environment),
+            ...(lastChange ? { lastChange } : {}),
+          },
           traceId:
             typeof requestContext.traceId === 'string'
               ? requestContext.traceId

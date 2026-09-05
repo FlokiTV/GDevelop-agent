@@ -153,6 +153,38 @@ test('official MCP client initializes, lists registry tools and calls them direc
   }
 });
 
+test('isolates renderer targeting across concurrent MCP clients', async () => {
+  const rendererBridge = makeBridge();
+  const token = 'multi-client-token';
+  const host = await startMcpHttpServer({
+    rendererBridge,
+    token,
+    port: 0,
+  });
+  const clientA = await connectClient({ url: host.url, token, windowId: 17 });
+  const clientB = await connectClient({ url: host.url, token, windowId: 23 });
+
+  try {
+    await Promise.all([
+      clientA.callTool({ name: 'project.status', arguments: {} }),
+      clientB.callTool({ name: 'project.status', arguments: {} }),
+    ]);
+
+    const directCalls = rendererBridge.calls.filter(
+      call => call.command === 'project.status'
+    );
+    assert.equal(directCalls.length, 2);
+    assert.deepEqual(
+      directCalls.map(call => call.windowId).sort(),
+      ['17', '23']
+    );
+  } finally {
+    await clientA.close();
+    await clientB.close();
+    await host.stop();
+  }
+});
+
 test('rejects missing auth and non-local origins before MCP dispatch', async () => {
   const rendererBridge = makeBridge();
   const host = await startMcpHttpServer({
