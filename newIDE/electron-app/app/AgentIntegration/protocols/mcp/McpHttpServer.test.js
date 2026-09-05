@@ -242,7 +242,7 @@ test('allows a fresh MCP client to reconnect after the previous client closes', 
   }
 });
 
-test('rejects missing auth and non-local origins before MCP dispatch', async () => {
+test('rejects missing auth, forged Host and non-local origins before MCP dispatch', async () => {
   const rendererBridge = makeBridge();
   const host = await startMcpHttpServer({
     rendererBridge,
@@ -256,6 +256,31 @@ test('rejects missing auth and non-local origins before MCP dispatch', async () 
       body: JSON.stringify({}),
     });
     assert.equal(unauthorized.status, 401);
+
+    const target = new URL(host.url);
+    const badHostStatus = await new Promise((resolve, reject) => {
+      const request = http.request(
+        {
+          hostname: target.hostname,
+          port: target.port,
+          path: target.pathname,
+          method: 'POST',
+          headers: {
+            Host: 'evil.example',
+            Authorization: 'Bearer secret',
+            'Content-Type': 'application/json',
+            'Content-Length': '2',
+          },
+        },
+        response => {
+          response.resume();
+          response.on('end', () => resolve(response.statusCode));
+        }
+      );
+      request.on('error', reject);
+      request.end('{}');
+    });
+    assert.equal(badHostStatus, 403);
 
     const badOrigin = await fetch(host.url, {
       method: 'POST',

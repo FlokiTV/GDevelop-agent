@@ -83,6 +83,25 @@ Authorization: Bearer <token>
 
 The HTTP server binds to loopback and validates local Host/Origin before MCP dispatch.
 
+## Security model and threat boundaries
+
+Loopback is a transport boundary, not an authorization boundary. AgentIntegration assumes that other local processes and browser content may be hostile and therefore applies independent checks before an MCP request can reach the live editor.
+
+The threat model explicitly covers:
+
+- **malicious local processes**: every MCP request still requires the per-startup bearer token; knowing the loopback port is insufficient;
+- **DNS rebinding / forged Host**: the Node HTTP boundary accepts only localhost/loopback Host values;
+- **browser CSRF / hostile Origin**: requests with a non-local `Origin` are rejected before authentication or MCP dispatch;
+- **token leakage**: a new cryptographically random token is created on every startup, stored in a private token file, never embedded in discovery JSON and never intentionally written to request/result logs;
+- **resource exhaustion**: authenticated HTTP bodies are capped at 4 MiB, JSON nesting at 64 levels, concurrent authenticated requests at 32, local resource source files at 256 MiB and PNG capture results at 16 MiB;
+- **filesystem traversal and unsafe deletion**: local resource imports operate only on an explicitly supplied source path and copy into the project by default; physical resource deletion is allowed only for a resolved project-local file that is not shared or still referenced;
+- **stale or replayed mutations**: project/event revision preconditions reject stale writes, while `idempotencyKey` deduplicates retry-safe mutation replay and rejects reuse with different input;
+- **destructive operations**: destructive metadata is projected to MCP annotations for client UX, but server-side checks remain authoritative. Opening/closing over dirty work requires explicit `discardUnsavedChanges`; resource deletion refuses in-use/shared/outside-project files; checkpoint restore/transaction rollback remain explicit destructive commands.
+
+Malformed JSON, excessive nesting, oversized bodies and saturated request capacity are rejected at the HTTP boundary before the MCP handler or renderer bridge is invoked. Long-running gameplay/validation/export calls are not rate-limited by elapsed duration after admission; backpressure limits concurrent admitted HTTP requests rather than imposing a short operation timeout.
+
+These controls do not attempt to sandbox a process that already has the user's OS credentials and can independently read GDevelop's private user-data files. The bearer token prevents accidental/ambient access and browser-origin attacks; operating-system account security remains outside the MCP boundary.
+
 ## Targeting an editor window
 
 MCP calls are stateless with respect to editor selection. A client can explicitly target the live renderer with request headers:
