@@ -78,6 +78,66 @@ describe('AgentIntegration EventTools', () => {
     expect(originalEventAfterInsert.path).toEqual([1]);
   });
 
+  it('returns canonical handles for conditions, actions and nested instructions', () => {
+    const tools = makeTools();
+    const before = tools.readSceneEventsJson({ sceneName: 'Source' });
+    const eventJson = {
+      ...before.eventsJson[0],
+      conditions: [
+        {
+          type: { value: 'TestCondition' },
+          parameters: ['Player'],
+          subInstructions: [
+            {
+              type: { value: 'NestedCondition' },
+              parameters: ['Nested'],
+              subInstructions: [],
+            },
+          ],
+        },
+      ],
+      actions: [
+        {
+          type: { value: 'TestAction' },
+          parameters: ['42'],
+          subInstructions: [],
+        },
+      ],
+    };
+    tools.updateSceneEvent({
+      sceneName: 'Source',
+      expectedEventsRevision: before.eventsRevision,
+      handle: before.events[0].handle,
+      eventJson,
+    });
+
+    const result = tools.readSceneEventsJson({ sceneName: 'Source' });
+    const event = result.events[0];
+    expect(event.conditions).toHaveLength(1);
+    expect(event.conditions[0]).toMatchObject({
+      eventPath: [0],
+      path: [0],
+      handleKind: 'fingerprint',
+      type: 'TestCondition',
+      parameters: ['Player'],
+    });
+    expect(event.conditions[0].handle).toMatch(/^condition:fp:[0-9a-f]{32}$/);
+    expect(event.conditions[0].children[0]).toMatchObject({
+      eventPath: [0],
+      path: [0, 0],
+      type: 'NestedCondition',
+    });
+    expect(event.actions).toHaveLength(1);
+    expect(event.actions[0]).toMatchObject({
+      eventPath: [0],
+      path: [0],
+      handleKind: 'fingerprint',
+      type: 'TestAction',
+      parameters: ['42'],
+    });
+    expect(event.actions[0].handle).toMatch(/^action:fp:[0-9a-f]{32}$/);
+  });
+
   it('uses persistent ids only when unique and scopes indistinguishable duplicates by path', () => {
     const duplicateScene = project.insertNewLayout('Duplicates', 2);
     const first = duplicateScene

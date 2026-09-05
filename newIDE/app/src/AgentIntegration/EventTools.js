@@ -43,6 +43,27 @@ const visitSerializedEvents = (
 const createCanonicalEventIndex = (eventsJson: Array<any>) => {
   const aiIdCounts = new Map();
   const fingerprintCounts = new Map();
+  const conditionFingerprintCounts = new Map();
+  const actionFingerprintCounts = new Map();
+
+  const visitInstructions = (
+    instructions: any,
+    fingerprintCountsForKind: Map<string, number>
+  ) => {
+    if (!Array.isArray(instructions)) return;
+    instructions.forEach(instruction => {
+      const fingerprint = fingerprintValue(instruction);
+      fingerprintCountsForKind.set(
+        fingerprint,
+        (fingerprintCountsForKind.get(fingerprint) || 0) + 1
+      );
+      visitInstructions(
+        instruction && instruction.subInstructions,
+        fingerprintCountsForKind
+      );
+    });
+  };
+
   visitSerializedEvents(eventsJson, eventJson => {
     const aiGeneratedEventId =
       typeof eventJson.aiGeneratedEventId === 'string' &&
@@ -60,7 +81,73 @@ const createCanonicalEventIndex = (eventsJson: Array<any>) => {
       fingerprint,
       (fingerprintCounts.get(fingerprint) || 0) + 1
     );
+    visitInstructions(eventJson.conditions, conditionFingerprintCounts);
+    visitInstructions(eventJson.whileConditions, conditionFingerprintCounts);
+    visitInstructions(eventJson.actions, actionFingerprintCounts);
   });
+
+  const buildInstructions = ({
+    instructions,
+    kind,
+    eventPath,
+    parentPath = [],
+  }: {|
+    instructions: any,
+    kind: 'condition' | 'action',
+    eventPath: Array<number>,
+    parentPath?: Array<number>,
+  |}): Array<any> => {
+    if (!Array.isArray(instructions)) return [];
+    const counts =
+      kind === 'condition'
+        ? conditionFingerprintCounts
+        : actionFingerprintCounts;
+    return instructions.map((instructionJson, index) => {
+      const path = [...parentPath, index];
+      const fingerprint = fingerprintValue(instructionJson);
+      const unique = counts.get(fingerprint) === 1;
+      const handle = unique
+        ? `${kind}:fp:${fingerprint}`
+        : `${kind}:fp:${fingerprint}:event:${eventPath.join(
+            '.'
+          )}:path:${path.join('.')}`;
+      const type =
+        instructionJson && instructionJson.type
+          ? typeof instructionJson.type === 'object'
+            ? instructionJson.type.value || null
+            : instructionJson.type
+          : null;
+      return {
+        handle,
+        path,
+        eventPath,
+        fingerprint,
+        handleKind: unique ? 'fingerprint' : 'fingerprint-path',
+        type,
+        parameters: Array.isArray(instructionJson.parameters)
+          ? instructionJson.parameters
+          : [],
+        inverted: !!(
+          instructionJson &&
+          instructionJson.type &&
+          typeof instructionJson.type === 'object' &&
+          instructionJson.type.inverted
+        ),
+        await: !!(
+          instructionJson &&
+          instructionJson.type &&
+          typeof instructionJson.type === 'object' &&
+          instructionJson.type.await
+        ),
+        children: buildInstructions({
+          instructions: instructionJson && instructionJson.subInstructions,
+          kind,
+          eventPath,
+          parentPath: path,
+        }),
+      };
+    });
+  };
 
   const buildNodes = (
     serializedEvents: Array<any>,
@@ -97,6 +184,21 @@ const createCanonicalEventIndex = (eventsJson: Array<any>) => {
         disabled: !!eventJson.disabled,
         folded: !!eventJson.folded,
         aiGeneratedEventId,
+        conditions: buildInstructions({
+          instructions: eventJson.conditions,
+          kind: 'condition',
+          eventPath: path,
+        }),
+        whileConditions: buildInstructions({
+          instructions: eventJson.whileConditions,
+          kind: 'condition',
+          eventPath: path,
+        }),
+        actions: buildInstructions({
+          instructions: eventJson.actions,
+          kind: 'action',
+          eventPath: path,
+        }),
         children: Array.isArray(eventJson.events)
           ? buildNodes(eventJson.events, path)
           : [],
