@@ -16,18 +16,13 @@ const collectJavaScriptFiles = directory => {
   return files;
 };
 
-test('MCP and production startup do not depend on AgentApi or /v1', () => {
+test('MCP and production startup do not depend on /v1', () => {
   const files = [startupPath, ...collectJavaScriptFiles(__dirname)].filter(
     filePath => !filePath.endsWith('.test.js')
   );
 
   files.forEach(filePath => {
     const source = fs.readFileSync(filePath, 'utf8');
-    assert.equal(
-      source.includes('AgentApi'),
-      false,
-      `${path.relative(integrationRoot, filePath)} imports or names AgentApi`
-    );
     assert.equal(
       source.includes('/v1'),
       false,

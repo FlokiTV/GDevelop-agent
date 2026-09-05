@@ -2,8 +2,6 @@ const { spawnSync } = require('child_process');
 const path = require('path');
 
 const ALLOWED_PREFIXES = [
-  'newIDE/app/src/AgentApi/',
-  'newIDE/electron-app/app/AgentApi/',
   'newIDE/app/src/AgentIntegration/',
   'newIDE/electron-app/app/AgentIntegration/',
 ];
@@ -84,19 +82,19 @@ if (require.main === module) {
   try {
     const result = runArchitectureGuard({ repoRoot, baseRef });
     if (!result.ok) {
-      console.error('[AgentApi architecture guard] Disallowed upstream changes:');
+      console.error('[AgentIntegration architecture guard] Disallowed upstream changes:');
       for (const filePath of result.disallowedFiles) {
         console.error(`- ${filePath}`);
       }
       process.exitCode = 1;
     } else {
       console.log(
-        `[AgentApi architecture guard] OK: ${result.changedFiles.length} changed files; upstream hooks limited to ${result.allowedUpstreamHooks.length}.`
+        `[AgentIntegration architecture guard] OK: ${result.changedFiles.length} changed files; upstream hooks limited to ${result.allowedUpstreamHooks.length}.`
       );
     }
   } catch (error) {
     console.error(
-      `[AgentApi architecture guard] ${
+      `[AgentIntegration architecture guard] ${
         error && error.message ? error.message : String(error)
       }`
     );

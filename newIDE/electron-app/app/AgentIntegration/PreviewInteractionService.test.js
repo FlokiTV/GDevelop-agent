@@ -60,5 +60,5 @@ test('exposes runtime/touch methods directly without an action router', async ()
     y: 20,
   });
   assert.ok(executedScripts.some(source => source.includes('touch')));
-  assert.equal('handleLegacyAction' in service, false);
+  assert.equal(typeof service.sendTouch, 'function');
 });

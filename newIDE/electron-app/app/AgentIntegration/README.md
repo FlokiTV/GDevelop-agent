@@ -164,7 +164,7 @@ The MCP adapter is covered with the official MCP client for protocol negotiation
 Until the final naming consolidation moves the guard, run from the repository root:
 
 ```text
-node newIDE/electron-app/app/AgentApi/ArchitectureGuard.js upstream/master
+node newIDE/electron-app/app/AgentIntegration/ArchitectureGuard.js upstream/master
 ```
 
 The gate must report that changes outside AgentIntegration-owned code remain limited to the three upstream hooks listed above.

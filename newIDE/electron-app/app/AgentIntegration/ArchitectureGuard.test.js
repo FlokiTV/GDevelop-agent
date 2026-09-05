@@ -9,11 +9,11 @@ const {
 
 test('allows agent-owned files, MCP manifests and the three explicit upstream hooks', () => {
   assert.equal(
-    isAllowedAgentChange('newIDE/app/src/AgentApi/ExportTools.js'),
+    isAllowedAgentChange('newIDE/app/src/AgentIntegration/ExportTools.js'),
     true
   );
   assert.equal(
-    isAllowedAgentChange('newIDE/electron-app/app/AgentApi/index.js'),
+    isAllowedAgentChange('newIDE/electron-app/app/AgentIntegration/index.js'),
     true
   );
   assert.equal(
@@ -45,7 +45,7 @@ test('allows agent-owned files, MCP manifests and the three explicit upstream ho
 test('rejects changes elsewhere in GDevelop upstream', () => {
   assert.deepEqual(
     findDisallowedAgentChanges([
-      'newIDE/app/src/AgentApi/useAgentApi.js',
+      'newIDE/app/src/AgentIntegration/useAgentIntegration.js',
       'GDJS/Runtime/runtimegame.js',
       'newIDE/app/package.json',
     ]),
