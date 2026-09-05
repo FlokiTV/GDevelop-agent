@@ -107,6 +107,42 @@ describe('EditorFunctionService', () => {
     });
   });
 
+  it('treats granular live invalidation as a project mutation even when result metadata omits it', async () => {
+    const scene = {};
+    const onInstancesModifiedOutsideEditor = jest.fn();
+    const processEditorFunctionCalls = jest.fn(async options => {
+      options.onInstancesModifiedOutsideEditor({ scene });
+      return {
+        results: [
+          {
+            status: 'finished',
+            didModifyProject: false,
+            success: true,
+          },
+        ],
+        createdSceneNames: [],
+        createdProject: null,
+      };
+    });
+    const {
+      service,
+      triggerUnsavedChanges,
+      forceUpdate,
+    } = createService({
+      processEditorFunctionCalls,
+      onInstancesModifiedOutsideEditor,
+    });
+
+    const result = await service.run({
+      calls: [{ name: 'put_2d_instances', arguments: {} }],
+    });
+
+    expect(onInstancesModifiedOutsideEditor).toHaveBeenCalledWith({ scene });
+    expect(triggerUnsavedChanges).toHaveBeenCalledTimes(1);
+    expect(forceUpdate).toHaveBeenCalledTimes(1);
+    expect(result.didModifyProject).toBe(true);
+  });
+
   it('serializes gameplay tests so each run gets a fresh disposable frame', async () => {
     const {
       service,

@@ -70,7 +70,16 @@ export const createEditorFunctionService = ({
   documentObject,
   makeCallId = defaultMakeCallId,
 }: EditorFunctionServiceOptions) => {
-  const processCalls = (functionCalls: Array<any>) =>
+  const processCalls = (
+    functionCalls: Array<any>,
+    liveMutationCallbacks: ?{|
+      onSceneEventsModifiedOutsideEditor: any,
+      onInstancesModifiedOutsideEditor: any,
+      onObjectsModifiedOutsideEditor: any,
+      onObjectGroupsModifiedOutsideEditor: any,
+      onProjectItemRenamedOutsideEditor: any,
+    |} = null
+  ) =>
     processEditorFunctionCalls({
       project,
       functionCalls,
@@ -85,11 +94,21 @@ export const createEditorFunctionService = ({
         lastAssistantMessages: [],
       }),
       generateEvents,
-      onSceneEventsModifiedOutsideEditor,
-      onInstancesModifiedOutsideEditor,
-      onObjectsModifiedOutsideEditor,
-      onObjectGroupsModifiedOutsideEditor,
-      onProjectItemRenamedOutsideEditor,
+      onSceneEventsModifiedOutsideEditor:
+        liveMutationCallbacks?.onSceneEventsModifiedOutsideEditor ||
+        onSceneEventsModifiedOutsideEditor,
+      onInstancesModifiedOutsideEditor:
+        liveMutationCallbacks?.onInstancesModifiedOutsideEditor ||
+        onInstancesModifiedOutsideEditor,
+      onObjectsModifiedOutsideEditor:
+        liveMutationCallbacks?.onObjectsModifiedOutsideEditor ||
+        onObjectsModifiedOutsideEditor,
+      onObjectGroupsModifiedOutsideEditor:
+        liveMutationCallbacks?.onObjectGroupsModifiedOutsideEditor ||
+        onObjectGroupsModifiedOutsideEditor,
+      onProjectItemRenamedOutsideEditor:
+        liveMutationCallbacks?.onProjectItemRenamedOutsideEditor ||
+        onProjectItemRenamedOutsideEditor,
       onWillDeleteScene,
       onWillDeleteGameplayTest,
       onWillDeleteObject,
@@ -126,6 +145,29 @@ export const createEditorFunctionService = ({
       };
     });
 
+    let didNotifyLiveMutation = false;
+    const observeLiveMutation = (callback: any) => (changes: any) => {
+      didNotifyLiveMutation = true;
+      callback(changes);
+    };
+    const liveMutationCallbacks = {
+      onSceneEventsModifiedOutsideEditor: observeLiveMutation(
+        onSceneEventsModifiedOutsideEditor
+      ),
+      onInstancesModifiedOutsideEditor: observeLiveMutation(
+        onInstancesModifiedOutsideEditor
+      ),
+      onObjectsModifiedOutsideEditor: observeLiveMutation(
+        onObjectsModifiedOutsideEditor
+      ),
+      onObjectGroupsModifiedOutsideEditor: observeLiveMutation(
+        onObjectGroupsModifiedOutsideEditor
+      ),
+      onProjectItemRenamedOutsideEditor: observeLiveMutation(
+        onProjectItemRenamedOutsideEditor
+      ),
+    };
+
     let processedCallsResult;
     if (functionCalls.some(call => call.name === 'run_gameplay_test')) {
       const results = [];
@@ -143,7 +185,10 @@ export const createEditorFunctionService = ({
         }
         let processedCall;
         try {
-          processedCall = await processCalls([functionCall]);
+          processedCall = await processCalls(
+            [functionCall],
+            liveMutationCallbacks
+          );
         } finally {
           stopWatchingGameplayFrame();
         }
@@ -155,7 +200,10 @@ export const createEditorFunctionService = ({
       }
       processedCallsResult = { results, createdSceneNames, createdProject };
     } else {
-      processedCallsResult = await processCalls(functionCalls);
+      processedCallsResult = await processCalls(
+        functionCalls,
+        liveMutationCallbacks
+      );
     }
 
     const {
@@ -163,9 +211,11 @@ export const createEditorFunctionService = ({
       createdSceneNames,
       createdProject,
     } = processedCallsResult;
-    const didModifyProject = results.some(
-      result => result.status === 'finished' && result.didModifyProject
-    );
+    const didModifyProject =
+      didNotifyLiveMutation ||
+      results.some(
+        result => result.status === 'finished' && result.didModifyProject
+      );
 
     if (didModifyProject) {
       triggerUnsavedChanges();
