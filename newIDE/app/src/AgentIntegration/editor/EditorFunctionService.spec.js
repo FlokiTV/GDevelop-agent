@@ -216,6 +216,7 @@ describe('EditorFunctionService', () => {
     const scene = project.insertNewLayout('TestScene', 0);
     scene.getObjects().insertNewObject(project, 'Sprite', 'Player', 0);
     const onInstancesModifiedOutsideEditor = jest.fn();
+    const onOpenLayout = jest.fn();
     const triggerUnsavedChanges = jest.fn();
     const forceUpdate = jest.fn();
     const saveProject = jest.fn(async () => ({ fileIdentifier: 'project.json' }));
@@ -223,7 +224,7 @@ describe('EditorFunctionService', () => {
     const service = createEditorFunctionService({
       project,
       i18n: {},
-      editorCallbacks: {},
+      editorCallbacks: { onOpenLayout },
       processEditorFunctionCalls: processRealEditorFunctionCalls,
       generateEvents: jest.fn(),
       onSceneEventsModifiedOutsideEditor: jest.fn(),
@@ -271,6 +272,7 @@ describe('EditorFunctionService', () => {
 
       expect(scene.getInitialInstances().getInstancesCount()).toBe(1);
       expect(onInstancesModifiedOutsideEditor).toHaveBeenCalledWith({ scene });
+      expect(onOpenLayout).not.toHaveBeenCalled();
       expect(triggerUnsavedChanges).toHaveBeenCalledTimes(1);
       expect(forceUpdate).toHaveBeenCalledTimes(1);
       expect(saveProject).not.toHaveBeenCalled();
