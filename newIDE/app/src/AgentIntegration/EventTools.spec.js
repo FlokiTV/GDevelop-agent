@@ -171,6 +171,86 @@ describe('AgentIntegration EventTools', () => {
     );
   });
 
+  it('moves an event subtree without rebuilding the scene event list', () => {
+    const moveScene = project.insertNewLayout('Move', 2);
+    moveScene
+      .getEvents()
+      .insertNewEvent(project, 'BuiltinCommonInstructions::Comment', 0);
+    const movingEvent = moveScene
+      .getEvents()
+      .insertNewEvent(project, 'BuiltinCommonInstructions::Standard', 1);
+    movingEvent
+      .getSubEvents()
+      .insertNewEvent(project, 'BuiltinCommonInstructions::Comment', 0);
+    const tools = makeTools();
+    const before = tools.readSceneEventsJson({ sceneName: 'Move' });
+    const movingHandle = before.events[1].handle;
+
+    const result = tools.moveSceneEvent({
+      sceneName: 'Move',
+      expectedEventsRevision: before.eventsRevision,
+      handle: movingHandle,
+      beforeHandle: before.events[0].handle,
+    });
+
+    expect(result.moved).toBe(true);
+    expect(result.fromPath).toEqual([1]);
+    expect(result.event.path).toEqual([0]);
+    expect(result.event.handle).toBe(movingHandle);
+    expect(moveScene.getEvents().getEventAt(0).getType()).toBe(
+      'BuiltinCommonInstructions::Standard'
+    );
+    expect(
+      moveScene.getEvents().getEventAt(0).getSubEvents().getEventsCount()
+    ).toBe(1);
+    expect(moveScene.getEvents().getEventAt(1).getType()).toBe(
+      'BuiltinCommonInstructions::Comment'
+    );
+  });
+
+  it('updates one event node while preserving persistent identity and subevents by default', () => {
+    const parent = source.getEvents().getEventAt(0);
+    parent.setAiGeneratedEventId('stable-parent');
+    parent
+      .getSubEvents()
+      .insertNewEvent(project, 'BuiltinCommonInstructions::Comment', 0);
+    const tools = makeTools();
+    const before = tools.readSceneEventsJson({ sceneName: 'Source' });
+    const replacementJson: any = {
+      ...before.eventsJson[0],
+      disabled: true,
+      actions: [
+        {
+          type: { value: 'NewAction' },
+          parameters: ['Player', '42'],
+          subInstructions: [],
+        },
+      ],
+      events: [],
+    };
+    delete replacementJson.aiGeneratedEventId;
+
+    const result = tools.updateSceneEvent({
+      sceneName: 'Source',
+      expectedEventsRevision: before.eventsRevision,
+      handle: before.events[0].handle,
+      eventJson: replacementJson,
+    });
+
+    const updated = source.getEvents().getEventAt(0);
+    const standard = gd.asStandardEvent(updated);
+    expect(updated.isDisabled()).toBe(true);
+    expect(updated.getAiGeneratedEventId()).toBe('stable-parent');
+    expect(updated.getSubEvents().getEventsCount()).toBe(1);
+    expect(standard.getActions().size()).toBe(1);
+    expect(standard.getActions().get(0).getType()).toBe('NewAction');
+    expect(standard.getActions().get(0).getParameter(1).getPlainString()).toBe(
+      '42'
+    );
+    expect(result.event.handle).toBe('event:id:stable-parent');
+    expect(result.eventsRevision).not.toBe(before.eventsRevision);
+  });
+
   it('rejects localized edits when the scene event revision is stale', () => {
     const tools = makeTools();
     const read = tools.readSceneEventsJson({ sceneName: 'Target' });

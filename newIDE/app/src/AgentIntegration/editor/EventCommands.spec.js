@@ -7,6 +7,8 @@ const makeHost = (project: any = {}) => {
     readSceneEventsJson: jest.fn(input => ({ sceneName: input.sceneName })),
     insertSceneEvents: jest.fn(input => ({ inserted: 1, ...input })),
     deleteSceneEvent: jest.fn(input => ({ deleted: true, ...input })),
+    moveSceneEvent: jest.fn(input => ({ moved: true, ...input })),
+    updateSceneEvent: jest.fn(input => ({ updated: true, ...input })),
     applySceneEventsJson: jest.fn(input => ({ applied: true, ...input })),
   };
   return {
@@ -38,6 +40,16 @@ describe('EventCommands', () => {
       requiresProject: true,
       modifiesProject: true,
     });
+    expect(host.describeCommand('events.move').metadata).toMatchObject({
+      readOnly: false,
+      requiresProject: true,
+      modifiesProject: true,
+    });
+    expect(host.describeCommand('events.update').metadata).toMatchObject({
+      readOnly: false,
+      requiresProject: true,
+      modifiesProject: true,
+    });
     expect(host.describeCommand('events.apply').metadata).toMatchObject({
       readOnly: false,
       requiresProject: true,
@@ -59,6 +71,18 @@ describe('EventCommands', () => {
       expectedEventsRevision: 'events:def',
       handle: 'event:fp:def',
     });
+    await host.execute('events.move', {
+      sceneName: 'Scene',
+      expectedEventsRevision: 'events:ghi',
+      handle: 'event:fp:ghi',
+      beforeHandle: 'event:fp:jkl',
+    });
+    await host.execute('events.update', {
+      sceneName: 'Scene',
+      expectedEventsRevision: 'events:mno',
+      handle: 'event:fp:mno',
+      eventJson: { type: 'BuiltinCommonInstructions::Standard' },
+    });
     await host.execute('events.apply', {
       sceneName: 'Scene',
       eventsJson: [],
@@ -77,6 +101,18 @@ describe('EventCommands', () => {
       sceneName: 'Scene',
       expectedEventsRevision: 'events:def',
       handle: 'event:fp:def',
+    });
+    expect(eventTools.moveSceneEvent).toHaveBeenCalledWith({
+      sceneName: 'Scene',
+      expectedEventsRevision: 'events:ghi',
+      handle: 'event:fp:ghi',
+      beforeHandle: 'event:fp:jkl',
+    });
+    expect(eventTools.updateSceneEvent).toHaveBeenCalledWith({
+      sceneName: 'Scene',
+      expectedEventsRevision: 'events:mno',
+      handle: 'event:fp:mno',
+      eventJson: { type: 'BuiltinCommonInstructions::Standard' },
     });
     expect(eventTools.applySceneEventsJson).toHaveBeenCalledWith({
       sceneName: 'Scene',

@@ -37,6 +37,33 @@ const DELETE_SCHEMA = {
   },
 };
 
+const MOVE_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['sceneName', 'expectedEventsRevision', 'handle'],
+  properties: {
+    sceneName: { type: 'string', minLength: 1 },
+    expectedEventsRevision: { type: 'string', minLength: 1 },
+    handle: { type: 'string', minLength: 1 },
+    parentHandle: { type: 'string', minLength: 1 },
+    beforeHandle: { type: 'string', minLength: 1 },
+    afterHandle: { type: 'string', minLength: 1 },
+  },
+};
+
+const UPDATE_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['sceneName', 'expectedEventsRevision', 'handle', 'eventJson'],
+  properties: {
+    sceneName: { type: 'string', minLength: 1 },
+    expectedEventsRevision: { type: 'string', minLength: 1 },
+    handle: { type: 'string', minLength: 1 },
+    eventJson: { type: 'object' },
+    preserveSubevents: { type: 'boolean' },
+  },
+};
+
 const APPLY_SCHEMA = {
   type: 'object',
   additionalProperties: false,
@@ -51,6 +78,29 @@ const APPLY_SCHEMA = {
 const assertSceneName = (sceneName: any) => {
   if (!sceneName || typeof sceneName !== 'string') {
     throw new AgentError({ code: 'scene_not_found' });
+  }
+};
+
+const assertEventsRevision = (eventsRevision: any) => {
+  if (!eventsRevision || typeof eventsRevision !== 'string') {
+    throw new AgentError({ code: 'missing_events_revision' });
+  }
+};
+
+const assertEventHandle = (handle: any) => {
+  if (!handle || typeof handle !== 'string') {
+    throw new AgentError({ code: 'invalid_event_handle' });
+  }
+};
+
+const assertEventPlacement = (input: any) => {
+  const placements = [
+    input.parentHandle,
+    input.beforeHandle,
+    input.afterHandle,
+  ].filter(value => typeof value === 'string' && value);
+  if (placements.length > 1) {
+    throw new AgentError({ code: 'invalid_event_placement' });
   }
 };
 
@@ -81,23 +131,11 @@ export const createEventCommandDescriptors = ({
     }),
     validateInput: input => {
       assertSceneName(input.sceneName);
-      if (
-        !input.expectedEventsRevision ||
-        typeof input.expectedEventsRevision !== 'string'
-      ) {
-        throw new AgentError({ code: 'missing_events_revision' });
-      }
+      assertEventsRevision(input.expectedEventsRevision);
       if (!Array.isArray(input.eventsJson) || input.eventsJson.length === 0) {
         throw new AgentError({ code: 'invalid_events_json' });
       }
-      const placements = [
-        input.parentHandle,
-        input.beforeHandle,
-        input.afterHandle,
-      ].filter(value => typeof value === 'string' && value);
-      if (placements.length > 1) {
-        throw new AgentError({ code: 'invalid_event_placement' });
-      }
+      assertEventPlacement(input);
     },
     execute: ({ input }) => eventTools.insertSceneEvents(input),
   },
@@ -115,17 +153,56 @@ export const createEventCommandDescriptors = ({
     }),
     validateInput: input => {
       assertSceneName(input.sceneName);
-      if (
-        !input.expectedEventsRevision ||
-        typeof input.expectedEventsRevision !== 'string'
-      ) {
-        throw new AgentError({ code: 'missing_events_revision' });
-      }
-      if (!input.handle || typeof input.handle !== 'string') {
-        throw new AgentError({ code: 'invalid_event_handle' });
-      }
+      assertEventsRevision(input.expectedEventsRevision);
+      assertEventHandle(input.handle);
     },
     execute: ({ input }) => eventTools.deleteSceneEvent(input),
+  },
+  {
+    name: 'events.move',
+    description:
+      'Move one event subtree to root, into another event, or before/after another stable handle without replacing the event tree.',
+    inputSchema: MOVE_SCHEMA,
+    metadata: makeCommandMetadata({
+      readOnly: false,
+      idempotent: false,
+      requiresProject: true,
+      modifiesProject: true,
+    }),
+    validateInput: input => {
+      assertSceneName(input.sceneName);
+      assertEventsRevision(input.expectedEventsRevision);
+      assertEventHandle(input.handle);
+      assertEventPlacement(input);
+    },
+    execute: ({ input }) => eventTools.moveSceneEvent(input),
+  },
+  {
+    name: 'events.update',
+    description:
+      'Replace only one targeted event node from canonical JSON, preserving its persistent id and subevents by default.',
+    inputSchema: UPDATE_SCHEMA,
+    metadata: makeCommandMetadata({
+      readOnly: false,
+      idempotent: false,
+      requiresProject: true,
+      modifiesProject: true,
+    }),
+    validateInput: input => {
+      assertSceneName(input.sceneName);
+      assertEventsRevision(input.expectedEventsRevision);
+      assertEventHandle(input.handle);
+      if (!input.eventJson || typeof input.eventJson !== 'object') {
+        throw new AgentError({ code: 'invalid_event_json' });
+      }
+      if (
+        input.preserveSubevents !== undefined &&
+        typeof input.preserveSubevents !== 'boolean'
+      ) {
+        throw new AgentError({ code: 'invalid_preserve_subevents' });
+      }
+    },
+    execute: ({ input }) => eventTools.updateSceneEvent(input),
   },
   {
     name: 'events.apply',

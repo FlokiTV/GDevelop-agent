@@ -216,15 +216,105 @@ const requireScene = (project: gdProject, sceneName: string): gdLayout => {
   return project.getLayout(sceneName);
 };
 
+const getSerializedEventByPath = (
+  eventsJson: Array<any>,
+  path: Array<number>
+): any => {
+  let currentEvents = eventsJson;
+  let eventJson = null;
+  for (let depth = 0; depth < path.length; depth++) {
+    const index = path[depth];
+    if (!Array.isArray(currentEvents) || index < 0 || index >= currentEvents.length) {
+      throw makeError('event_path_not_found');
+    }
+    eventJson = currentEvents[index];
+    currentEvents = Array.isArray(eventJson.events) ? eventJson.events : [];
+  }
+  return eventJson;
+};
+
+const pathsEqual = (left: Array<number>, right: Array<number>): boolean =>
+  left.length === right.length &&
+  left.every((index, depth) => index === right[depth]);
+
+const isPathPrefix = (
+  prefix: Array<number>,
+  path: Array<number>
+): boolean =>
+  prefix.length <= path.length &&
+  prefix.every((index, depth) => index === path[depth]);
+
 const findCanonicalNodeByPath = (
   canonicalState: any,
   path: Array<number>
 ): any =>
-  canonicalState.flatEvents.find(
-    event =>
-      event.path.length === path.length &&
-      event.path.every((index, depth) => index === path[depth])
-  ) || null;
+  canonicalState.flatEvents.find(event => pathsEqual(event.path, path)) || null;
+
+const resolveInsertionLocation = ({
+  rootEvents,
+  canonicalState,
+  parentHandle,
+  beforeHandle,
+  afterHandle,
+}: {|
+  rootEvents: gdEventsList,
+  canonicalState: any,
+  parentHandle?: ?string,
+  beforeHandle?: ?string,
+  afterHandle?: ?string,
+|}): {|
+  targetList: gdEventsList,
+  insertionIndex: number,
+  parentPath: Array<number>,
+  targetPath: ?Array<number>,
+|} => {
+  const placementHandles = [parentHandle, beforeHandle, afterHandle].filter(
+    handle => typeof handle === 'string' && handle
+  );
+  if (placementHandles.length > 1) {
+    throw makeError('invalid_event_placement');
+  }
+
+  if (parentHandle) {
+    const parentEventPath = resolveEventHandle(canonicalState, parentHandle);
+    const { parentList, index } = getParentListAndIndex(
+      rootEvents,
+      parentEventPath
+    );
+    const parentEvent = parentList.getEventAt(index);
+    if (!parentEvent.canHaveSubEvents()) {
+      throw makeError('event_cannot_have_subevents', undefined, {
+        handle: parentHandle,
+      });
+    }
+    const targetList = parentEvent.getSubEvents();
+    return {
+      targetList,
+      insertionIndex: targetList.getEventsCount(),
+      parentPath: parentEventPath,
+      targetPath: parentEventPath,
+    };
+  }
+
+  if (beforeHandle || afterHandle) {
+    const targetHandle = beforeHandle || afterHandle;
+    const targetPath = resolveEventHandle(canonicalState, targetHandle);
+    const location = getParentListAndIndex(rootEvents, targetPath);
+    return {
+      targetList: location.parentList,
+      insertionIndex: location.index + (afterHandle ? 1 : 0),
+      parentPath: targetPath.slice(0, -1),
+      targetPath,
+    };
+  }
+
+  return {
+    targetList: rootEvents,
+    insertionIndex: rootEvents.getEventsCount(),
+    parentPath: [],
+    targetPath: null,
+  };
+};
 
 const collectAiGeneratedEventIds = (
   eventsList: gdEventsList,
@@ -294,15 +384,6 @@ export const createEventTools = ({
       beforeState.eventsRevision
     );
 
-    const placementHandles = [
-      request.parentHandle,
-      request.beforeHandle,
-      request.afterHandle,
-    ].filter(handle => typeof handle === 'string' && handle);
-    if (placementHandles.length > 1) {
-      throw makeError('invalid_event_placement');
-    }
-
     const incomingEvents = deserializeEvents(project, request.eventsJson);
     const incomingCount = incomingEvents.getEventsCount();
     if (incomingCount === 0) {
@@ -311,39 +392,16 @@ export const createEventTools = ({
     }
     const aiGeneratedEventIds = collectAiGeneratedEventIds(incomingEvents);
     const rootEvents = scene.getEvents();
-    let targetList = rootEvents;
-    let insertionIndex = rootEvents.getEventsCount();
-    let parentPath = [];
+    const placement = resolveInsertionLocation({
+      rootEvents,
+      canonicalState: beforeState,
+      parentHandle: request.parentHandle,
+      beforeHandle: request.beforeHandle,
+      afterHandle: request.afterHandle,
+    });
+    const { targetList, insertionIndex, parentPath } = placement;
 
     try {
-      if (request.parentHandle) {
-        const parentEventPath = resolveEventHandle(
-          beforeState,
-          request.parentHandle
-        );
-        const { parentList, index } = getParentListAndIndex(
-          rootEvents,
-          parentEventPath
-        );
-        const parentEvent = parentList.getEventAt(index);
-        if (!parentEvent.canHaveSubEvents()) {
-          throw makeError('event_cannot_have_subevents', undefined, {
-            handle: request.parentHandle,
-          });
-        }
-        targetList = parentEvent.getSubEvents();
-        insertionIndex = targetList.getEventsCount();
-        parentPath = parentEventPath;
-      } else if (request.beforeHandle || request.afterHandle) {
-        const targetHandle = request.beforeHandle || request.afterHandle;
-        const targetPath = resolveEventHandle(beforeState, targetHandle);
-        const location = getParentListAndIndex(rootEvents, targetPath);
-        targetList = location.parentList;
-        insertionIndex =
-          location.index + (request.afterHandle ? 1 : 0);
-        parentPath = targetPath.slice(0, -1);
-      }
-
       targetList.insertEvents(
         incomingEvents,
         0,
@@ -419,6 +477,169 @@ export const createEventTools = ({
     };
   };
 
+  const moveSceneEvent = (request: any): any => {
+    const sceneName =
+      typeof request.sceneName === 'string' ? request.sceneName : '';
+    const scene = requireScene(project, sceneName);
+    const beforeState = getCanonicalSceneEventsState(scene);
+    assertExpectedEventsRevision(
+      request.expectedEventsRevision,
+      beforeState.eventsRevision
+    );
+    const rootEvents = scene.getEvents();
+    const sourcePath = resolveEventHandle(beforeState, request.handle);
+    const sourceParentPath = sourcePath.slice(0, -1);
+    const sourceLocation = getParentListAndIndex(rootEvents, sourcePath);
+    const placement = resolveInsertionLocation({
+      rootEvents,
+      canonicalState: beforeState,
+      parentHandle: request.parentHandle,
+      beforeHandle: request.beforeHandle,
+      afterHandle: request.afterHandle,
+    });
+
+    if (
+      placement.targetPath &&
+      (pathsEqual(sourcePath, placement.targetPath) ||
+        isPathPrefix(sourcePath, placement.targetPath))
+    ) {
+      throw makeError('invalid_event_move_destination');
+    }
+
+    let insertionIndex = placement.insertionIndex;
+    if (
+      pathsEqual(sourceParentPath, placement.parentPath) &&
+      sourceLocation.index < insertionIndex
+    ) {
+      insertionIndex--;
+    }
+    if (
+      pathsEqual(sourceParentPath, placement.parentPath) &&
+      sourceLocation.index === insertionIndex
+    ) {
+      throw makeError('event_move_noop');
+    }
+
+    const sourceEventJson = getSerializedEventByPath(
+      beforeState.eventsJson,
+      sourcePath
+    );
+    const movingEvents = deserializeEvents(project, [sourceEventJson]);
+    const aiGeneratedEventIds = collectAiGeneratedEventIds(movingEvents);
+    try {
+      sourceLocation.parentList.removeEventAt(sourceLocation.index);
+      placement.targetList.insertEvents(
+        movingEvents,
+        0,
+        movingEvents.getEventsCount(),
+        insertionIndex
+      );
+    } finally {
+      movingEvents.delete();
+    }
+
+    triggerUnsavedChanges();
+    onSceneEventsModifiedOutsideEditor({
+      scene,
+      newOrChangedAiGeneratedEventIds: aiGeneratedEventIds,
+    });
+    const afterState = getCanonicalSceneEventsState(scene);
+    const newPath = [...placement.parentPath, insertionIndex];
+    const movedNode = findCanonicalNodeByPath(afterState, newPath);
+    return {
+      moved: true,
+      sceneName,
+      beforeEventsRevision: beforeState.eventsRevision,
+      eventsRevision: afterState.eventsRevision,
+      fromPath: sourcePath,
+      event: movedNode
+        ? {
+            handle: movedNode.handle,
+            path: movedNode.path,
+            fingerprint: movedNode.fingerprint,
+          }
+        : { handle: null, path: newPath, fingerprint: null },
+    };
+  };
+
+  const updateSceneEvent = (request: any): any => {
+    const sceneName =
+      typeof request.sceneName === 'string' ? request.sceneName : '';
+    const scene = requireScene(project, sceneName);
+    const beforeState = getCanonicalSceneEventsState(scene);
+    assertExpectedEventsRevision(
+      request.expectedEventsRevision,
+      beforeState.eventsRevision
+    );
+    const path = resolveEventHandle(beforeState, request.handle);
+    const targetEventJson = getSerializedEventByPath(beforeState.eventsJson, path);
+    if (!request.eventJson || typeof request.eventJson !== 'object') {
+      throw makeError('invalid_event_json');
+    }
+    const preserveSubevents = request.preserveSubevents !== false;
+    const replacementJson = { ...request.eventJson };
+    if (
+      targetEventJson.aiGeneratedEventId &&
+      !replacementJson.aiGeneratedEventId
+    ) {
+      replacementJson.aiGeneratedEventId = targetEventJson.aiGeneratedEventId;
+    }
+    if (preserveSubevents && Array.isArray(targetEventJson.events)) {
+      replacementJson.events = targetEventJson.events;
+    }
+
+    const replacementEvents = deserializeEvents(project, [replacementJson]);
+    if (replacementEvents.getEventsCount() !== 1) {
+      replacementEvents.delete();
+      throw makeError('invalid_event_json');
+    }
+    const targetLocation = getParentListAndIndex(scene.getEvents(), path);
+    const currentEvent = targetLocation.parentList.getEventAt(targetLocation.index);
+    const replacementEvent = replacementEvents.getEventAt(0);
+    if (
+      preserveSubevents &&
+      currentEvent.canHaveSubEvents() &&
+      currentEvent.getSubEvents().getEventsCount() > 0 &&
+      !replacementEvent.canHaveSubEvents()
+    ) {
+      replacementEvents.delete();
+      throw makeError('event_update_would_drop_subevents');
+    }
+    const aiGeneratedEventIds = collectAiGeneratedEventIds(replacementEvents);
+    try {
+      targetLocation.parentList.removeEventAt(targetLocation.index);
+      targetLocation.parentList.insertEvents(
+        replacementEvents,
+        0,
+        1,
+        targetLocation.index
+      );
+    } finally {
+      replacementEvents.delete();
+    }
+
+    triggerUnsavedChanges();
+    onSceneEventsModifiedOutsideEditor({
+      scene,
+      newOrChangedAiGeneratedEventIds: aiGeneratedEventIds,
+    });
+    const afterState = getCanonicalSceneEventsState(scene);
+    const updatedNode = findCanonicalNodeByPath(afterState, path);
+    return {
+      updated: true,
+      sceneName,
+      beforeEventsRevision: beforeState.eventsRevision,
+      eventsRevision: afterState.eventsRevision,
+      event: updatedNode
+        ? {
+            handle: updatedNode.handle,
+            path: updatedNode.path,
+            fingerprint: updatedNode.fingerprint,
+          }
+        : { handle: null, path, fingerprint: null },
+    };
+  };
+
   const applySceneEventsJson = (request: any): any => {
     const sceneName =
       typeof request.sceneName === 'string' ? request.sceneName : '';
@@ -469,6 +690,8 @@ export const createEventTools = ({
     readSceneEventsJson,
     insertSceneEvents,
     deleteSceneEvent,
+    moveSceneEvent,
+    updateSceneEvent,
     applySceneEventsJson,
   };
 };
