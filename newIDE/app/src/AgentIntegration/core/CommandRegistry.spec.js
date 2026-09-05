@@ -62,6 +62,35 @@ describe('CommandRegistry', () => {
     ).toThrow(expect.objectContaining({ code: 'invalid_command_metadata' }));
   });
 
+  it('validates optional cache metadata centrally', () => {
+    expect(
+      new CommandRegistry([
+        makeDescriptor('agent.commands.list', {
+          metadata: makeCommandMetadata({
+            cacheScope: 'process',
+            ttlMs: 60000,
+          }),
+        }),
+      ]).describe('agent.commands.list').metadata
+    ).toMatchObject({ cacheScope: 'process', ttlMs: 60000 });
+
+    expect(() =>
+      new CommandRegistry([
+        makeDescriptor('agent.commands.bad-cache', {
+          metadata: makeCommandMetadata({ cacheScope: ('global': any) }),
+        }),
+      ])
+    ).toThrow(expect.objectContaining({ code: 'invalid_command_cache_scope' }));
+
+    expect(() =>
+      new CommandRegistry([
+        makeDescriptor('agent.commands.bad-ttl', {
+          metadata: makeCommandMetadata({ ttlMs: -1 }),
+        }),
+      ])
+    ).toThrow(expect.objectContaining({ code: 'invalid_command_ttl' }));
+  });
+
   it('uses structured AgentError for missing commands', () => {
     const registry = new CommandRegistry();
     try {

@@ -9,6 +9,8 @@ export type CommandMetadata = {|
   requiresProject: boolean,
   modifiesProject: boolean,
   defaultTimeoutMs?: number,
+  cacheScope?: 'process' | 'project-revision' | 'request',
+  ttlMs?: number,
 |};
 
 export type CommandExecutionContext = {|
@@ -88,6 +90,26 @@ const assertDescriptor = (descriptor: CommandDescriptor) => {
   ) {
     throw new AgentError({
       code: 'invalid_command_timeout',
+      details: { name: descriptor.name },
+    });
+  }
+  if (
+    descriptor.metadata.cacheScope !== undefined &&
+    !['process', 'project-revision', 'request'].includes(
+      descriptor.metadata.cacheScope
+    )
+  ) {
+    throw new AgentError({
+      code: 'invalid_command_cache_scope',
+      details: { name: descriptor.name },
+    });
+  }
+  if (
+    descriptor.metadata.ttlMs !== undefined &&
+    (!Number.isFinite(descriptor.metadata.ttlMs) || descriptor.metadata.ttlMs < 0)
+  ) {
+    throw new AgentError({
+      code: 'invalid_command_ttl',
       details: { name: descriptor.name },
     });
   }

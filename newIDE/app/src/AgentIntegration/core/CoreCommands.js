@@ -11,13 +11,18 @@ const EMPTY_OBJECT_SCHEMA = {
   properties: {},
 };
 
+const DISCOVERY_METADATA = makeCommandMetadata({
+  cacheScope: 'process',
+  ttlMs: 60000,
+});
+
 export const createCoreCommandDescriptors = (): Array<CommandDescriptor> => [
   {
     name: 'agent.capabilities',
     description:
       'Return protocol-independent AgentIntegration capabilities and command metadata.',
     inputSchema: EMPTY_OBJECT_SCHEMA,
-    metadata: makeCommandMetadata(),
+    metadata: DISCOVERY_METADATA,
     execute: ({ registry }) => ({
       commandCount: registry.size,
       commands: registry.list(),
@@ -33,7 +38,7 @@ export const createCoreCommandDescriptors = (): Array<CommandDescriptor> => [
         query: { type: 'string' },
       },
     },
-    metadata: makeCommandMetadata(),
+    metadata: DISCOVERY_METADATA,
     validateInput: input => {
       if (input.query !== undefined && typeof input.query !== 'string') {
         throw new AgentError({
@@ -57,7 +62,7 @@ export const createCoreCommandDescriptors = (): Array<CommandDescriptor> => [
         name: { type: 'string', minLength: 1 },
       },
     },
-    metadata: makeCommandMetadata(),
+    metadata: DISCOVERY_METADATA,
     validateInput: input => {
       if (!input.name || typeof input.name !== 'string') {
         throw new AgentError({

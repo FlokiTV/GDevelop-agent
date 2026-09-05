@@ -64,6 +64,11 @@ const CALL_SCHEMA = {
   },
 };
 
+const EDITOR_FUNCTION_DISCOVERY_METADATA = makeCommandMetadata({
+  cacheScope: 'process',
+  ttlMs: 60000,
+});
+
 const BATCH_SCHEMA = {
   type: 'object',
   additionalProperties: false,
@@ -99,7 +104,7 @@ export const createEditorFunctionCommandDescriptors = ({
     description:
       'List GDevelop EditorFunctions available to the embedded integration, with generated schemas and capability metadata.',
     inputSchema: LIST_SCHEMA,
-    metadata: makeCommandMetadata(),
+    metadata: EDITOR_FUNCTION_DISCOVERY_METADATA,
     validateInput: input => {
       if (input.query !== undefined && typeof input.query !== 'string') {
         throw new AgentError({ code: 'invalid_query' });
@@ -131,7 +136,7 @@ export const createEditorFunctionCommandDescriptors = ({
       required: ['name'],
       properties: { name: { type: 'string', minLength: 1 } },
     },
-    metadata: makeCommandMetadata(),
+    metadata: EDITOR_FUNCTION_DISCOVERY_METADATA,
     validateInput: input => assertFunctionName(input.name),
     execute: ({ input }) => {
       const metadata = getFunctionMetadata(input.name);

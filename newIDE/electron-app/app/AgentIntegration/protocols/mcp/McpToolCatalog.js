@@ -54,6 +54,12 @@ const descriptorToToolRegistration = descriptor => {
         ...(Number.isFinite(metadata.defaultTimeoutMs)
           ? { [`${MCP_META_PREFIX}defaultTimeoutMs`]: metadata.defaultTimeoutMs }
           : {}),
+        ...(typeof metadata.cacheScope === 'string'
+          ? { [`${MCP_META_PREFIX}cacheScope`]: metadata.cacheScope }
+          : {}),
+        ...(Number.isFinite(metadata.ttlMs)
+          ? { [`${MCP_META_PREFIX}ttlMs`]: metadata.ttlMs }
+          : {}),
         ...(descriptor.deprecated
           ? { [`${MCP_META_PREFIX}deprecated`]: descriptor.deprecated }
           : {}),

@@ -34,6 +34,8 @@ test('projects command metadata to MCP annotations without duplicating schemas',
       requiresProject: true,
       modifiesProject: true,
       defaultTimeoutMs: 90000,
+      cacheScope: 'process',
+      ttlMs: 60000,
     })
   );
 
@@ -49,6 +51,8 @@ test('projects command metadata to MCP annotations without duplicating schemas',
   assert.equal(registration.config._meta['gdevelop/requiresProject'], true);
   assert.equal(registration.config._meta['gdevelop/modifiesProject'], true);
   assert.equal(registration.config._meta['gdevelop/defaultTimeoutMs'], 90000);
+  assert.equal(registration.config._meta['gdevelop/cacheScope'], 'process');
+  assert.equal(registration.config._meta['gdevelop/ttlMs'], 60000);
   assert.equal(registration.timeoutMs, 90000);
 });
 
