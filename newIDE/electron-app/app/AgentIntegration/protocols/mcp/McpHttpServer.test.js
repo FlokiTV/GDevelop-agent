@@ -6,7 +6,12 @@ const {
   StreamableHTTPClientTransport,
 } = require('@modelcontextprotocol/client');
 const { PROTOCOL_VERSION } = require('./McpServerFactory');
-const { startMcpHttpServer } = require('./McpHttpServer');
+const {
+  formatMcpErrorForLog,
+  isExpectedMcpCancellation,
+  logMcpError,
+  startMcpHttpServer,
+} = require('./McpHttpServer');
 const {
   createDesktopCommandRegistry,
 } = require('../../DesktopCommandRegistry');
@@ -84,6 +89,46 @@ const makeBridge = () => {
     },
   };
 };
+
+test('formats MCP errors for logs and demotes expected cancellation', () => {
+  assert.equal(
+    formatMcpErrorForLog({
+      name: 'AbortError',
+      code: 'ABORT_ERR',
+      message: '',
+    }),
+    'AbortError code=ABORT_ERR'
+  );
+  assert.equal(formatMcpErrorForLog({}), '[object Object]');
+  assert.equal(
+    isExpectedMcpCancellation({ code: 'renderer_request_cancelled' }),
+    true
+  );
+
+  const calls = [];
+  const log = {
+    debug: message => calls.push(['debug', message]),
+    error: message => calls.push(['error', message]),
+  };
+  logMcpError(log, 'Request error', {
+    name: 'AbortError',
+    code: 'ABORT_ERR',
+  });
+  logMcpError(log, 'Request error', {
+    code: 'unexpected_failure',
+    message: 'boom',
+  });
+  assert.deepEqual(calls, [
+    [
+      'debug',
+      '[AgentIntegration:MCP] Request error: AbortError code=ABORT_ERR',
+    ],
+    [
+      'error',
+      '[AgentIntegration:MCP] Request error: code=unexpected_failure boom',
+    ],
+  ]);
+});
 
 const connectClient = async ({ url, token, windowId }) => {
   const client = new Client(

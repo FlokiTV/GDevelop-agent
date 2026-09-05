@@ -18,6 +18,46 @@ const DEFAULT_MAX_JSON_DEPTH = 64;
 const DEFAULT_MAX_CONCURRENT_REQUESTS = 32;
 const DEFAULT_MAX_CONCURRENT_REQUESTS_PER_CLIENT = 8;
 
+const formatMcpErrorForLog = error => {
+  if (!error) return 'unknown_error';
+  if (typeof error === 'string') return error;
+
+  const parts = [];
+  if (typeof error.name === 'string' && error.name && error.name !== 'Error') {
+    parts.push(error.name);
+  }
+  if (error.code != null) parts.push(`code=${String(error.code)}`);
+  if (typeof error.message === 'string' && error.message) {
+    parts.push(error.message);
+  }
+  if (parts.length) return parts.join(' ');
+
+  try {
+    const serialized = JSON.stringify(error);
+    if (serialized && serialized !== '{}') return serialized;
+  } catch (serializationError) {}
+  return String(error) || 'unknown_error';
+};
+
+const isExpectedMcpCancellation = error =>
+  !!error &&
+  (error.name === 'AbortError' ||
+    error.code === 'ABORT_ERR' ||
+    error.code === 'renderer_request_cancelled' ||
+    error.code === 'request_cancelled');
+
+const logMcpError = (log, label, error) => {
+  if (!log) return;
+  const message = `[AgentIntegration:MCP] ${label}: ${formatMcpErrorForLog(
+    error
+  )}`;
+  if (isExpectedMcpCancellation(error)) {
+    if (typeof log.debug === 'function') log.debug(message);
+    return;
+  }
+  log.error(message);
+};
+
 const makeJsonRpcErrorResponse = ({
   response,
   statusCode,
@@ -167,13 +207,13 @@ const startMcpHttpServer = async ({
     {
       legacy: 'reject',
       onerror: error => {
-        if (log) log.error('[AgentIntegration:MCP] Request error:', error);
+        logMcpError(log, 'Request error', error);
       },
     }
   );
   const nodeHandler = toNodeHandler(handler, {
     onerror: error => {
-      if (log) log.error('[AgentIntegration:MCP] Node adapter error:', error);
+      logMcpError(log, 'Node adapter error', error);
     },
   });
   const validateHost = localhostHostValidation();
@@ -283,7 +323,7 @@ const startMcpHttpServer = async ({
         });
         return;
       }
-      if (log) log.error('[AgentIntegration:MCP] HTTP error:', error);
+      logMcpError(log, 'HTTP error', error);
       if (!response.headersSent) {
         response.writeHead(500, {
           'Content-Type': 'application/json; charset=utf-8',
@@ -334,7 +374,10 @@ module.exports = {
   DEFAULT_MAX_CONCURRENT_REQUESTS,
   DEFAULT_MAX_CONCURRENT_REQUESTS_PER_CLIENT,
   MCP_PATH,
+  formatMcpErrorForLog,
+  isExpectedMcpCancellation,
   isAuthorized,
+  logMcpError,
   readJsonBodyWithLimit,
   startMcpHttpServer,
 };
