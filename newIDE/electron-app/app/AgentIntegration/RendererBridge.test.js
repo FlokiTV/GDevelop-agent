@@ -43,10 +43,16 @@ const makeFixture = () => {
 
 test('executes commands only over AgentIntegration channels', async () => {
   const fixture = makeFixture();
+  const traceContext = {
+    traceparent: '00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01',
+    tracestate: 'vendor=value',
+    baggage: 'feature=agent',
+  };
   const promise = fixture.bridge.executeCommand({
     command: 'project.status',
     input: {},
     traceId: 'trace-1',
+    traceContext,
     expectedRevision: 7,
     idempotencyKey: 'retry-1',
   });
@@ -57,6 +63,7 @@ test('executes commands only over AgentIntegration channels', async () => {
       command: 'project.status',
       input: {},
       traceId: 'trace-1',
+      traceContext,
       expectedRevision: 7,
       idempotencyKey: 'retry-1',
     },
@@ -102,6 +109,7 @@ test('maps structured command errors without losing recovery metadata', async ()
         message: 'stale revision',
         retryable: true,
         hint: 'read again',
+        recovery: 'read latest revision and retry',
         currentRevision: 9,
         traceId: 'trace-9',
         details: { expected: 8 },
@@ -112,6 +120,7 @@ test('maps structured command errors without losing recovery metadata', async ()
     assert.equal(error.code, 'revision_conflict');
     assert.equal(error.retryable, true);
     assert.equal(error.hint, 'read again');
+    assert.equal(error.recovery, 'read latest revision and retry');
     assert.equal(error.currentRevision, 9);
     assert.equal(error.traceId, 'trace-9');
     assert.deepEqual(error.details, { expected: 8 });

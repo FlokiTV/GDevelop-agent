@@ -1,5 +1,5 @@
 // @flow
-import { AgentError } from './AgentError';
+import { AgentError, AGENT_ERROR_CODES } from './AgentError';
 
 const DEFAULT_MAX_ENTRIES = 256;
 
@@ -28,7 +28,9 @@ export class IdempotencyStore {
   _entries: Map<string, Entry>;
   _maxEntries: number;
 
-  constructor({ maxEntries = DEFAULT_MAX_ENTRIES }: { maxEntries?: number } = {}) {
+  constructor({
+    maxEntries = DEFAULT_MAX_ENTRIES,
+  }: { maxEntries?: number } = {}) {
     this._entries = new Map();
     this._maxEntries = Math.max(1, Math.floor(maxEntries));
   }
@@ -48,12 +50,14 @@ export class IdempotencyStore {
     input,
     currentRevision,
     execute,
+    onReuse,
   }: {|
     command: string,
     key: string,
     input: any,
     currentRevision?: ?number,
     execute: () => Promise<any>,
+    onReuse?: () => void,
   |}): Promise<any> {
     const cacheKey = `${command}:${key}`;
     const fingerprint = fingerprintInput(input);
@@ -62,14 +66,17 @@ export class IdempotencyStore {
       if (existing.fingerprint !== fingerprint) {
         return Promise.reject(
           new AgentError({
-            code: 'idempotency_conflict',
-            message: 'The idempotency key was already used with different input.',
-            hint: 'Reuse the same key only for an identical retry, or use a new key.',
+            code: AGENT_ERROR_CODES.IDEMPOTENCY_CONFLICT,
+            message:
+              'The idempotency key was already used with different input.',
+            hint:
+              'Reuse the same key only for an identical retry, or use a new key.',
             currentRevision,
             details: { command, idempotencyKey: key },
           })
         );
       }
+      if (onReuse) onReuse();
       return existing.promise;
     }
 

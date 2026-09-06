@@ -211,6 +211,28 @@ test('official MCP client initializes, lists registry tools and calls them direc
     });
     assert.equal(result.structuredContent.command, 'project.status');
     assert.equal(result.structuredContent.data.projectOpen, true);
+    assert.equal(typeof result._meta['gdevelop/traceId'], 'string');
+    assert.ok(result._meta['gdevelop/traceId'].length > 0);
+    assert.equal(typeof result._meta['gdevelop/durationMs'], 'number');
+
+    const listedResources = await client.listResources();
+    assert.equal(
+      listedResources.resources.some(
+        resource => resource.uri === 'gdevelop://mcp/debug'
+      ),
+      true
+    );
+    const debugResource = await client.readResource({
+      uri: 'gdevelop://mcp/debug',
+    });
+    const debugSnapshot = JSON.parse(debugResource.contents[0].text);
+    assert.equal(debugSnapshot.protocolVersion, PROTOCOL_VERSION);
+    assert.equal(debugSnapshot.targeting.windowTargeted, true);
+    assert.ok(debugSnapshot.metrics.totals.calls >= 1);
+    const serializedDebug = JSON.stringify(debugSnapshot);
+    assert.equal(serializedDebug.includes(token), false);
+    assert.equal(serializedDebug.includes('input'), false);
+    assert.equal(serializedDebug.includes('baggage'), false);
 
     const directCalls = rendererBridge.calls.filter(
       call => call.command === 'project.status'
@@ -224,6 +246,60 @@ test('official MCP client initializes, lists registry tools and calls them direc
       false,
       'MCP never dispatches a legacy REST request shape'
     );
+  } finally {
+    await client.close();
+    await host.stop();
+  }
+});
+
+test('official MCP client receives actionable structured tool errors', async () => {
+  const descriptor = makeDescriptor('events.fail');
+  const rendererBridge = {
+    executeCommand: async options => {
+      if (options.command === 'agent.commands.list') {
+        return {
+          command: options.command,
+          data: { commands: [descriptor] },
+          meta: { readOnly: true, modifiesProject: false },
+        };
+      }
+      if (options.command === 'events.fail') {
+        const error = new Error('stale revision');
+        error.code = 'revision_conflict';
+        error.retryable = true;
+        error.hint = 'Read events again.';
+        error.recovery = 'Retry with the latest revision.';
+        error.currentRevision = 9;
+        error.details = { expectedRevision: 8 };
+        throw error;
+      }
+      throw new Error(`unexpected_command:${options.command}`);
+    },
+  };
+  const token = 'error-token';
+  const host = await startMcpHttpServer({ rendererBridge, token, port: 0 });
+  const client = await connectClient({ url: host.url, token, windowId: 17 });
+
+  try {
+    const result = await client.callTool({
+      name: 'events.fail',
+      arguments: {},
+    });
+    assert.equal(result.isError, true);
+    assert.equal(result.structuredContent.error.code, 'revision_conflict');
+    assert.equal(result.structuredContent.error.retryable, true);
+    assert.equal(result.structuredContent.error.hint, 'Read events again.');
+    assert.equal(
+      result.structuredContent.error.recovery,
+      'Retry with the latest revision.'
+    );
+    assert.equal(result.structuredContent.error.currentRevision, 9);
+    assert.deepEqual(result.structuredContent.error.details, {
+      expectedRevision: 8,
+    });
+    assert.equal(result._meta['gdevelop/errorCode'], 'revision_conflict');
+    assert.equal(result._meta['gdevelop/retryable'], true);
+    assert.equal(JSON.parse(result.content[0].text).code, 'revision_conflict');
   } finally {
     await client.close();
     await host.stop();

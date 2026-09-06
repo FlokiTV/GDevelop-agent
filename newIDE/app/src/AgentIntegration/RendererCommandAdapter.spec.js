@@ -35,16 +35,31 @@ describe('RendererCommandAdapter', () => {
       requestId: 'request-1',
       command: 'project.status',
       input: {},
+      traceContext: {
+        traceparent: '00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01',
+        tracestate: 'vendor=value',
+        baggage: 'feature=agent',
+      },
       expectedRevision: 7,
       idempotencyKey: 'retry-1',
     });
 
-    expect(agentHost.execute).toHaveBeenCalledWith('project.status', {}, {
-      traceId: 'request-1',
-      expectedRevision: 7,
-      idempotencyKey: 'retry-1',
-      signal: expect.anything(),
-    });
+    expect(agentHost.execute).toHaveBeenCalledWith(
+      'project.status',
+      {},
+      {
+        traceId: 'request-1',
+        traceContext: {
+          traceparent:
+            '00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01',
+          tracestate: 'vendor=value',
+          baggage: 'feature=agent',
+        },
+        expectedRevision: 7,
+        idempotencyKey: 'retry-1',
+        signal: expect.anything(),
+      }
+    );
     expect(ipcRenderer.send).toHaveBeenCalledWith(COMMAND_RESPONSE_CHANNEL, {
       requestId: 'request-1',
       ok: true,
@@ -89,6 +104,9 @@ describe('RendererCommandAdapter', () => {
     const ipcRenderer = createIpcRenderer();
     const error: any = new Error('No project');
     error.code = 'no_project_open';
+    error.retryable = true;
+    error.hint = 'Open a project first';
+    error.recovery = 'Select an existing project window and retry';
     const agentHost = { execute: jest.fn(async () => Promise.reject(error)) };
     attachRendererAgentHostToIpc({ ipcRenderer, agentHost });
 
@@ -106,6 +124,9 @@ describe('RendererCommandAdapter', () => {
       error: expect.objectContaining({
         code: 'no_project_open',
         message: 'No project',
+        retryable: true,
+        hint: 'Open a project first',
+        recovery: 'Select an existing project window and retry',
       }),
     });
   });

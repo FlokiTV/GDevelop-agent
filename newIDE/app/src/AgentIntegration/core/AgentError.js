@@ -1,10 +1,19 @@
 // @flow
 
+export const AGENT_ERROR_CODES = Object.freeze({
+  AGENT_INTERNAL_ERROR: 'agent_internal_error',
+  INVALID_COMMAND_INPUT: 'invalid_command_input',
+  NO_PROJECT_OPEN: 'no_project_open',
+  REVISION_CONFLICT: 'revision_conflict',
+  IDEMPOTENCY_CONFLICT: 'idempotency_conflict',
+});
+
 export type AgentErrorOptions = {|
   code: string,
   message?: string,
   retryable?: boolean,
   hint?: string,
+  recovery?: string,
   details?: any,
   currentRevision?: string | number,
   traceId?: string,
@@ -15,6 +24,7 @@ export class AgentError extends Error {
   code: string;
   retryable: boolean;
   hint: ?string;
+  recovery: ?string;
   details: any;
   currentRevision: ?(string | number);
   traceId: ?string;
@@ -25,6 +35,7 @@ export class AgentError extends Error {
     message,
     retryable = false,
     hint,
+    recovery,
     details,
     currentRevision,
     traceId,
@@ -35,6 +46,7 @@ export class AgentError extends Error {
     this.code = code;
     this.retryable = retryable;
     this.hint = hint || null;
+    this.recovery = recovery || null;
     this.details = details;
     this.currentRevision =
       currentRevision === undefined ? null : currentRevision;
@@ -45,7 +57,7 @@ export class AgentError extends Error {
 
 export const normalizeAgentError = (
   error: any,
-  fallbackCode: string = 'agent_internal_error'
+  fallbackCode: string = AGENT_ERROR_CODES.AGENT_INTERNAL_ERROR
 ): AgentError => {
   if (error instanceof AgentError) return error;
 
@@ -65,6 +77,10 @@ export const normalizeAgentError = (
     hint:
       error && typeof error.hint === 'string' && error.hint
         ? error.hint
+        : undefined,
+    recovery:
+      error && typeof error.recovery === 'string' && error.recovery
+        ? error.recovery
         : undefined,
     details: error && error.details !== undefined ? error.details : undefined,
     currentRevision:
@@ -86,6 +102,7 @@ export const serializeAgentError = (error: any) => {
     message: normalized.message,
     retryable: normalized.retryable,
     ...(normalized.hint ? { hint: normalized.hint } : {}),
+    ...(normalized.recovery ? { recovery: normalized.recovery } : {}),
     ...(normalized.details !== undefined
       ? { details: normalized.details }
       : {}),

@@ -3,6 +3,12 @@ const { McpServer } = require('@modelcontextprotocol/server');
 const { descriptorsToToolRegistrations } = require('./McpToolCatalog');
 const { registerGDevelopPrompts } = require('./McpPrompts');
 const { registerGDevelopResources } = require('./McpResources');
+const {
+  getTraceContextFromRequest,
+  makeToolResultMeta,
+  makeToolErrorResult,
+  registerMcpDebugResource,
+} = require('./McpObservability');
 
 const SERVER_INFO = {
   name: 'gdevelop-live-editor',
@@ -72,8 +78,12 @@ const toMcpToolResult = result => {
 const createMcpServerFactory = ({
   rendererBridge,
   desktopCommandRegistry = null,
+  metrics,
 }) => async ctx => {
   const targeting = getTargetingFromRequest(ctx && ctx.requestInfo);
+  const connectionTraceContext = getTraceContextFromRequest(
+    ctx && ctx.requestInfo
+  );
   const catalogResult = await rendererBridge.executeCommand({
     command: 'agent.commands.list',
     input: {},
@@ -99,102 +109,155 @@ const createMcpServerFactory = ({
   });
   registerGDevelopPrompts(server);
   registerGDevelopResources({ server, rendererBridge, targeting });
+  if (metrics) {
+    registerMcpDebugResource({
+      server,
+      metrics,
+      protocolVersion: '2026-07-28',
+      targeting,
+    });
+  }
 
   descriptorsToToolRegistrations(descriptors).forEach(registration => {
     server.registerTool(
       registration.name,
       registration.config,
       async (input, requestContext) => {
-        const normalizedInput = input && typeof input === 'object' ? input : {};
-        const {
-          expectedRevision,
-          idempotencyKey,
-          ...commandInput
-        } = normalizedInput;
-        let result;
-        if (
-          desktopCommandRegistry &&
-          desktopCommandRegistry.has(registration.name)
-        ) {
-          let desktopInput = commandInput;
+        const startedAt = Date.now();
+        const traceContext = connectionTraceContext.traceparent
+          ? connectionTraceContext
+          : { ...connectionTraceContext, traceId: crypto.randomUUID() };
+        try {
+          const normalizedInput =
+            input && typeof input === 'object' ? input : {};
+          const {
+            expectedRevision,
+            idempotencyKey,
+            ...commandInput
+          } = normalizedInput;
+          let result;
           if (
-            registration.name === 'desktop.window.capture' &&
-            desktopInput.windowId == null &&
-            targeting.windowId &&
-            /^\d+$/.test(targeting.windowId)
+            desktopCommandRegistry &&
+            desktopCommandRegistry.has(registration.name)
           ) {
-            desktopInput = {
-              ...desktopInput,
-              windowId: Number(targeting.windowId),
-            };
+            let desktopInput = commandInput;
+            if (
+              registration.name === 'desktop.window.capture' &&
+              desktopInput.windowId == null &&
+              targeting.windowId &&
+              /^\d+$/.test(targeting.windowId)
+            ) {
+              desktopInput = {
+                ...desktopInput,
+                windowId: Number(targeting.windowId),
+              };
+            }
+            result = await desktopCommandRegistry.execute({
+              command: registration.name,
+              input: desktopInput,
+            });
+            if (registration.name === 'desktop.window.capture' && result.data) {
+              let projectRevision = null;
+              let sceneName = null;
+              try {
+                const projectStatus = await rendererBridge.executeCommand({
+                  command: 'project.status',
+                  input: {},
+                  ...targeting,
+                });
+                projectRevision =
+                  projectStatus &&
+                  projectStatus.meta &&
+                  Number.isInteger(projectStatus.meta.projectRevision)
+                    ? projectStatus.meta.projectRevision
+                    : projectStatus &&
+                      projectStatus.data &&
+                      Number.isInteger(projectStatus.data.projectRevision)
+                    ? projectStatus.data.projectRevision
+                    : null;
+                const visualStatus = await rendererBridge.executeCommand({
+                  command: 'editor.visual.status',
+                  input: {},
+                  ...targeting,
+                });
+                const openSceneEditors =
+                  visualStatus &&
+                  visualStatus.data &&
+                  Array.isArray(visualStatus.data.openSceneEditors)
+                    ? visualStatus.data.openSceneEditors
+                    : [];
+                const activeScene = openSceneEditors.find(
+                  entry => entry.active
+                );
+                sceneName = activeScene ? activeScene.sceneName : null;
+              } catch (error) {}
+              result = {
+                ...result,
+                data: {
+                  ...result.data,
+                  projectRevision,
+                  sceneName,
+                },
+              };
+            }
+          } else {
+            result = await rendererBridge.executeCommand({
+              command: registration.name,
+              input: commandInput,
+              traceId: traceContext.traceId,
+              traceContext,
+              ...(registration.modifiesProject &&
+              Number.isInteger(expectedRevision) &&
+              expectedRevision >= 0
+                ? { expectedRevision }
+                : {}),
+              ...(registration.modifiesProject &&
+              typeof idempotencyKey === 'string' &&
+              idempotencyKey
+                ? { idempotencyKey }
+                : {}),
+              timeoutMs: registration.timeoutMs,
+              signal: requestContext && requestContext.signal,
+              ...targeting,
+            });
           }
-          result = await desktopCommandRegistry.execute({
-            command: registration.name,
-            input: desktopInput,
-          });
-          if (registration.name === 'desktop.window.capture' && result.data) {
-            let projectRevision = null;
-            let sceneName = null;
-            try {
-              const projectStatus = await rendererBridge.executeCommand({
-                command: 'project.status',
-                input: {},
-                ...targeting,
-              });
-              projectRevision =
-                projectStatus &&
-                projectStatus.meta &&
-                Number.isInteger(projectStatus.meta.projectRevision)
-                  ? projectStatus.meta.projectRevision
-                  : projectStatus &&
-                    projectStatus.data &&
-                    Number.isInteger(projectStatus.data.projectRevision)
-                  ? projectStatus.data.projectRevision
-                  : null;
-              const visualStatus = await rendererBridge.executeCommand({
-                command: 'editor.visual.status',
-                input: {},
-                ...targeting,
-              });
-              const openSceneEditors =
-                visualStatus &&
-                visualStatus.data &&
-                Array.isArray(visualStatus.data.openSceneEditors)
-                  ? visualStatus.data.openSceneEditors
-                  : [];
-              const activeScene = openSceneEditors.find(entry => entry.active);
-              sceneName = activeScene ? activeScene.sceneName : null;
-            } catch (error) {}
-            result = {
-              ...result,
-              data: {
-                ...result.data,
-                projectRevision,
-                sceneName,
-              },
-            };
+          const durationMs = Math.max(0, Date.now() - startedAt);
+          if (metrics) {
+            metrics.record({
+              command: registration.name,
+              ok: true,
+              durationMs,
+              idempotencyReplayed: !!(
+                result &&
+                result.meta &&
+                result.meta.idempotencyReplayed
+              ),
+            });
           }
-        } else {
-          result = await rendererBridge.executeCommand({
-            command: registration.name,
-            input: commandInput,
-            traceId: crypto.randomUUID(),
-            ...(registration.modifiesProject &&
-            Number.isInteger(expectedRevision) &&
-            expectedRevision >= 0
-              ? { expectedRevision }
-              : {}),
-            ...(registration.modifiesProject &&
-            typeof idempotencyKey === 'string' &&
-            idempotencyKey
-              ? { idempotencyKey }
-              : {}),
+          const toolResult = toMcpToolResult(result);
+          toolResult._meta = makeToolResultMeta({
+            traceContext,
+            durationMs,
             timeoutMs: registration.timeoutMs,
-            signal: requestContext && requestContext.signal,
-            ...targeting,
+            result,
+          });
+          return toolResult;
+        } catch (error) {
+          const durationMs = Math.max(0, Date.now() - startedAt);
+          if (metrics) {
+            metrics.record({
+              command: registration.name,
+              ok: false,
+              durationMs,
+            });
+          }
+          return makeToolErrorResult({
+            error,
+            traceContext,
+            durationMs,
+            timeoutMs: registration.timeoutMs,
           });
         }
-        return toMcpToolResult(result);
       }
     );
   });

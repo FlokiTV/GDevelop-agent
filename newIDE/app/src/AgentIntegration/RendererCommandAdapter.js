@@ -5,7 +5,8 @@ import { type AgentHost } from './core/AgentHost';
 export const COMMAND_REQUEST_CHANNEL = 'gdevelop-agent-integration:command';
 export const COMMAND_RESPONSE_CHANNEL =
   'gdevelop-agent-integration:command-response';
-export const COMMAND_CANCEL_CHANNEL = 'gdevelop-agent-integration:command-cancel';
+export const COMMAND_CANCEL_CHANNEL =
+  'gdevelop-agent-integration:command-cancel';
 
 type IpcRenderer = {|
   on: (channel: string, listener: Function) => void,
@@ -36,6 +37,7 @@ export const attachRendererAgentHostToIpc = ({
       command: string,
       input?: any,
       traceId?: string,
+      traceContext?: any,
       expectedRevision?: number,
       idempotencyKey?: string,
     |}
@@ -45,6 +47,7 @@ export const attachRendererAgentHostToIpc = ({
       command,
       input,
       traceId,
+      traceContext,
       expectedRevision,
       idempotencyKey,
     } = payload || {};
@@ -57,8 +60,10 @@ export const attachRendererAgentHostToIpc = ({
         throw new Error('missing_command_name');
       }
       const result = await agentHost.execute(command, input, {
-        traceId:
-          typeof traceId === 'string' && traceId ? traceId : requestId,
+        traceId: typeof traceId === 'string' && traceId ? traceId : requestId,
+        ...(traceContext && typeof traceContext === 'object'
+          ? { traceContext }
+          : {}),
         ...(Number.isInteger(expectedRevision) && expectedRevision >= 0
           ? { expectedRevision }
           : {}),

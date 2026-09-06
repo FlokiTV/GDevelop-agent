@@ -1,9 +1,10 @@
 // @flow
-import { AgentError, normalizeAgentError } from './AgentError';
 import {
-  CommandRegistry,
-  type CommandDescriptor,
-} from './CommandRegistry';
+  AgentError,
+  AGENT_ERROR_CODES,
+  normalizeAgentError,
+} from './AgentError';
+import { CommandRegistry, type CommandDescriptor } from './CommandRegistry';
 import { IdempotencyStore } from './IdempotencyStore';
 
 export type CommandResult = {|
@@ -14,6 +15,8 @@ export type CommandResult = {|
     readOnly: boolean,
     modifiesProject: boolean,
     projectRevision: ?number,
+    durationMs: number,
+    idempotencyReplayed: boolean,
   |},
 |};
 
@@ -28,7 +31,7 @@ const normalizeInput = (input: any): { [string]: any } => {
   if (input === undefined || input === null) return {};
   if (typeof input !== 'object' || Array.isArray(input)) {
     throw new AgentError({
-      code: 'invalid_command_input',
+      code: AGENT_ERROR_CODES.INVALID_COMMAND_INPUT,
       message: 'Command input must be an object.',
     });
   }
@@ -43,7 +46,9 @@ const getProjectConflictContext = (environment: any) => {
         ? project.getProjectUuid()
         : null,
     projectName:
-      project && typeof project.getName === 'function' ? project.getName() : null,
+      project && typeof project.getName === 'function'
+        ? project.getName()
+        : null,
     fileIdentifier: environment.fileIdentifier || null,
     hasUnsavedChanges: !!environment.hasUnsavedChanges,
   };
@@ -91,6 +96,7 @@ export class AgentHost {
     input?: any,
     requestContext?: { [string]: any } = {}
   ): Promise<CommandResult> {
+    const startedAt = Date.now();
     const descriptor = this.registry.get(name);
     const normalizedInput = normalizeInput(input);
     const environment = this._environment || {};
@@ -103,7 +109,7 @@ export class AgentHost {
 
       if (descriptor.metadata.requiresProject && !environment.project) {
         throw new AgentError({
-          code: 'no_project_open',
+          code: AGENT_ERROR_CODES.NO_PROJECT_OPEN,
           message: 'This command requires an open GDevelop project.',
           hint: 'Open or create a project and retry the command.',
           traceId:
@@ -126,7 +132,7 @@ export class AgentHost {
             ? revisionTracker.getLastChangeContext()
             : null;
         throw new AgentError({
-          code: 'revision_conflict',
+          code: AGENT_ERROR_CODES.REVISION_CONFLICT,
           message: 'The open project changed since it was last read.',
           retryable: true,
           hint: 'Read the project again and retry with the current revision.',
@@ -175,6 +181,7 @@ export class AgentHost {
       }
     };
 
+    let idempotencyReplayed = false;
     const idempotencyKey =
       descriptor.metadata.modifiesProject &&
       typeof requestContext.idempotencyKey === 'string' &&
@@ -188,6 +195,9 @@ export class AgentHost {
           input: normalizedInput,
           currentRevision: readCurrentRevision(),
           execute: executeOnce,
+          onReuse: () => {
+            idempotencyReplayed = true;
+          },
         })
       : await executeOnce();
 
@@ -202,6 +212,8 @@ export class AgentHost {
         readOnly: descriptor.metadata.readOnly,
         modifiesProject: descriptor.metadata.modifiesProject,
         projectRevision: execution.projectRevision,
+        durationMs: Math.max(0, Date.now() - startedAt),
+        idempotencyReplayed,
       },
     };
   }

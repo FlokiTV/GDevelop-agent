@@ -59,6 +59,7 @@ const createRendererBridge = ({
       );
       error.retryable = !!payload.error.retryable;
       error.hint = payload.error.hint || null;
+      error.recovery = payload.error.recovery || null;
       error.currentRevision = payload.error.currentRevision;
       error.traceId = payload.error.traceId || null;
       pending.reject(error);
@@ -98,6 +99,7 @@ const createRendererBridge = ({
     command,
     input,
     traceId,
+    traceContext,
     expectedRevision,
     idempotencyKey,
     projectPath,
@@ -157,6 +159,9 @@ const createRendererBridge = ({
         command,
         input: input && typeof input === 'object' ? input : {},
         ...(typeof traceId === 'string' && traceId ? { traceId } : {}),
+        ...(traceContext && typeof traceContext === 'object'
+          ? { traceContext }
+          : {}),
         ...(Number.isInteger(expectedRevision) && expectedRevision >= 0
           ? { expectedRevision }
           : {}),

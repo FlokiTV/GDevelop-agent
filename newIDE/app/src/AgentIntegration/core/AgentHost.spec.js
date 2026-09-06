@@ -1,5 +1,9 @@
 // @flow
-import { AgentError, serializeAgentError } from './AgentError';
+import {
+  AgentError,
+  AGENT_ERROR_CODES,
+  serializeAgentError,
+} from './AgentError';
 import { AgentHost } from './AgentHost';
 import { makeCommandMetadata } from './CommandRegistry';
 import { createCoreCommandDescriptors } from './CoreCommands';
@@ -14,6 +18,19 @@ const makeDescriptor = (name, overrides = {}) => ({
   ...overrides,
 });
 
+describe('AgentError contract', () => {
+  it('keeps canonical core error codes stable', () => {
+    expect(AGENT_ERROR_CODES).toEqual({
+      AGENT_INTERNAL_ERROR: 'agent_internal_error',
+      INVALID_COMMAND_INPUT: 'invalid_command_input',
+      NO_PROJECT_OPEN: 'no_project_open',
+      REVISION_CONFLICT: 'revision_conflict',
+      IDEMPOTENCY_CONFLICT: 'idempotency_conflict',
+    });
+    expect(Object.isFrozen(AGENT_ERROR_CODES)).toBe(true);
+  });
+});
+
 describe('AgentHost', () => {
   it('executes commands with a stable result envelope and trace metadata', async () => {
     const host = new AgentHost({
@@ -21,7 +38,11 @@ describe('AgentHost', () => {
     });
 
     await expect(
-      host.execute('scene.inspect', { sceneName: 'Level 1' }, { traceId: 'trace-1' })
+      host.execute(
+        'scene.inspect',
+        { sceneName: 'Level 1' },
+        { traceId: 'trace-1' }
+      )
     ).resolves.toEqual({
       command: 'scene.inspect',
       data: { sceneName: 'Level 1' },
@@ -30,6 +51,8 @@ describe('AgentHost', () => {
         readOnly: true,
         modifiesProject: false,
         projectRevision: null,
+        durationMs: expect.any(Number),
+        idempotencyReplayed: false,
       },
     });
   });
@@ -97,7 +120,11 @@ describe('AgentHost', () => {
 
     changesCount = 1;
     await expect(
-      host.execute('scene.create', {}, { expectedRevision: 0, traceId: 'stale' })
+      host.execute(
+        'scene.create',
+        {},
+        { expectedRevision: 0, traceId: 'stale' }
+      )
     ).rejects.toMatchObject({
       code: 'revision_conflict',
       retryable: true,
@@ -145,7 +172,11 @@ describe('AgentHost', () => {
       ],
     });
 
-    const mutation = await host.execute('scene.create', {}, { expectedRevision: 0 });
+    const mutation = await host.execute(
+      'scene.create',
+      {},
+      { expectedRevision: 0 }
+    );
     expect(mutation.meta.projectRevision).toBe(1);
 
     const read = await host.execute('scene.inspect');
@@ -181,8 +212,11 @@ describe('AgentHost', () => {
     );
 
     expect(execute).toHaveBeenCalledTimes(1);
+    expect(first.meta.idempotencyReplayed).toBe(false);
     expect(retry.data).toEqual(first.data);
     expect(retry.meta.traceId).toBe('retry');
+    expect(retry.meta.idempotencyReplayed).toBe(true);
+    expect(retry.meta.durationMs).toBeGreaterThanOrEqual(0);
 
     await expect(
       host.execute(
@@ -230,7 +264,11 @@ describe('AgentHost', () => {
       hint: 'Read the scene list and pass sceneName.',
     });
     await expect(
-      host.execute('events.patch', { sceneName: 'Game' }, { traceId: 'trace-2' })
+      host.execute(
+        'events.patch',
+        { sceneName: 'Game' },
+        { traceId: 'trace-2' }
+      )
     ).rejects.toMatchObject({
       code: 'revision_conflict',
       currentRevision: 7,
@@ -246,6 +284,7 @@ describe('AgentHost', () => {
         message: 'The project changed.',
         retryable: true,
         hint: 'Read the project again.',
+        recovery: 'Re-read the latest revision and retry the mutation.',
         currentRevision: 9,
         traceId: 'trace-3',
         cause,
@@ -257,6 +296,7 @@ describe('AgentHost', () => {
       message: 'The project changed.',
       retryable: true,
       hint: 'Read the project again.',
+      recovery: 'Re-read the latest revision and retry the mutation.',
       currentRevision: 9,
       traceId: 'trace-3',
     });

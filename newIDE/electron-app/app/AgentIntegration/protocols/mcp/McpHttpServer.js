@@ -9,6 +9,7 @@ const {
   createMcpServerFactory,
   PROTOCOL_VERSION,
 } = require('./McpServerFactory');
+const { createMcpMetrics } = require('./McpObservability');
 
 const DEFAULT_HOST = '127.0.0.1';
 const DEFAULT_PORT = 38473;
@@ -202,8 +203,9 @@ const startMcpHttpServer = async ({
   maxConcurrentRequestsPerClient = DEFAULT_MAX_CONCURRENT_REQUESTS_PER_CLIENT,
   log = null,
 }) => {
+  const metrics = createMcpMetrics();
   const handler = createMcpHandler(
-    createMcpServerFactory({ rendererBridge, desktopCommandRegistry }),
+    createMcpServerFactory({ rendererBridge, desktopCommandRegistry, metrics }),
     {
       legacy: 'reject',
       onerror: error => {
@@ -363,6 +365,7 @@ const startMcpHttpServer = async ({
     stop,
     server,
     handler,
+    metrics,
   };
 };
 
