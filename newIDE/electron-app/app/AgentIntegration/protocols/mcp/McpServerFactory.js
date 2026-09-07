@@ -4,6 +4,11 @@ const { descriptorsToToolRegistrations } = require('./McpToolCatalog');
 const { registerGDevelopPrompts } = require('./McpPrompts');
 const { registerGDevelopResources } = require('./McpResources');
 const {
+  registerOperationsResource,
+  sendProgress,
+} = require('./McpLongRunning');
+const { requireDestructiveConfirmation } = require('./McpHumanInput');
+const {
   getTraceContextFromRequest,
   makeToolResultMeta,
   makeToolErrorResult,
@@ -79,6 +84,7 @@ const createMcpServerFactory = ({
   rendererBridge,
   desktopCommandRegistry = null,
   metrics,
+  operationRegistry = null,
 }) => async ctx => {
   const targeting = getTargetingFromRequest(ctx && ctx.requestInfo);
   const connectionTraceContext = getTraceContextFromRequest(
@@ -117,6 +123,9 @@ const createMcpServerFactory = ({
       targeting,
     });
   }
+  if (operationRegistry) {
+    registerOperationsResource({ server, operationRegistry });
+  }
 
   descriptorsToToolRegistrations(descriptors).forEach(registration => {
     server.registerTool(
@@ -127,6 +136,15 @@ const createMcpServerFactory = ({
         const traceContext = connectionTraceContext.traceparent
           ? connectionTraceContext
           : { ...connectionTraceContext, traceId: crypto.randomUUID() };
+        const requestSignal =
+          requestContext &&
+          requestContext.mcpReq &&
+          requestContext.mcpReq.signal
+            ? requestContext.mcpReq.signal
+            : requestContext && requestContext.signal
+            ? requestContext.signal
+            : null;
+        let operationId = null;
         try {
           const normalizedInput =
             input && typeof input === 'object' ? input : {};
@@ -135,6 +153,43 @@ const createMcpServerFactory = ({
             idempotencyKey,
             ...commandInput
           } = normalizedInput;
+
+          const confirmation = requireDestructiveConfirmation({
+            command: registration.name,
+            input: commandInput,
+            requestContext,
+          });
+          if (confirmation.inputRequired) return confirmation.inputRequired;
+          if (confirmation.declined) {
+            const error = new Error(
+              'Human confirmation was declined or cancelled.'
+            );
+            error.code = 'human_confirmation_declined';
+            error.retryable = false;
+            error.hint = `The operation '${
+              confirmation.action
+            }' was not executed.`;
+            return makeToolErrorResult({
+              error,
+              traceContext,
+              durationMs: Math.max(0, Date.now() - startedAt),
+              timeoutMs: registration.timeoutMs,
+            });
+          }
+
+          if (registration.longRunning && operationRegistry) {
+            operationId = operationRegistry.start({
+              command: registration.name,
+              traceId: traceContext.traceId,
+            });
+            await sendProgress({
+              requestContext,
+              progress: 0,
+              total: 1,
+              message: `${registration.name} started (${operationId})`,
+            }).catch(() => {});
+          }
+
           let result;
           if (
             desktopCommandRegistry &&
@@ -217,11 +272,20 @@ const createMcpServerFactory = ({
                 ? { idempotencyKey }
                 : {}),
               timeoutMs: registration.timeoutMs,
-              signal: requestContext && requestContext.signal,
+              signal: requestSignal,
               ...targeting,
             });
           }
           const durationMs = Math.max(0, Date.now() - startedAt);
+          if (operationId && operationRegistry) {
+            operationRegistry.complete(operationId, { ok: true });
+            await sendProgress({
+              requestContext,
+              progress: 1,
+              total: 1,
+              message: `${registration.name} completed (${operationId})`,
+            }).catch(() => {});
+          }
           if (metrics) {
             metrics.record({
               command: registration.name,
@@ -235,15 +299,41 @@ const createMcpServerFactory = ({
             });
           }
           const toolResult = toMcpToolResult(result);
-          toolResult._meta = makeToolResultMeta({
-            traceContext,
-            durationMs,
-            timeoutMs: registration.timeoutMs,
-            result,
-          });
+          toolResult._meta = {
+            ...makeToolResultMeta({
+              traceContext,
+              durationMs,
+              timeoutMs: registration.timeoutMs,
+              result,
+            }),
+            ...(operationId ? { 'gdevelop/operationId': operationId } : {}),
+          };
           return toolResult;
         } catch (error) {
           const durationMs = Math.max(0, Date.now() - startedAt);
+          const cancelled = !!(
+            error &&
+            (error.name === 'AbortError' ||
+              error.code === 'ABORT_ERR' ||
+              error.code === 'renderer_request_cancelled' ||
+              error.code === 'request_cancelled')
+          );
+          if (operationId && operationRegistry) {
+            operationRegistry.complete(operationId, {
+              ok: false,
+              cancelled,
+              errorCode:
+                error && typeof error.code === 'string' ? error.code : null,
+            });
+            await sendProgress({
+              requestContext,
+              progress: 1,
+              total: 1,
+              message: `${registration.name} ${
+                cancelled ? 'cancelled' : 'failed'
+              } (${operationId})`,
+            }).catch(() => {});
+          }
           if (metrics) {
             metrics.record({
               command: registration.name,
@@ -251,12 +341,16 @@ const createMcpServerFactory = ({
               durationMs,
             });
           }
-          return makeToolErrorResult({
+          const toolError = makeToolErrorResult({
             error,
             traceContext,
             durationMs,
             timeoutMs: registration.timeoutMs,
           });
+          if (operationId) {
+            toolError._meta['gdevelop/operationId'] = operationId;
+          }
+          return toolError;
         }
       }
     );

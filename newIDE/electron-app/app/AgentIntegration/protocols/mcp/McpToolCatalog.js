@@ -83,7 +83,9 @@ const descriptorToToolRegistration = descriptor => {
         [`${MCP_META_PREFIX}modifiesProject`]: modifiesProject,
         [`${MCP_META_PREFIX}longRunning`]: !!metadata.longRunning,
         ...(Number.isFinite(metadata.defaultTimeoutMs)
-          ? { [`${MCP_META_PREFIX}defaultTimeoutMs`]: metadata.defaultTimeoutMs }
+          ? {
+              [`${MCP_META_PREFIX}defaultTimeoutMs`]: metadata.defaultTimeoutMs,
+            }
           : {}),
         ...(typeof metadata.cacheScope === 'string'
           ? { [`${MCP_META_PREFIX}cacheScope`]: metadata.cacheScope }
@@ -97,6 +99,7 @@ const descriptorToToolRegistration = descriptor => {
       },
     },
     modifiesProject,
+    longRunning: !!metadata.longRunning,
     timeoutMs: Number.isFinite(metadata.defaultTimeoutMs)
       ? metadata.defaultTimeoutMs
       : undefined,

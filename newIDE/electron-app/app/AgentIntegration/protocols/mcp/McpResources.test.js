@@ -98,10 +98,11 @@ test('official MCP client lists and reads fresh targeted GDevelop resources', as
 
   try {
     const listed = await client.listResources();
-    assert.deepEqual(
-      listed.resources.map(resource => resource.uri),
-      RESOURCE_DEFINITIONS.map(resource => resource.uri)
-    );
+    assert.deepEqual(listed.resources.map(resource => resource.uri), [
+      ...RESOURCE_DEFINITIONS.map(resource => resource.uri),
+      'gdevelop://mcp/debug',
+      'gdevelop://mcp/operations',
+    ]);
     listed.resources.forEach(resource => {
       assert.equal(resource.mimeType, 'application/json');
       assert.equal(resource._meta['gdevelop/cacheScope'], 'request');
