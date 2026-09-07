@@ -2268,6 +2268,12 @@ export class PropertyFunctionGenerator extends EmscriptenObject {
   static updateReturnActionType(project: Project, eventsFunction: EventsFunction): void;
 }
 
+export class ChildObjectForwardFunctionGenerator extends EmscriptenObject {
+  static generateChildObjectForwardFunctions(project: Project, extension: EventsFunctionsExtension, eventsBasedObject: EventsBasedObject, childObjectName: string): void;
+  static hasAnyChildCustomObject(project: Project, eventsBasedObject: EventsBasedObject): boolean;
+  static getChildCustomObjectNames(project: Project, eventsBasedObject: EventsBasedObject): VectorString;
+}
+
 export class UsedExtensionsResult extends EmscriptenObject {
   getUsedExtensions(): SetString;
 }
@@ -2381,7 +2387,7 @@ export class VectorExpressionParserError extends EmscriptenObject {
 export class ExpressionParser2NodeWorker extends EmscriptenObject {}
 
 export class ExpressionValidator extends EmscriptenObject {
-  constructor(platform: Platform, projectScopedContainers: ProjectScopedContainers, rootType: string, extraInfo: string);
+  constructor(platform: Platform, projectScopedContainers: ProjectScopedContainers, rootType: string, rootObjectName: string, extraInfo: string);
   getAllErrors(): VectorExpressionParserError;
   getFatalErrors(): VectorExpressionParserError;
   getDeprecationWarnings(): VectorExpressionParserError;
