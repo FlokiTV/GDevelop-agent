@@ -16,10 +16,14 @@ const withCommandResultEnvelope = outputSchema => {
         additionalProperties: true,
         required: ['readOnly', 'modifiesProject'],
         properties: {
-          traceId: { type: ['string', 'null'] },
+          traceId: {
+            anyOf: [{ type: 'string' }, { type: 'null' }],
+          },
           readOnly: { type: 'boolean' },
           modifiesProject: { type: 'boolean' },
-          projectRevision: { type: ['integer', 'null'], minimum: 0 },
+          projectRevision: {
+            anyOf: [{ type: 'integer', minimum: 0 }, { type: 'null' }],
+          },
         },
       },
     },

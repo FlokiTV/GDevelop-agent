@@ -214,7 +214,7 @@ const startMcpHttpServer = async ({
       operationRegistry,
     }),
     {
-      legacy: 'reject',
+      legacy: 'stateless',
       onerror: error => {
         logMcpError(log, 'Request error', error);
       },
