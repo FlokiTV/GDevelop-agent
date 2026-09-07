@@ -1,0 +1,75 @@
+name: AgentIntegration MCP gates
+
+on:
+  pull_request:
+    paths:
+      - 'newIDE/app/src/AgentIntegration/**'
+      - 'newIDE/electron-app/app/AgentIntegration/**'
+      - 'newIDE/app/src/MainFrame/index.js'
+      - 'newIDE/electron-app/app/main.js'
+      - 'newIDE/electron-app/app/PreviewWindow.js'
+      - '.github/workflows/agent-integration.yml'
+  push:
+    branches: [master]
+    paths:
+      - 'newIDE/app/src/AgentIntegration/**'
+      - 'newIDE/electron-app/app/AgentIntegration/**'
+      - 'newIDE/app/src/MainFrame/index.js'
+      - 'newIDE/electron-app/app/main.js'
+      - 'newIDE/electron-app/app/PreviewWindow.js'
+      - '.github/workflows/agent-integration.yml'
+
+jobs:
+  agent-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.19.0
+          cache: npm
+          cache-dependency-path: |
+            newIDE/app/package-lock.json
+            newIDE/electron-app/app/package-lock.json
+
+      - name: Install renderer test dependencies
+        working-directory: newIDE/app
+        run: npm ci --ignore-scripts
+
+      - name: Install Electron MCP test dependencies
+        working-directory: newIDE/electron-app/app
+        run: npm ci --ignore-scripts
+
+      - name: Renderer characterization and boundaries
+        working-directory: newIDE/app
+        env:
+          CI: 'true'
+        run: >-
+          npm test -- --runTestsByPath
+          src/AgentIntegration/core/AgentHost.spec.js
+          src/AgentIntegration/RendererCommandAdapter.spec.js
+          src/AgentIntegration/EventTools.spec.js
+          src/AgentIntegration/AssetTools.spec.js
+          src/AgentIntegration/runtime/PreviewService.spec.js
+          --watchAll=false
+
+      - name: MCP protocol, compatibility and canonical replay
+        working-directory: newIDE/electron-app
+        run: >-
+          node --test
+          app/AgentIntegration/protocols/mcp/McpBoundary.test.js
+          app/AgentIntegration/protocols/mcp/McpHttpServer.test.js
+          app/AgentIntegration/protocols/mcp/McpLegacyCompatibility.test.js
+          app/AgentIntegration/protocols/mcp/McpPrompts.test.js
+          app/AgentIntegration/protocols/mcp/McpResources.test.js
+          app/AgentIntegration/protocols/mcp/McpLongRunning.integration.test.js
+          app/AgentIntegration/protocols/mcp/McpCanonicalE2E.test.js
+
+      - name: Architecture boundary
+        run: node newIDE/electron-app/app/AgentIntegration/ArchitectureGuard.js

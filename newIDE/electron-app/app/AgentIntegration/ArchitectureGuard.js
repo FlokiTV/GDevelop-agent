@@ -17,6 +17,10 @@ const ALLOWED_DEPENDENCY_MANIFESTS = new Set([
   'newIDE/electron-app/app/package-lock.json',
 ]);
 
+const ALLOWED_REPOSITORY_METADATA = new Set([
+  '.github/workflows/agent-integration.yml',
+]);
+
 const normalizeRepositoryPath = filePath => String(filePath).replace(/\\/g, '/');
 
 const isAllowedAgentChange = filePath => {
@@ -24,6 +28,7 @@ const isAllowedAgentChange = filePath => {
   return (
     ALLOWED_UPSTREAM_HOOKS.has(normalized) ||
     ALLOWED_DEPENDENCY_MANIFESTS.has(normalized) ||
+    ALLOWED_REPOSITORY_METADATA.has(normalized) ||
     ALLOWED_PREFIXES.some(prefix => normalized.startsWith(prefix))
   );
 };
@@ -35,9 +40,25 @@ const findDisallowedAgentChanges = files =>
     .filter(filePath => !isAllowedAgentChange(filePath));
 
 const listChangedFiles = ({ repoRoot, baseRef }) => {
+  const mergeBaseResult = spawnSync('git', ['merge-base', 'HEAD', baseRef], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+    windowsHide: true,
+  });
+  if (mergeBaseResult.status !== 0) {
+    const error = new Error(
+      `architecture_guard_merge_base_failed:${baseRef}:${
+        mergeBaseResult.stderr || mergeBaseResult.stdout || 'unknown_error'
+      }`
+    );
+    error.code = 'architecture_guard_git_diff_failed';
+    throw error;
+  }
+
+  const mergeBase = mergeBaseResult.stdout.trim();
   const result = spawnSync(
     'git',
-    ['diff', '--name-only', baseRef],
+    ['diff', '--name-only', `${mergeBase}..HEAD`],
     {
       cwd: repoRoot,
       encoding: 'utf8',
@@ -106,6 +127,7 @@ module.exports = {
   ALLOWED_PREFIXES,
   ALLOWED_UPSTREAM_HOOKS,
   ALLOWED_DEPENDENCY_MANIFESTS,
+  ALLOWED_REPOSITORY_METADATA,
   normalizeRepositoryPath,
   isAllowedAgentChange,
   findDisallowedAgentChanges,

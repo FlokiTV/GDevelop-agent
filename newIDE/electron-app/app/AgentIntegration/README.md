@@ -46,7 +46,7 @@ http://127.0.0.1:<port>/mcp
 
 The default port is `38473`. Set `GDEVELOP_MCP_PORT` before launching GDevelop to request another local port.
 
-The server is modern-only: legacy MCP protocol traffic is rejected rather than silently changing the contract.
+The primary protocol contract is `2026-07-28`. The same HTTP boundary also accepts MCP `2025-11-25` through the official SDK's stateless compatibility mode because current external hosts such as MCP Inspector v2.5.0 still initiate that revision. The fallback does not create a second server, session state machine or GDevelop business-logic path; loopback validation, bearer auth, targeting, admission control and the same command registry remain authoritative.
 
 ## Discovery and authentication
 
@@ -173,6 +173,24 @@ Normal authoring must not close/reopen the project as a synchronization mechanis
 Ordinary authoring commands do not silently save. Opening/closing another project with unsaved changes requires explicit discard input, and destructive command metadata is projected to MCP annotations so clients can present suitable confirmation UX.
 
 Checkpoints and transactions are in-memory safety mechanisms. They are not a replacement for an explicit final save.
+
+## Revisions, retries and recovery
+
+Every project mutation is evaluated against the live in-memory revision. Mutating MCP schemas accept an optional `expectedRevision`; a stale precondition fails with `revision_conflict` instead of overwriting a user or another agent's intervening change. Mutations may also carry an `idempotencyKey`: retrying the same command with the same key and input returns the original result, while reusing the key with different input is rejected.
+
+Risky multi-step work should use explicit `safety.*` checkpoint/transaction handles. Handles are application state, not transport-session state, so reconnecting an MCP client does not require reopening the project. Long-running commands expose a bounded process-local `operationId` through result metadata and `gdevelop://mcp/operations`; completed/cancelled status remains queryable by a fresh client while the same GDevelop process is alive.
+
+MCP `2026-07-28` destructive flows use `input_required` for discard/overwrite/delete decisions when the client supports the required elicitation capability. Gameplay, validation, EditorFunction batches and export propagate client cancellation cooperatively through the Electron/renderer boundary. Native editor calls already executing are not force-killed mid-call; cancellation stops subsequent work and prevents later save steps.
+
+## Troubleshooting live sessions
+
+When an agent cannot see or control the expected editor, first run `desktop.windows.list`, then target explicitly with `X-GDevelop-Window-Id` or `X-GDevelop-Project-Path`. Do not close/reopen the project merely to repair targeting.
+
+If preview state looks stale, check `preview.status` and `runtime.status`. Start a preview only when none is running; after compatible project mutations use `preview.hot-reload`, then `runtime.snapshot`, `runtime.logs` or `runtime.assert` to verify the live result. A missing debugger/preview is a lifecycle issue, not a reason to serialize/reload the project.
+
+For gameplay-test failures, inspect the structured validation result and runtime logs before retrying. Tests default to ephemeral/non-persistent execution unless persistence is explicitly requested. For export failures, keep the editor open, inspect the returned structured error (`code`, `retryable`, `hint`, `recovery`) and retry only when the error contract indicates it is safe.
+
+If an external host cannot connect, verify that the current GDevelop process created `gdevelop-mcp.json`, that the referenced token file still belongs to the same startup, and that the host can send custom Authorization headers over Streamable HTTP. Tokens rotate on restart; stale discovery/token pairs must not be reused.
 
 ## 3D workflows
 

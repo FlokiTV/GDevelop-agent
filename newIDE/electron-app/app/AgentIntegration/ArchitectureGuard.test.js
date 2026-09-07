@@ -7,7 +7,7 @@ const {
   runArchitectureGuard,
 } = require('./ArchitectureGuard');
 
-test('allows agent-owned files, MCP manifests and the three explicit upstream hooks', () => {
+test('allows agent-owned files, MCP manifests, repository metadata and the three explicit upstream hooks', () => {
   assert.equal(
     isAllowedAgentChange('newIDE/app/src/AgentIntegration/ExportTools.js'),
     true
@@ -38,6 +38,10 @@ test('allows agent-owned files, MCP manifests and the three explicit upstream ho
   );
   assert.equal(
     isAllowedAgentChange('newIDE/electron-app/app/package-lock.json'),
+    true
+  );
+  assert.equal(
+    isAllowedAgentChange('.github/workflows/agent-integration.yml'),
     true
   );
 });
