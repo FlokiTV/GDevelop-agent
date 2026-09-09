@@ -8,6 +8,7 @@ import {
 import { createEventTools } from './EventTools';
 import { createEditorFunctionService } from './editor/EditorFunctionService';
 import { createEditorVisualService } from './editor/EditorVisualService';
+import { createMetadataDiscoveryService } from './editor/MetadataDiscoveryService';
 import { createExportService } from './editor/ExportService';
 import { createProjectLifecycleService } from './editor/ProjectLifecycleService';
 import { createValidationService } from './editor/ValidationService';
@@ -131,6 +132,9 @@ export const createRendererIntegration = ({
         triggerUnsavedChanges,
         onSceneEventsModifiedOutsideEditor,
       })
+    : null;
+  const metadataDiscoveryService = project
+    ? createMetadataDiscoveryService({ project })
     : null;
 
   const restoreProjectCheckpoint = async (checkpoint: any) => {
@@ -281,6 +285,7 @@ export const createRendererIntegration = ({
       editorFunctionService,
       editorVisualService,
       eventTools,
+      metadataDiscoveryService,
       exportService,
       previewService,
       projectLifecycleService,
