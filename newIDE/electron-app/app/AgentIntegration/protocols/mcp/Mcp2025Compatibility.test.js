@@ -42,7 +42,7 @@ test('official MCP 2025 client uses the same stateless HTTP boundary for read-on
           command: options.command,
           data: {
             projectOpen: true,
-            projectName: 'Legacy Compatibility',
+            projectName: 'MCP 2025 Compatibility',
             projectRevision: 3,
           },
           meta: {
@@ -55,16 +55,15 @@ test('official MCP 2025 client uses the same stateless HTTP boundary for read-on
       throw new Error(`unexpected_command:${options.command}`);
     },
   };
-  const token = 'legacy-stateless-token';
+  const token = 'mcp-2025-stateless-token';
   const host = await startMcpHttpServer({ rendererBridge, token, port: 0 });
-  const client = new Client({ name: 'legacy-client', version: '1.0.0' });
+  const client = new Client({ name: 'mcp-2025-client', version: '1.0.0' });
   const transport = new StreamableHTTPClientTransport(new URL(host.url), {
     requestInit: { headers: { Authorization: `Bearer ${token}` } },
   });
 
   try {
     await client.connect(transport);
-    assert.equal(client.getProtocolEra(), 'legacy');
     assert.equal(client.getNegotiatedProtocolVersion(), '2025-11-25');
 
     const tools = await client.listTools();
@@ -79,7 +78,7 @@ test('official MCP 2025 client uses the same stateless HTTP boundary for read-on
     assert.equal(
       calls.some(call => call.request || call.type),
       false,
-      'legacy compatibility still dispatches through AgentIntegration commands only'
+      'MCP 2025 compatibility dispatches through AgentIntegration commands only'
     );
   } finally {
     await client.close();

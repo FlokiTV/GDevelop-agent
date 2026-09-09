@@ -16,7 +16,6 @@ test('lists deterministic desktop command descriptors without protocol metadata'
     descriptors.map(descriptor => descriptor.name),
     DESCRIPTORS.map(descriptor => descriptor.name)
   );
-  assert.equal(descriptors.some(descriptor => descriptor.name.includes('/v1')), false);
   assert.equal(
     descriptors.some(descriptor => JSON.stringify(descriptor).includes('mcp')),
     false

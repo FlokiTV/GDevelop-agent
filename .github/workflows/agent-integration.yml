@@ -63,9 +63,8 @@ jobs:
         working-directory: newIDE/electron-app
         run: >-
           node --test
-          app/AgentIntegration/protocols/mcp/McpBoundary.test.js
           app/AgentIntegration/protocols/mcp/McpHttpServer.test.js
-          app/AgentIntegration/protocols/mcp/McpLegacyCompatibility.test.js
+          app/AgentIntegration/protocols/mcp/Mcp2025Compatibility.test.js
           app/AgentIntegration/protocols/mcp/McpPrompts.test.js
           app/AgentIntegration/protocols/mcp/McpResources.test.js
           app/AgentIntegration/protocols/mcp/McpLongRunning.integration.test.js

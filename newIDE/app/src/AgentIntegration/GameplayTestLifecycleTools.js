@@ -10,7 +10,7 @@ const waitForReactCommit = (): Promise<void> =>
   });
 
 /**
- * Ensure a gameplay test launched by the Agent API never reuses an iframe
+ * Ensure a gameplay test launched by AgentIntegration never reuses an iframe
  * left mounted by a previous run. The native runner also clears the frame,
  * but it immediately relaunches afterwards; React may not have committed the
  * unmount yet. Pre-clearing and yielding two macrotasks lets the cleanup

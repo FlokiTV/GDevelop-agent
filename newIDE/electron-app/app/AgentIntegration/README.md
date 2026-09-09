@@ -2,7 +2,7 @@
 
 AgentIntegration exposes the **currently running GDevelop desktop editor** to MCP-capable agents. The agent works against the same in-memory project and editor UI the user is looking at: mutations are applied through GDevelop's native editor capabilities, the UI is refreshed through the existing editor callbacks, previews can be hot-reloaded and inspected, and saving remains explicit.
 
-MCP is the only public agent protocol. The former REST `/v1` surface has been removed.
+MCP is the only public agent protocol.
 
 ## Architecture
 

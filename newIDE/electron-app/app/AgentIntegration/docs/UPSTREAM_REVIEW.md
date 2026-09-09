@@ -2,7 +2,7 @@
 
 ## Scope
 
-This change adds an MCP adapter around a self-contained `AgentIntegration` implementation for live GDevelop desktop editing. MCP is the only public agent protocol; the legacy `/v1` REST surface was removed rather than kept as a parallel compatibility API.
+This change adds an MCP adapter around a self-contained `AgentIntegration` implementation for live GDevelop desktop editing. MCP is the only public agent protocol.
 
 The renderer owns GDevelop project semantics through `AgentHost`, `CommandRegistry` and editor/runtime services. Electron owns window targeting, capture, preview input and the local MCP transport. The MCP layer projects registry descriptors; it does not duplicate project mutation logic.
 
@@ -77,7 +77,7 @@ node newIDE/electron-app/app/AgentIntegration/ArchitectureGuard.js
 From `newIDE/electron-app`:
 
 ```text
-node --test app/AgentIntegration/protocols/mcp/McpHttpServer.test.js app/AgentIntegration/protocols/mcp/McpLegacyCompatibility.test.js app/AgentIntegration/protocols/mcp/McpPrompts.test.js app/AgentIntegration/protocols/mcp/McpResources.test.js app/AgentIntegration/protocols/mcp/McpLongRunning.integration.test.js app/AgentIntegration/protocols/mcp/McpCanonicalE2E.test.js
+node --test app/AgentIntegration/protocols/mcp/McpHttpServer.test.js app/AgentIntegration/protocols/mcp/Mcp2025Compatibility.test.js app/AgentIntegration/protocols/mcp/McpPrompts.test.js app/AgentIntegration/protocols/mcp/McpResources.test.js app/AgentIntegration/protocols/mcp/McpLongRunning.integration.test.js app/AgentIntegration/protocols/mcp/McpCanonicalE2E.test.js
 ```
 
 Renderer characterization remains in `newIDE/app/src/AgentIntegration/**/*.spec.js` and should be run with the existing React/Jest test runner.

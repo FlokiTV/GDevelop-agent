@@ -37,7 +37,7 @@ newIDE/electron-app/app/AgentIntegration/
   mcp/           # MCP 2026-07-28 transport and protocol projection
 ```
 
-The renderer and Electron integration now live exclusively under `AgentIntegration`; no parallel legacy feature tree is kept.
+The renderer and Electron integration live exclusively under `AgentIntegration` as a single feature tree.
 
 ## Dependency rule
 
@@ -58,7 +58,7 @@ MCP / Electron / React adapters
 
 The core must not import MCP, HTTP, Electron or React. Environment-specific capabilities are injected explicitly.
 
-The MCP layer must never call an HTTP compatibility API. The legacy `/v1` Agent API is removed during migration.
+The MCP layer is the only public protocol adapter and dispatches directly into AgentIntegration contracts.
 
 ## AgentHost and CommandRegistry
 
@@ -151,7 +151,7 @@ Public protocol target:
 - request-scoped/stateless serving where possible;
 - explicit authentication and Host/Origin validation;
 - MCP tools/resources/prompts generated from AgentIntegration contracts;
-- no public REST `/v1` API.
+- MCP is the only public agent protocol.
 
 ## Acceptance gates
 
@@ -161,7 +161,7 @@ The architecture is not considered complete until:
 - AgentIntegration core boundary tests reject imports from MCP/HTTP/Electron/React;
 - the renderer hook contains composition/registration only, not request routing/business rules;
 - the Electron main hook contains installation only, not protocol/business rules;
-- the legacy `/v1` server is gone;
+- MCP remains the only public protocol surface;
 - a real MCP client can edit a project already open in GDevelop without close/reopen;
 - the same client can inspect, mutate, hot reload, drive preview, observe runtime, validate, save and export;
 - removing AgentIntegration plus reverting the three hooks restores the upstream tree cleanly.

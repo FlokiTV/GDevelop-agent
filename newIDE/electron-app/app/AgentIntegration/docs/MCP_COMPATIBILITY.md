@@ -8,7 +8,7 @@ AgentIntegration exposes one public protocol surface: MCP Streamable HTTP on loo
 | MCP Inspector v2.5.0              | Protocol/schema pass | CLI Streamable HTTP gate against the real AgentIntegration HTTP server process passed `tools/list --strict` with zero findings and `tools/call project.status`. Packaged Electron/live-GUI proof remains part of the separate canonical E2E gate. |
 | mcpc 0.6.0                        | Live host pass       | Connected to installed GDevelop 5.6.281 through discovery + bearer auth. Verified 60 tools, 6 prompts, 5 resources, `project.status`, prompt get, resource read, liveness and reconnect/restart without persisting credentials.                    |
 | Claude Code 2.1.266               | Live host pass       | Native MCP HTTP host connected to installed GDevelop 5.6.281 with a custom Authorization header. `mcp list` health-check passed before and after removing/re-adding the local-scoped server, proving authenticated connection and reconnect.       |
-| Legacy MCP 2025 stateless         | Supported fallback   | Enabled through the official handler's `legacy: 'stateless'` mode after MCP Inspector v2.5.0 was observed to connect with `2025-11-25`. It shares the same loopback/auth/targeting boundary and has no separate lifecycle or business logic.      |
+| MCP 2025-11-25 stateless          | Supported fallback   | Enabled through the official handler's stateless compatibility mode after MCP Inspector v2.5.0 was observed to connect with `2025-11-25`. It shares the same loopback/auth/targeting boundary and has no separate lifecycle or business logic.       |
 | stdio shim                        | Not implemented      | Streamable HTTP is the native local transport and already supports discovery, auth, targeting and concurrent clients. A stdio shim would add another lifecycle/credential bridge and is deferred until a required host cannot use HTTP.           |
 
 ## Automated compatibility gate
@@ -16,7 +16,7 @@ AgentIntegration exposes one public protocol surface: MCP Streamable HTTP on loo
 From `newIDE/electron-app`:
 
 ```text
-node --test app/AgentIntegration/protocols/mcp/McpHttpServer.test.js app/AgentIntegration/protocols/mcp/McpPrompts.test.js app/AgentIntegration/protocols/mcp/McpResources.test.js app/AgentIntegration/protocols/mcp/McpCanonicalE2E.test.js
+node --test app/AgentIntegration/protocols/mcp/McpHttpServer.test.js app/AgentIntegration/protocols/mcp/Mcp2025Compatibility.test.js app/AgentIntegration/protocols/mcp/McpPrompts.test.js app/AgentIntegration/protocols/mcp/McpResources.test.js app/AgentIntegration/protocols/mcp/McpCanonicalE2E.test.js
 ```
 
 This gate uses the official MCP client and verifies the server's negotiated protocol plus tools, prompts, resources, reconnect and the canonical MCP-only authoring replay. It does not substitute for a host-specific live test against the packaged Electron application.

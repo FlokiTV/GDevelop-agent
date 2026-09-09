@@ -1,6 +1,6 @@
 # AgentIntegration Characterization Baseline
 
-This document freezes the behavior that must survive the AgentIntegration/MCP refactor. It does **not** freeze the removed REST `/v1` protocol.
+This document freezes the behavior that AgentIntegration and its MCP projection must preserve.
 
 ## Baseline commit
 
@@ -104,9 +104,9 @@ Architecture baseline starts after `080a724` (`docs: define agent integration ar
 
 ### Electron/desktop MCP suite
 
-The original REST characterization suite was retired after equivalent AgentIntegration/MCP coverage became green. The active desktop gate now runs the focused `AgentIntegration/*.test.js` and `AgentIntegration/protocols/mcp/*.test.js` suites plus `ArchitectureGuard`.
+The active desktop gate runs the focused `AgentIntegration/*.test.js` and `AgentIntegration/protocols/mcp/*.test.js` suites plus `ArchitectureGuard`.
 
-Latest MCP-only baseline before REST deletion: **37/37 AgentIntegration/MCP tests passed**.
+Recorded AgentIntegration/MCP baseline: **37/37 tests passed**.
 
 This coverage includes preview runtime installation, touch/gamepad validation, keyboard/mouse input, preview targeting, sequences, input reset, capture fallback, WindowRegistry targeting, RendererBridge spoof protection/timeouts, MCP discovery/auth, official-client initialize/tools/list/tools/call, desktop capture as MCP image content and direct preview input through desktop services.
 
@@ -133,7 +133,7 @@ Baseline: **47/47 tests passed across 10 suites**.
 
 ## Live behavior gates already established
 
-The previous embedded Agent API phase established live behavior that must remain true after the protocol migration:
+Live editor validation established behavior that must remain true through the MCP integration:
 
 - project authoring occurs on the already-open project;
 - scene/UI changes can be observed without closing/reopening the project;
@@ -145,7 +145,7 @@ The previous embedded Agent API phase established live behavior that must remain
 - editor screenshots can be captured reliably;
 - HTML5 export completes through the live editor environment.
 
-These are product acceptance gates and will be rerun through MCP after each relevant migration phase rather than encoded as a requirement to preserve `/v1`.
+These are product acceptance gates and are rerun through MCP after each relevant migration phase.
 
 ## Migration test policy
 
@@ -158,4 +158,4 @@ At every semantic migration block:
 5. run ArchitectureGuard against `upstream/master`;
 6. commit only after the affected gate is green.
 
-The legacy execution path has now been removed. Every capability that survived that cut must remain covered by a direct AgentCore/AgentIntegration test or an MCP integration test; `/v1` route coverage is intentionally gone with the deleted REST server.
+Every supported capability must remain covered by a direct AgentCore/AgentIntegration test or an MCP integration test.

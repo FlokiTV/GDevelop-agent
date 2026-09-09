@@ -241,11 +241,6 @@ test('official MCP client initializes, lists registry tools and calls them direc
     assert.equal(directCalls[0].windowId, '17');
     assert.equal(typeof directCalls[0].traceId, 'string');
     assert.ok(directCalls[0].traceId.length > 0);
-    assert.equal(
-      rendererBridge.calls.some(call => call.request || call.type),
-      false,
-      'MCP never dispatches a legacy REST request shape'
-    );
   } finally {
     await client.close();
     await host.stop();

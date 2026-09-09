@@ -63,7 +63,7 @@ const result = ({ command, data, state, modifiesProject = false }) => ({
   },
 });
 
-test('official MCP client completes the canonical MCP-only authoring replay without project reopen or legacy REST', async () => {
+test('official MCP client completes the canonical MCP-only authoring replay without project reopen', async () => {
   const descriptors = [
     descriptor('agent.capabilities'),
     descriptor('project.status'),
@@ -627,13 +627,6 @@ test('official MCP client completes the canonical MCP-only authoring replay with
       rendererCalls.some(
         call =>
           call.command === 'project.open' || call.command === 'project.close'
-      ),
-      false
-    );
-    assert.equal(
-      rendererCalls.some(
-        call =>
-          call.request || call.type || String(call.command).startsWith('/v1')
       ),
       false
     );

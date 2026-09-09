@@ -217,7 +217,7 @@ const applyArgumentOverrides = (
       name: argumentName,
       type: override.type || 'unknown',
       required: !!override.required,
-      provenance: override.provenance || 'agent-api-override',
+      provenance: override.provenance || 'agent-integration-override',
       ...override,
     });
   });
