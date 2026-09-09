@@ -33,14 +33,24 @@ describe('AgentIntegration EditorVisualTools', () => {
     enemy = addInstance('Enemy', 100, 120, 0);
     selectedInstances = [];
     sceneEditor = {
+      props: { gameEditorMode: 'instances-editor' },
       instancesSelection: {
         getSelectedInstances: jest.fn(() => selectedInstances),
+        clearSelection: jest.fn(() => {
+          selectedInstances = [];
+        }),
+      },
+      editorDisplay: {
+        instancesHandlers: {
+          forceRemountInstancesRenderers: jest.fn(),
+        },
       },
       _setSelectedInstances: jest.fn(instances => {
         selectedInstances = instances;
       }),
       focusOnSelection: jest.fn(),
       zoomToFitSelection: jest.fn(),
+      updateToolbar: jest.fn(),
     };
     editorTabs = {
       panes: {
@@ -51,6 +61,7 @@ describe('AgentIntegration EditorVisualTools', () => {
               editorRef: {
                 getLayout: () => layout,
                 editor: sceneEditor,
+                notifyChangesToInGameEditor: jest.fn(),
               },
             },
           ],
@@ -150,6 +161,40 @@ describe('AgentIntegration EditorVisualTools', () => {
     expect(result.selectedCount).toBe(1);
     expect(sceneEditor.zoomToFitSelection).toHaveBeenCalledTimes(1);
     expect(sceneEditor._setSelectedInstances).not.toHaveBeenCalled();
+  });
+
+  it('refreshes 2D instances without pushing them into a stale embedded frame', () => {
+    selectedInstances = [player1];
+    const editorRef = editorTabs.panes.left.editors[0].editorRef;
+    const tools = createEditorVisualTools({ project, editorTabs });
+
+    expect(
+      tools.refreshInstancesOutsideEditorSafely({ scene: layout })
+    ).toBe(true);
+    expect(sceneEditor.instancesSelection.clearSelection).toHaveBeenCalledTimes(1);
+    expect(
+      sceneEditor.editorDisplay.instancesHandlers.forceRemountInstancesRenderers
+    ).toHaveBeenCalledTimes(1);
+    expect(sceneEditor.updateToolbar).toHaveBeenCalledTimes(1);
+    expect(editorRef.notifyChangesToInGameEditor).toHaveBeenCalledWith({
+      shouldReloadProjectData: true,
+      shouldReloadLibraries: false,
+      shouldReloadResources: false,
+      shouldHardReload: false,
+      reasons: ['AgentIntegration: instances modified while 2D editor active'],
+    });
+  });
+
+  it('falls back to the upstream instance mutation path when embedded game is active', () => {
+    sceneEditor.props.gameEditorMode = 'embedded-game';
+    const editorRef = editorTabs.panes.left.editors[0].editorRef;
+    const tools = createEditorVisualTools({ project, editorTabs });
+
+    expect(
+      tools.refreshInstancesOutsideEditorSafely({ scene: layout })
+    ).toBe(false);
+    expect(sceneEditor.instancesSelection.clearSelection).not.toHaveBeenCalled();
+    expect(editorRef.notifyChangesToInGameEditor).not.toHaveBeenCalled();
   });
 
   it('refuses selection when the scene editor is not mounted', () => {

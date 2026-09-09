@@ -175,6 +175,16 @@ export const createRendererIntegration = ({
     };
   };
 
+  const safeOnInstancesModifiedOutsideEditor = (changes: any) => {
+    if (
+      editorVisualTools &&
+      editorVisualTools.refreshInstancesOutsideEditorSafely(changes)
+    ) {
+      return;
+    }
+    onInstancesModifiedOutsideEditor(changes);
+  };
+
   const editorFunctionService = createEditorFunctionService({
     project,
     i18n,
@@ -182,7 +192,7 @@ export const createRendererIntegration = ({
     processEditorFunctionCalls,
     generateEvents,
     onSceneEventsModifiedOutsideEditor,
-    onInstancesModifiedOutsideEditor,
+    onInstancesModifiedOutsideEditor: safeOnInstancesModifiedOutsideEditor,
     onObjectsModifiedOutsideEditor,
     onObjectGroupsModifiedOutsideEditor,
     onProjectItemRenamedOutsideEditor,

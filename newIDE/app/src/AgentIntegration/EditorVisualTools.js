@@ -250,9 +250,58 @@ export const createEditorVisualTools = ({
     };
   };
 
+  const refreshInstancesOutsideEditorSafely = (changes: any): boolean => {
+    const scene = changes && changes.scene;
+    if (!scene || typeof scene.getName !== 'function') return false;
+    const entry = getSceneEditorEntry(editorTabs, scene.getName());
+    if (!entry) return false;
+
+    const { sceneEditor, editorRef } = entry;
+    if (
+      !sceneEditor.props ||
+      sceneEditor.props.gameEditorMode !== 'instances-editor' ||
+      !editorRef ||
+      typeof editorRef.notifyChangesToInGameEditor !== 'function'
+    ) {
+      return false;
+    }
+
+    if (
+      sceneEditor.instancesSelection &&
+      typeof sceneEditor.instancesSelection.clearSelection === 'function'
+    ) {
+      sceneEditor.instancesSelection.clearSelection();
+    }
+    if (
+      sceneEditor.editorDisplay &&
+      sceneEditor.editorDisplay.instancesHandlers &&
+      typeof sceneEditor.editorDisplay.instancesHandlers
+        .forceRemountInstancesRenderers === 'function'
+    ) {
+      sceneEditor.editorDisplay.instancesHandlers.forceRemountInstancesRenderers();
+    }
+    if (typeof sceneEditor.updateToolbar === 'function') {
+      sceneEditor.updateToolbar();
+    }
+
+    // The embedded game frame is process-global and can still be displaying a
+    // different scene while the 2D editor is active. Do not push this scene's
+    // instances into that stale frame. Mark project data as stale instead so
+    // the normal 2D -> embedded-game transition reloads the correct scene.
+    editorRef.notifyChangesToInGameEditor({
+      shouldReloadProjectData: true,
+      shouldReloadLibraries: false,
+      shouldReloadResources: false,
+      shouldHardReload: false,
+      reasons: ['AgentIntegration: instances modified while 2D editor active'],
+    });
+    return true;
+  };
+
   return {
     listOpenSceneEditors,
     selectInstances,
     focusSelection,
+    refreshInstancesOutsideEditorSafely,
   };
 };
