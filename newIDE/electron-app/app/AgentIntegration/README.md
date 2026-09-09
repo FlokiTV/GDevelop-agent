@@ -192,6 +192,10 @@ For gameplay-test failures, inspect the structured validation result and runtime
 
 If an external host cannot connect, verify that the current GDevelop process created `gdevelop-mcp.json`, that the referenced token file still belongs to the same startup, and that the host can send custom Authorization headers over Streamable HTTP. Tokens rotate on restart; stale discovery/token pairs must not be reused.
 
+## Coverage roadmap
+
+See [`docs/GAME_CREATION_COVERAGE_ROADMAP.md`](./docs/GAME_CREATION_COVERAGE_ROADMAP.md) for the capability roadmap from the current live-editing MCP surface to near-complete autonomous game creation coverage, including discovery, custom extensions, External Events/Layouts, asset/docs integration, typed tools, build targets, debugging, deterministic QA, multiplayer and publication boundaries.
+
 ## 3D workflows
 
 For material 3D work, use the dedicated quality guidance:
