@@ -18,6 +18,9 @@ const getData = response =>
       : response.structuredContent
     : null;
 
+const waitForRenderer = (delayMs = 600) =>
+  new Promise(resolve => setTimeout(resolve, delayMs));
+
 const parseArgs = argv => {
   const options = { rollback: true };
   for (let index = 0; index < argv.length; index++) {
@@ -151,6 +154,7 @@ const runLiveScenario = async ({
       arguments: { scene_name: sceneName },
     });
     await call('scene.open', { sceneName, mode: 'both' });
+    await waitForRenderer();
     await mutate('editor.functions.call', {
       name: 'create_object',
       arguments: duplicateObject
@@ -185,14 +189,17 @@ const runLiveScenario = async ({
       focusMode: 'fit',
     });
 
+    await call('scene.open', { sceneName, mode: 'events' });
+    await waitForRenderer(900);
     const events = await call('events.read', { sceneName });
     const eventInsert = await call('events.insert', {
       sceneName,
       expectedEventsRevision: events.data.eventsRevision,
       eventsJson: [
         {
-          type: 'BuiltinCommonInstructions::Comment',
-          comment: 'MCP live E2E temporary event',
+          type: 'BuiltinCommonInstructions::Standard',
+          conditions: [],
+          actions: [],
         },
       ],
       expectedRevision: revision,
@@ -224,6 +231,7 @@ const runLiveScenario = async ({
     }
 
     await call('scene.open', { sceneName, mode: 'scene' });
+    await waitForRenderer();
     await call('editor.instances.select', {
       sceneName,
       objectName,
@@ -241,6 +249,7 @@ const runLiveScenario = async ({
     });
 
     await call('scene.open', { sceneName, mode: 'events' });
+    await waitForRenderer(900);
     const afterEvents = await call('desktop.window.capture', {
       windowId: editorWindow.windowId,
       maxWidth: 1600,
