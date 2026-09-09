@@ -10,6 +10,7 @@ describe('AgentIntegration EventTools', () => {
   let diagnosticsTools;
   let triggerUnsavedChanges;
   let onSceneEventsModifiedOutsideEditor;
+  let forceUpdate;
 
   beforeEach(() => {
     project = gd.ProjectHelper.createNewGDJSProject();
@@ -29,6 +30,7 @@ describe('AgentIntegration EventTools', () => {
     };
     triggerUnsavedChanges = jest.fn();
     onSceneEventsModifiedOutsideEditor = jest.fn();
+    forceUpdate = jest.fn();
   });
 
   afterEach(() => {
@@ -41,6 +43,7 @@ describe('AgentIntegration EventTools', () => {
       diagnosticsTools,
       triggerUnsavedChanges,
       onSceneEventsModifiedOutsideEditor,
+      forceUpdate,
     });
 
   it('reads canonical scene events JSON', () => {
@@ -226,12 +229,18 @@ describe('AgentIntegration EventTools', () => {
     expect(result.beforeEventsRevision).toBe(before.eventsRevision);
     expect(result.eventsRevision).not.toBe(before.eventsRevision);
     expect(target.getEvents().getEventsCount()).toBe(2);
-    expect(target.getEvents().getEventAt(0).getType()).toBe(
-      'BuiltinCommonInstructions::Comment'
-    );
-    expect(target.getEvents().getEventAt(1).getType()).toBe(
-      'BuiltinCommonInstructions::Standard'
-    );
+    expect(
+      target
+        .getEvents()
+        .getEventAt(0)
+        .getType()
+    ).toBe('BuiltinCommonInstructions::Comment');
+    expect(
+      target
+        .getEvents()
+        .getEventAt(1)
+        .getType()
+    ).toBe('BuiltinCommonInstructions::Standard');
     expect(result.events[0].path).toEqual([1]);
     expect(result.validation).toEqual({ ok: true, issues: [] });
     expect(result.diff).toMatchObject({
@@ -308,9 +317,13 @@ describe('AgentIntegration EventTools', () => {
     });
 
     expect(inserted.events[0].path).toEqual([0, 0]);
-    expect(source.getEvents().getEventAt(0).getSubEvents().getEventsCount()).toBe(
-      1
-    );
+    expect(
+      source
+        .getEvents()
+        .getEventAt(0)
+        .getSubEvents()
+        .getEventsCount()
+    ).toBe(1);
 
     const deleted = tools.deleteSceneEvent({
       sceneName: 'Source',
@@ -321,9 +334,13 @@ describe('AgentIntegration EventTools', () => {
     expect(deleted.deleted).toBe(true);
     expect(deleted.deletedEvent.path).toEqual([0, 0]);
     expect(deleted.eventsRevision).not.toBe(inserted.eventsRevision);
-    expect(source.getEvents().getEventAt(0).getSubEvents().getEventsCount()).toBe(
-      0
-    );
+    expect(
+      source
+        .getEvents()
+        .getEventAt(0)
+        .getSubEvents()
+        .getEventsCount()
+    ).toBe(0);
   });
 
   it('moves an event subtree without rebuilding the scene event list', () => {
@@ -352,15 +369,25 @@ describe('AgentIntegration EventTools', () => {
     expect(result.fromPath).toEqual([1]);
     expect(result.event.path).toEqual([0]);
     expect(result.event.handle).toBe(movingHandle);
-    expect(moveScene.getEvents().getEventAt(0).getType()).toBe(
-      'BuiltinCommonInstructions::Standard'
-    );
     expect(
-      moveScene.getEvents().getEventAt(0).getSubEvents().getEventsCount()
+      moveScene
+        .getEvents()
+        .getEventAt(0)
+        .getType()
+    ).toBe('BuiltinCommonInstructions::Standard');
+    expect(
+      moveScene
+        .getEvents()
+        .getEventAt(0)
+        .getSubEvents()
+        .getEventsCount()
     ).toBe(1);
-    expect(moveScene.getEvents().getEventAt(1).getType()).toBe(
-      'BuiltinCommonInstructions::Comment'
-    );
+    expect(
+      moveScene
+        .getEvents()
+        .getEventAt(1)
+        .getType()
+    ).toBe('BuiltinCommonInstructions::Comment');
   });
 
   it('updates one event node while preserving persistent identity and subevents by default', () => {
@@ -398,10 +425,19 @@ describe('AgentIntegration EventTools', () => {
     expect(updated.getAiGeneratedEventId()).toBe('stable-parent');
     expect(updated.getSubEvents().getEventsCount()).toBe(1);
     expect(standard.getActions().size()).toBe(1);
-    expect(standard.getActions().get(0).getType()).toBe('NewAction');
-    expect(standard.getActions().get(0).getParameter(1).getPlainString()).toBe(
-      '42'
-    );
+    expect(
+      standard
+        .getActions()
+        .get(0)
+        .getType()
+    ).toBe('NewAction');
+    expect(
+      standard
+        .getActions()
+        .get(0)
+        .getParameter(1)
+        .getPlainString()
+    ).toBe('42');
     expect(result.event.handle).toBe('event:id:stable-parent');
     expect(result.eventsRevision).not.toBe(before.eventsRevision);
   });
@@ -430,6 +466,126 @@ describe('AgentIntegration EventTools', () => {
     expect(target.getEvents().getEventsCount()).toBe(2);
     expect(triggerUnsavedChanges).not.toHaveBeenCalled();
     expect(onSceneEventsModifiedOutsideEditor).not.toHaveBeenCalled();
+  });
+
+  it('reads and mutates a free extension function with the same canonical revisions and handles', () => {
+    const extension = project.insertNewEventsFunctionsExtension('Logic', 0);
+    const eventsFunction = extension
+      .getEventsFunctions()
+      .insertNewEventsFunction('Tick', 0);
+    eventsFunction.setFunctionType(gd.EventsFunction.Action);
+    eventsFunction
+      .getEvents()
+      .insertNewEvent(project, 'BuiltinCommonInstructions::Standard', 0);
+    const targetDescriptor = {
+      kind: 'extension-function',
+      extensionName: 'Logic',
+      functionName: 'Tick',
+    };
+    const tools = makeTools();
+    const before = tools.readEventsJson({ target: targetDescriptor });
+    const comment = tools.readSceneEventsJson({ sceneName: 'Target' });
+
+    expect(before).toMatchObject({
+      target: {
+        kind: 'extension-function',
+        extensionName: 'Logic',
+        ownerKind: 'extension',
+        functionName: 'Tick',
+      },
+      eventsCount: 1,
+    });
+    expect(before.events[0].handle).toMatch(/^event:fp:[0-9a-f]{32}$/);
+
+    const inserted = tools.insertEvents({
+      target: targetDescriptor,
+      expectedEventsRevision: before.eventsRevision,
+      eventsJson: comment.eventsJson,
+      afterHandle: before.events[0].handle,
+    });
+    expect(inserted.events[0].path).toEqual([1]);
+    expect(inserted.eventsRevision).not.toBe(before.eventsRevision);
+    expect(eventsFunction.getEvents().getEventsCount()).toBe(2);
+    expect(triggerUnsavedChanges).toHaveBeenCalledTimes(1);
+    expect(forceUpdate).toHaveBeenCalledTimes(1);
+    expect(onSceneEventsModifiedOutsideEditor).not.toHaveBeenCalled();
+
+    const deleted = tools.deleteEvent({
+      target: targetDescriptor,
+      expectedEventsRevision: inserted.eventsRevision,
+      handle: inserted.events[0].handle,
+    });
+    expect(deleted.deleted).toBe(true);
+    expect(eventsFunction.getEvents().getEventsCount()).toBe(1);
+    expect(triggerUnsavedChanges).toHaveBeenCalledTimes(2);
+    expect(forceUpdate).toHaveBeenCalledTimes(2);
+    expect(onSceneEventsModifiedOutsideEditor).not.toHaveBeenCalled();
+  });
+
+  it('filters post-patch validation to the targeted object method', () => {
+    const extension = project.insertNewEventsFunctionsExtension(
+      'ObjectLogic',
+      0
+    );
+    const object = extension.getEventsBasedObjects().insertNew('Panel', 0);
+    const eventsFunction = object
+      .getEventsFunctions()
+      .insertNewEventsFunction('Refresh', 0);
+    eventsFunction.setFunctionType(gd.EventsFunction.Action);
+    eventsFunction
+      .getEvents()
+      .insertNewEvent(project, 'BuiltinCommonInstructions::Standard', 0);
+    diagnosticsTools.inspect.mockReturnValue({
+      issues: [
+        {
+          severity: 'error',
+          category: 'events-validation',
+          message: 'Panel refresh issue',
+          objectName: 'Panel',
+          details: {
+            locationType: 'extension',
+            extensionName: 'ObjectLogic',
+            functionName: 'Refresh',
+          },
+        },
+        {
+          severity: 'error',
+          category: 'events-validation',
+          message: 'Other object issue',
+          objectName: 'Other',
+          details: {
+            locationType: 'extension',
+            extensionName: 'ObjectLogic',
+            functionName: 'Refresh',
+          },
+        },
+        {
+          severity: 'error',
+          category: 'events-validation',
+          message: 'Scene issue',
+          details: { locationType: 'scene', locationName: 'Target' },
+        },
+      ],
+    });
+    const tools = makeTools();
+    const targetDescriptor = {
+      kind: 'extension-function',
+      extensionName: 'ObjectLogic',
+      ownerKind: 'object',
+      ownerName: 'Panel',
+      functionName: 'Refresh',
+    };
+    const before = tools.readEventsJson({ target: targetDescriptor });
+    const comment = tools.readSceneEventsJson({ sceneName: 'Target' });
+    const inserted = tools.insertEvents({
+      target: targetDescriptor,
+      expectedEventsRevision: before.eventsRevision,
+      eventsJson: comment.eventsJson,
+    });
+
+    expect(inserted.validation.ok).toBe(false);
+    expect(inserted.validation.issues).toHaveLength(1);
+    expect(inserted.validation.issues[0].message).toBe('Panel refresh issue');
   });
 
   it('replaces scene events from native serialized JSON', () => {

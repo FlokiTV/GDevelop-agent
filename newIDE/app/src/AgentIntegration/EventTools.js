@@ -230,8 +230,8 @@ const makeError = (code: string, message?: string, details?: any): Error => {
   return error;
 };
 
-const getCanonicalSceneEventsState = (scene: gdLayout) => {
-  const eventsJson = serializeToJSObject(scene.getEvents(), 'serializeTo', {
+const getCanonicalEventsState = (eventsList: gdEventsList) => {
+  const eventsJson = serializeToJSObject(eventsList, 'serializeTo', {
     canonicalEventSerialization: true,
   });
   const canonicalIndex = createCanonicalEventIndex(eventsJson);
@@ -243,6 +243,124 @@ const getCanonicalSceneEventsState = (scene: gdLayout) => {
   };
 };
 
+const resolveEventsTarget = (project: gdProject, request: any) => {
+  const explicitTarget =
+    request && request.target && typeof request.target === 'object'
+      ? request.target
+      : null;
+  if (explicitTarget && request && request.sceneName) {
+    throw makeError('ambiguous_events_target');
+  }
+
+  const target = explicitTarget || {
+    kind: 'scene',
+    sceneName:
+      request && typeof request.sceneName === 'string' ? request.sceneName : '',
+  };
+
+  if (target.kind === 'scene') {
+    const sceneName =
+      typeof target.sceneName === 'string' ? target.sceneName : '';
+    const scene = requireScene(project, sceneName);
+    return {
+      kind: 'scene',
+      scene,
+      rootEvents: scene.getEvents(),
+      responseTarget: { kind: 'scene', sceneName },
+      sceneName,
+      extensionName: null,
+      ownerKind: null,
+      ownerName: null,
+      functionName: null,
+    };
+  }
+
+  if (target.kind !== 'extension-function') {
+    throw makeError('invalid_events_target_kind', undefined, {
+      kind: target.kind,
+    });
+  }
+
+  const extensionName =
+    typeof target.extensionName === 'string' ? target.extensionName : '';
+  if (
+    !extensionName ||
+    !project.hasEventsFunctionsExtensionNamed(extensionName)
+  ) {
+    throw makeError('project_extension_not_found', undefined, {
+      extensionName,
+    });
+  }
+  const extension = project.getEventsFunctionsExtension(extensionName);
+  const ownerKind =
+    typeof target.ownerKind === 'string' && target.ownerKind
+      ? target.ownerKind
+      : 'extension';
+  const ownerName =
+    typeof target.ownerName === 'string' && target.ownerName
+      ? target.ownerName
+      : null;
+  let container = extension.getEventsFunctions();
+
+  if (ownerKind === 'behavior') {
+    const behaviors = extension.getEventsBasedBehaviors();
+    if (!ownerName || !behaviors.has(ownerName)) {
+      throw makeError('events_based_behavior_not_found', undefined, {
+        extensionName,
+        ownerName,
+      });
+    }
+    container = behaviors.get(ownerName).getEventsFunctions();
+  } else if (ownerKind === 'object') {
+    const objects = extension.getEventsBasedObjects();
+    if (!ownerName || !objects.has(ownerName)) {
+      throw makeError('events_based_object_not_found', undefined, {
+        extensionName,
+        ownerName,
+      });
+    }
+    container = objects.get(ownerName).getEventsFunctions();
+  } else if (ownerKind !== 'extension') {
+    throw makeError('invalid_events_function_owner', undefined, { ownerKind });
+  }
+
+  const functionName =
+    typeof target.functionName === 'string' ? target.functionName : '';
+  if (!functionName || !container.hasEventsFunctionNamed(functionName)) {
+    throw makeError('events_function_not_found', undefined, {
+      extensionName,
+      ownerKind,
+      ownerName,
+      functionName,
+    });
+  }
+  const eventsFunction = container.getEventsFunction(functionName);
+  return {
+    kind: 'extension-function',
+    scene: null,
+    rootEvents: eventsFunction.getEvents(),
+    responseTarget: {
+      kind: 'extension-function',
+      extensionName,
+      ownerKind,
+      ...(ownerName ? { ownerName } : {}),
+      functionName,
+    },
+    sceneName: null,
+    extensionName,
+    ownerKind,
+    ownerName,
+    functionName,
+    extension,
+    eventsFunction,
+  };
+};
+
+const targetResponseFields = (target: any) => ({
+  target: target.responseTarget,
+  ...(target.kind === 'scene' ? { sceneName: target.sceneName } : {}),
+});
+
 const assertExpectedEventsRevision = (
   expectedEventsRevision: any,
   currentEventsRevision: string
@@ -253,7 +371,7 @@ const assertExpectedEventsRevision = (
   ) {
     throw makeError(
       'events_revision_conflict',
-      'The scene event tree changed since it was read.',
+      'The targeted event tree changed since it was read.',
       { expectedEventsRevision, currentEventsRevision }
     );
   }
@@ -266,7 +384,9 @@ const resolveEventHandle = (
   if (!handle || typeof handle !== 'string') {
     throw makeError('invalid_event_handle');
   }
-  const exact = canonicalState.flatEvents.find(event => event.handle === handle);
+  const exact = canonicalState.flatEvents.find(
+    event => event.handle === handle
+  );
   if (exact) return exact.path;
 
   const fingerprintMatch = /^event:fp:([0-9a-f]{32})(?::path:([0-9.]+))?$/.exec(
@@ -326,7 +446,11 @@ const getSerializedEventByPath = (
   let eventJson = null;
   for (let depth = 0; depth < path.length; depth++) {
     const index = path[depth];
-    if (!Array.isArray(currentEvents) || index < 0 || index >= currentEvents.length) {
+    if (
+      !Array.isArray(currentEvents) ||
+      index < 0 ||
+      index >= currentEvents.length
+    ) {
       throw makeError('event_path_not_found');
     }
     eventJson = currentEvents[index];
@@ -339,10 +463,7 @@ const pathsEqual = (left: Array<number>, right: Array<number>): boolean =>
   left.length === right.length &&
   left.every((index, depth) => index === right[depth]);
 
-const isPathPrefix = (
-  prefix: Array<number>,
-  path: Array<number>
-): boolean =>
+const isPathPrefix = (prefix: Array<number>, path: Array<number>): boolean =>
   prefix.length <= path.length &&
   prefix.every((index, depth) => index === path[depth]);
 
@@ -458,13 +579,15 @@ export const createEventTools = ({
   diagnosticsTools,
   triggerUnsavedChanges,
   onSceneEventsModifiedOutsideEditor,
+  forceUpdate,
 }: {|
   project: gdProject,
   diagnosticsTools?: ?any,
   triggerUnsavedChanges: () => void,
   onSceneEventsModifiedOutsideEditor: (changes: any) => void,
+  forceUpdate?: ?() => void,
 |}): any => {
-  const getPostPatchValidation = (sceneName: string) => {
+  const getPostPatchValidation = (target: any) => {
     if (!diagnosticsTools) return { ok: true, issues: [] };
     const diagnostics = diagnosticsTools.inspect({
       includeNativeReport: false,
@@ -472,13 +595,52 @@ export const createEventTools = ({
     });
     const issues = (diagnostics.issues || []).filter(issue => {
       if (!issue || issue.category !== 'events-validation') return false;
-      const locationName = issue.details && issue.details.locationName;
-      return locationName === sceneName || issue.sceneName === sceneName;
+      const details = issue.details || {};
+      if (target.kind === 'scene') {
+        return (
+          (details.locationType === undefined ||
+            details.locationType === 'scene') &&
+          (details.locationName === target.sceneName ||
+            issue.sceneName === target.sceneName)
+        );
+      }
+      if (
+        details.locationType !== 'extension' ||
+        details.extensionName !== target.extensionName ||
+        details.functionName !== target.functionName
+      ) {
+        return false;
+      }
+      if (target.ownerKind === 'behavior') {
+        return details.behaviorName === target.ownerName;
+      }
+      if (target.ownerKind === 'object') {
+        return (
+          details.objectName === target.ownerName ||
+          issue.objectName === target.ownerName
+        );
+      }
+      return !details.behaviorName && !details.objectName && !issue.objectName;
     });
     return {
       ok: !issues.some(issue => issue.severity === 'error'),
       issues,
     };
+  };
+
+  const notifyTargetEventsModified = (
+    target: any,
+    newOrChangedAiGeneratedEventIds: Set<string>
+  ) => {
+    triggerUnsavedChanges();
+    if (target.kind === 'scene') {
+      onSceneEventsModifiedOutsideEditor({
+        scene: target.scene,
+        newOrChangedAiGeneratedEventIds,
+      });
+    } else if (forceUpdate) {
+      forceUpdate();
+    }
   };
 
   const makePatchDiff = ({
@@ -500,19 +662,17 @@ export const createEventTools = ({
     ...(details || {}),
   });
 
-  const readSceneEventsJson = (request: any): any => {
-    const sceneName =
-      typeof request.sceneName === 'string' ? request.sceneName : '';
-    const scene = requireScene(project, sceneName);
-    const canonicalState = getCanonicalSceneEventsState(scene);
+  const readEventsJson = (request: any): any => {
+    const target = resolveEventsTarget(project, request);
+    const canonicalState = getCanonicalEventsState(target.rootEvents);
     const total = canonicalState.events.length;
     const hasPagination =
       Number.isInteger(request.offset) || Number.isInteger(request.limit);
     if (!hasPagination) {
       return {
-        sceneName,
+        ...targetResponseFields(target),
         eventsJson: canonicalState.eventsJson,
-        eventsCount: scene.getEvents().getEventsCount(),
+        eventsCount: target.rootEvents.getEventsCount(),
         eventsRevision: canonicalState.eventsRevision,
         events: canonicalState.events,
       };
@@ -526,9 +686,9 @@ export const createEventTools = ({
       : 50;
     const end = Math.min(total, offset + limit);
     return {
-      sceneName,
+      ...targetResponseFields(target),
       eventsJson: canonicalState.eventsJson.slice(offset, end),
-      eventsCount: scene.getEvents().getEventsCount(),
+      eventsCount: target.rootEvents.getEventsCount(),
       eventsRevision: canonicalState.eventsRevision,
       events: canonicalState.events.slice(offset, end),
       pagination: {
@@ -542,11 +702,9 @@ export const createEventTools = ({
     };
   };
 
-  const insertSceneEvents = (request: any): any => {
-    const sceneName =
-      typeof request.sceneName === 'string' ? request.sceneName : '';
-    const scene = requireScene(project, sceneName);
-    const beforeState = getCanonicalSceneEventsState(scene);
+  const insertEvents = (request: any): any => {
+    const target = resolveEventsTarget(project, request);
+    const beforeState = getCanonicalEventsState(target.rootEvents);
     assertExpectedEventsRevision(
       request.expectedEventsRevision,
       beforeState.eventsRevision
@@ -559,9 +717,8 @@ export const createEventTools = ({
       throw makeError('empty_events_patch');
     }
     const aiGeneratedEventIds = collectAiGeneratedEventIds(incomingEvents);
-    const rootEvents = scene.getEvents();
     const placement = resolveInsertionLocation({
-      rootEvents,
+      rootEvents: target.rootEvents,
       canonicalState: beforeState,
       parentHandle: request.parentHandle,
       beforeHandle: request.beforeHandle,
@@ -570,23 +727,14 @@ export const createEventTools = ({
     const { targetList, insertionIndex, parentPath } = placement;
 
     try {
-      targetList.insertEvents(
-        incomingEvents,
-        0,
-        incomingCount,
-        insertionIndex
-      );
+      targetList.insertEvents(incomingEvents, 0, incomingCount, insertionIndex);
     } finally {
       incomingEvents.delete();
     }
 
-    triggerUnsavedChanges();
-    onSceneEventsModifiedOutsideEditor({
-      scene,
-      newOrChangedAiGeneratedEventIds: aiGeneratedEventIds,
-    });
+    notifyTargetEventsModified(target, aiGeneratedEventIds);
 
-    const afterState = getCanonicalSceneEventsState(scene);
+    const afterState = getCanonicalEventsState(target.rootEvents);
     const inserted = Array.from({ length: incomingCount }, (_, offset) => {
       const path = [...parentPath, insertionIndex + offset];
       const node = findCanonicalNodeByPath(afterState, path);
@@ -600,11 +748,11 @@ export const createEventTools = ({
     });
     return {
       inserted: incomingCount,
-      sceneName,
+      ...targetResponseFields(target),
       beforeEventsRevision: beforeState.eventsRevision,
       eventsRevision: afterState.eventsRevision,
       events: inserted,
-      validation: getPostPatchValidation(sceneName),
+      validation: getPostPatchValidation(target),
       diff: makePatchDiff({
         operation: 'insert',
         beforeState,
@@ -619,29 +767,23 @@ export const createEventTools = ({
     };
   };
 
-  const deleteSceneEvent = (request: any): any => {
-    const sceneName =
-      typeof request.sceneName === 'string' ? request.sceneName : '';
-    const scene = requireScene(project, sceneName);
-    const beforeState = getCanonicalSceneEventsState(scene);
+  const deleteEvent = (request: any): any => {
+    const target = resolveEventsTarget(project, request);
+    const beforeState = getCanonicalEventsState(target.rootEvents);
     assertExpectedEventsRevision(
       request.expectedEventsRevision,
       beforeState.eventsRevision
     );
     const path = resolveEventHandle(beforeState, request.handle);
     const { parentList, index } = getParentListAndIndex(
-      scene.getEvents(),
+      target.rootEvents,
       path
     );
     const deletedNode = findCanonicalNodeByPath(beforeState, path);
     parentList.removeEventAt(index);
 
-    triggerUnsavedChanges();
-    onSceneEventsModifiedOutsideEditor({
-      scene,
-      newOrChangedAiGeneratedEventIds: new Set(),
-    });
-    const afterState = getCanonicalSceneEventsState(scene);
+    notifyTargetEventsModified(target, new Set());
+    const afterState = getCanonicalEventsState(target.rootEvents);
     const deletedEvent = deletedNode
       ? {
           handle: deletedNode.handle,
@@ -651,11 +793,11 @@ export const createEventTools = ({
       : { handle: request.handle, path, fingerprint: null };
     return {
       deleted: true,
-      sceneName,
+      ...targetResponseFields(target),
       deletedEvent,
       beforeEventsRevision: beforeState.eventsRevision,
       eventsRevision: afterState.eventsRevision,
-      validation: getPostPatchValidation(sceneName),
+      validation: getPostPatchValidation(target),
       diff: makePatchDiff({
         operation: 'delete',
         beforeState,
@@ -667,16 +809,14 @@ export const createEventTools = ({
     };
   };
 
-  const moveSceneEvent = (request: any): any => {
-    const sceneName =
-      typeof request.sceneName === 'string' ? request.sceneName : '';
-    const scene = requireScene(project, sceneName);
-    const beforeState = getCanonicalSceneEventsState(scene);
+  const moveEvent = (request: any): any => {
+    const target = resolveEventsTarget(project, request);
+    const beforeState = getCanonicalEventsState(target.rootEvents);
     assertExpectedEventsRevision(
       request.expectedEventsRevision,
       beforeState.eventsRevision
     );
-    const rootEvents = scene.getEvents();
+    const rootEvents = target.rootEvents;
     const sourcePath = resolveEventHandle(beforeState, request.handle);
     const sourceParentPath = sourcePath.slice(0, -1);
     const sourceLocation = getParentListAndIndex(rootEvents, sourcePath);
@@ -728,12 +868,8 @@ export const createEventTools = ({
       movingEvents.delete();
     }
 
-    triggerUnsavedChanges();
-    onSceneEventsModifiedOutsideEditor({
-      scene,
-      newOrChangedAiGeneratedEventIds: aiGeneratedEventIds,
-    });
-    const afterState = getCanonicalSceneEventsState(scene);
+    notifyTargetEventsModified(target, aiGeneratedEventIds);
+    const afterState = getCanonicalEventsState(target.rootEvents);
     const newPath = [...placement.parentPath, insertionIndex];
     const movedNode = findCanonicalNodeByPath(afterState, newPath);
     const movedEvent = movedNode
@@ -745,12 +881,12 @@ export const createEventTools = ({
       : { handle: null, path: newPath, fingerprint: null };
     return {
       moved: true,
-      sceneName,
+      ...targetResponseFields(target),
       beforeEventsRevision: beforeState.eventsRevision,
       eventsRevision: afterState.eventsRevision,
       fromPath: sourcePath,
       event: movedEvent,
-      validation: getPostPatchValidation(sceneName),
+      validation: getPostPatchValidation(target),
       diff: makePatchDiff({
         operation: 'move',
         beforeState,
@@ -764,17 +900,18 @@ export const createEventTools = ({
     };
   };
 
-  const updateSceneEvent = (request: any): any => {
-    const sceneName =
-      typeof request.sceneName === 'string' ? request.sceneName : '';
-    const scene = requireScene(project, sceneName);
-    const beforeState = getCanonicalSceneEventsState(scene);
+  const updateEvent = (request: any): any => {
+    const target = resolveEventsTarget(project, request);
+    const beforeState = getCanonicalEventsState(target.rootEvents);
     assertExpectedEventsRevision(
       request.expectedEventsRevision,
       beforeState.eventsRevision
     );
     const path = resolveEventHandle(beforeState, request.handle);
-    const targetEventJson = getSerializedEventByPath(beforeState.eventsJson, path);
+    const targetEventJson = getSerializedEventByPath(
+      beforeState.eventsJson,
+      path
+    );
     if (!request.eventJson || typeof request.eventJson !== 'object') {
       throw makeError('invalid_event_json');
     }
@@ -795,8 +932,10 @@ export const createEventTools = ({
       replacementEvents.delete();
       throw makeError('invalid_event_json');
     }
-    const targetLocation = getParentListAndIndex(scene.getEvents(), path);
-    const currentEvent = targetLocation.parentList.getEventAt(targetLocation.index);
+    const targetLocation = getParentListAndIndex(target.rootEvents, path);
+    const currentEvent = targetLocation.parentList.getEventAt(
+      targetLocation.index
+    );
     const replacementEvent = replacementEvents.getEventAt(0);
     if (
       preserveSubevents &&
@@ -820,12 +959,8 @@ export const createEventTools = ({
       replacementEvents.delete();
     }
 
-    triggerUnsavedChanges();
-    onSceneEventsModifiedOutsideEditor({
-      scene,
-      newOrChangedAiGeneratedEventIds: aiGeneratedEventIds,
-    });
-    const afterState = getCanonicalSceneEventsState(scene);
+    notifyTargetEventsModified(target, aiGeneratedEventIds);
+    const afterState = getCanonicalEventsState(target.rootEvents);
     const updatedNode = findCanonicalNodeByPath(afterState, path);
     const updatedEvent = updatedNode
       ? {
@@ -836,11 +971,11 @@ export const createEventTools = ({
       : { handle: null, path, fingerprint: null };
     return {
       updated: true,
-      sceneName,
+      ...targetResponseFields(target),
       beforeEventsRevision: beforeState.eventsRevision,
       eventsRevision: afterState.eventsRevision,
       event: updatedEvent,
-      validation: getPostPatchValidation(sceneName),
+      validation: getPostPatchValidation(target),
       diff: makePatchDiff({
         operation: 'update',
         beforeState,
@@ -854,13 +989,11 @@ export const createEventTools = ({
     };
   };
 
-  const applySceneEventsJson = (request: any): any => {
-    const sceneName =
-      typeof request.sceneName === 'string' ? request.sceneName : '';
-    const scene = requireScene(project, sceneName);
+  const applyEventsJson = (request: any): any => {
+    const target = resolveEventsTarget(project, request);
     const mode = request.mode === 'append' ? 'append' : 'replace';
     const incomingEvents = deserializeEvents(project, request.eventsJson);
-    const targetEvents = scene.getEvents();
+    const targetEvents = target.rootEvents;
     const beforeCount = targetEvents.getEventsCount();
     const incomingCount = incomingEvents.getEventsCount();
 
@@ -884,15 +1017,11 @@ export const createEventTools = ({
       incomingEvents.delete();
     }
 
-    triggerUnsavedChanges();
-    onSceneEventsModifiedOutsideEditor({
-      scene,
-      newOrChangedAiGeneratedEventIds: new Set(),
-    });
+    notifyTargetEventsModified(target, new Set());
 
     return {
       applied: true,
-      sceneName,
+      ...targetResponseFields(target),
       mode,
       beforeCount,
       incomingCount,
@@ -901,11 +1030,19 @@ export const createEventTools = ({
   };
 
   return {
-    readSceneEventsJson,
-    insertSceneEvents,
-    deleteSceneEvent,
-    moveSceneEvent,
-    updateSceneEvent,
-    applySceneEventsJson,
+    readEventsJson,
+    insertEvents,
+    deleteEvent,
+    moveEvent,
+    updateEvent,
+    applyEventsJson,
+    // Compatibility aliases for renderer callers/tests written before event
+    // targets were generalized beyond scenes.
+    readSceneEventsJson: readEventsJson,
+    insertSceneEvents: insertEvents,
+    deleteSceneEvent: deleteEvent,
+    moveSceneEvent: moveEvent,
+    updateSceneEvent: updateEvent,
+    applySceneEventsJson: applyEventsJson,
   };
 };

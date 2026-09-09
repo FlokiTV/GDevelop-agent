@@ -29,6 +29,7 @@ import { useSearchAndInstallAsset } from '../AiGeneration/UseSearchAndInstallAss
 import { useSearchAndInstallResource } from '../AiGeneration/UseSearchAndInstallResource';
 import { ObjectStoreContext } from '../AssetStore/ObjectStoreContext';
 import { ExtensionStoreContext } from '../AssetStore/ExtensionStore/ExtensionStoreContext';
+import EventsFunctionsExtensionsContext from '../EventsFunctionsExtensionsLoader/EventsFunctionsExtensionsContext';
 import { enumerateObjectTypes } from '../ObjectsList/EnumerateObjects';
 import { type FileMetadata } from '../ProjectsStorage';
 import { createRendererIntegration } from './RendererIntegrationFactory';
@@ -159,6 +160,9 @@ export default function useAgentIntegration({
     ObjectStoreContext
   );
   const { fetchExtensionsAndFilters } = React.useContext(ExtensionStoreContext);
+  const eventsFunctionsExtensionsState = React.useContext(
+    EventsFunctionsExtensionsContext
+  );
 
   React.useEffect(
     () => {
@@ -273,6 +277,7 @@ export default function useAgentIntegration({
         fileMetadata,
         loadFromSerializedProject,
         i18n,
+        eventsFunctionsExtensionsState,
         resourceManagementProps,
         hasUnsavedChanges,
         projectRevisionTracker,
@@ -328,6 +333,7 @@ export default function useAgentIntegration({
       fileMetadata,
       loadFromSerializedProject,
       i18n,
+      eventsFunctionsExtensionsState,
       editorCallbacks,
       generateEvents,
       onSceneEventsModifiedOutsideEditor,

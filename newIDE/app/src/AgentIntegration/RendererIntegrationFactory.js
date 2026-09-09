@@ -8,6 +8,7 @@ import {
 import { createEventTools } from './EventTools';
 import { createEditorFunctionService } from './editor/EditorFunctionService';
 import { createEditorVisualService } from './editor/EditorVisualService';
+import { createExtensionAuthoringService } from './editor/ExtensionAuthoringService';
 import { createMetadataDiscoveryService } from './editor/MetadataDiscoveryService';
 import { createExportService } from './editor/ExportService';
 import { createProjectLifecycleService } from './editor/ProjectLifecycleService';
@@ -23,8 +24,12 @@ type Options = {|
   editorTabs: any,
   fileIdentifier: ?string,
   fileMetadata: any,
-  loadFromSerializedProject: (serializedProject: gdSerializerElement, fileMetadata: any) => Promise<any>,
+  loadFromSerializedProject: (
+    serializedProject: gdSerializerElement,
+    fileMetadata: any
+  ) => Promise<any>,
   i18n: any,
+  eventsFunctionsExtensionsState: any,
   resourceManagementProps: any,
   hasUnsavedChanges: boolean,
   projectRevisionTracker: any,
@@ -49,7 +54,10 @@ type Options = {|
   forceUpdate: () => void,
   saveProject: (options?: any) => Promise<any>,
   saveProjectAsWithStorageProvider: (options?: any) => Promise<any>,
-  openFromFileMetadataWithStorageProvider: (options: any, openOptions?: any) => Promise<void>,
+  openFromFileMetadataWithStorageProvider: (
+    options: any,
+    openOptions?: any
+  ) => Promise<void>,
   closeProject: () => Promise<void>,
   createProjectForAgent: (options: any) => Promise<any>,
   launchNewPreview: (options?: any) => Promise<void>,
@@ -72,6 +80,7 @@ export const createRendererIntegration = ({
   fileMetadata,
   loadFromSerializedProject,
   i18n,
+  eventsFunctionsExtensionsState,
   resourceManagementProps,
   hasUnsavedChanges,
   projectRevisionTracker,
@@ -131,6 +140,15 @@ export const createRendererIntegration = ({
         diagnosticsTools,
         triggerUnsavedChanges,
         onSceneEventsModifiedOutsideEditor,
+        forceUpdate,
+      })
+    : null;
+  const extensionAuthoringService = project
+    ? createExtensionAuthoringService({
+        project,
+        triggerUnsavedChanges,
+        forceUpdate,
+        eventsFunctionsExtensionsState,
       })
     : null;
   const metadataDiscoveryService = project
@@ -166,9 +184,7 @@ export const createRendererIntegration = ({
       restored: true,
       checkpointId: checkpoint.id,
       projectName: restoredProject ? restoredProject.getName() : null,
-      projectUuid: restoredProject
-        ? restoredProject.getProjectUuid()
-        : null,
+      projectUuid: restoredProject ? restoredProject.getProjectUuid() : null,
       fileIdentifier:
         restoredState && restoredState.currentFileMetadata
           ? restoredState.currentFileMetadata.fileIdentifier
@@ -270,9 +286,8 @@ export const createRendererIntegration = ({
           projectName: project ? project.getName() : null,
           projectUuid: project ? project.getProjectUuid() : null,
           sceneNames: project
-            ? Array.from(
-                { length: project.getLayoutsCount() },
-                (_, index) => project.getLayoutAt(index).getName()
+            ? Array.from({ length: project.getLayoutsCount() }, (_, index) =>
+                project.getLayoutAt(index).getName()
               )
             : [],
           hasUnsavedChanges,
@@ -285,6 +300,7 @@ export const createRendererIntegration = ({
       editorFunctionService,
       editorVisualService,
       eventTools,
+      extensionAuthoringService,
       metadataDiscoveryService,
       exportService,
       previewService,

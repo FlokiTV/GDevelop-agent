@@ -5,12 +5,39 @@ import {
   type CommandDescriptor,
 } from '../core/CommandRegistry';
 
+const EVENT_TARGET_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['kind'],
+  properties: {
+    kind: { type: 'string', enum: ['scene', 'extension-function'] },
+    sceneName: { type: 'string', minLength: 1 },
+    extensionName: { type: 'string', minLength: 1 },
+    ownerKind: {
+      type: 'string',
+      enum: ['extension', 'behavior', 'object'],
+      default: 'extension',
+    },
+    ownerName: { type: 'string', minLength: 1 },
+    functionName: { type: 'string', minLength: 1 },
+  },
+};
+
+const EVENT_TARGET_PROPERTIES = {
+  // Legacy scene shorthand kept for backwards compatibility. New clients can
+  // use `target` for both scene and extension-function event sheets.
+  sceneName: { type: 'string', minLength: 1 },
+  target: EVENT_TARGET_SCHEMA,
+};
+
+const TARGET_ANY_OF = [{ required: ['sceneName'] }, { required: ['target'] }];
+
 const READ_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['sceneName'],
+  anyOf: TARGET_ANY_OF,
   properties: {
-    sceneName: { type: 'string', minLength: 1 },
+    ...EVENT_TARGET_PROPERTIES,
     offset: { type: 'integer', minimum: 0 },
     limit: { type: 'integer', minimum: 1, maximum: 200 },
   },
@@ -19,9 +46,10 @@ const READ_SCHEMA = {
 const INSERT_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['sceneName', 'expectedEventsRevision', 'eventsJson'],
+  required: ['expectedEventsRevision', 'eventsJson'],
+  anyOf: TARGET_ANY_OF,
   properties: {
-    sceneName: { type: 'string', minLength: 1 },
+    ...EVENT_TARGET_PROPERTIES,
     expectedEventsRevision: { type: 'string', minLength: 1 },
     eventsJson: { type: 'array', minItems: 1 },
     parentHandle: { type: 'string', minLength: 1 },
@@ -33,9 +61,10 @@ const INSERT_SCHEMA = {
 const DELETE_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['sceneName', 'expectedEventsRevision', 'handle'],
+  required: ['expectedEventsRevision', 'handle'],
+  anyOf: TARGET_ANY_OF,
   properties: {
-    sceneName: { type: 'string', minLength: 1 },
+    ...EVENT_TARGET_PROPERTIES,
     expectedEventsRevision: { type: 'string', minLength: 1 },
     handle: { type: 'string', minLength: 1 },
   },
@@ -44,9 +73,10 @@ const DELETE_SCHEMA = {
 const MOVE_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['sceneName', 'expectedEventsRevision', 'handle'],
+  required: ['expectedEventsRevision', 'handle'],
+  anyOf: TARGET_ANY_OF,
   properties: {
-    sceneName: { type: 'string', minLength: 1 },
+    ...EVENT_TARGET_PROPERTIES,
     expectedEventsRevision: { type: 'string', minLength: 1 },
     handle: { type: 'string', minLength: 1 },
     parentHandle: { type: 'string', minLength: 1 },
@@ -58,9 +88,10 @@ const MOVE_SCHEMA = {
 const UPDATE_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['sceneName', 'expectedEventsRevision', 'handle', 'eventJson'],
+  required: ['expectedEventsRevision', 'handle', 'eventJson'],
+  anyOf: TARGET_ANY_OF,
   properties: {
-    sceneName: { type: 'string', minLength: 1 },
+    ...EVENT_TARGET_PROPERTIES,
     expectedEventsRevision: { type: 'string', minLength: 1 },
     handle: { type: 'string', minLength: 1 },
     eventJson: { type: 'object' },
@@ -71,17 +102,63 @@ const UPDATE_SCHEMA = {
 const APPLY_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['sceneName', 'eventsJson'],
+  required: ['eventsJson'],
+  anyOf: TARGET_ANY_OF,
   properties: {
-    sceneName: { type: 'string', minLength: 1 },
+    ...EVENT_TARGET_PROPERTIES,
     eventsJson: { type: 'array' },
     mode: { type: 'string', enum: ['replace', 'append'] },
   },
 };
 
-const assertSceneName = (sceneName: any) => {
-  if (!sceneName || typeof sceneName !== 'string') {
-    throw new AgentError({ code: 'scene_not_found' });
+const assertEventsTarget = (input: any) => {
+  const hasLegacyScene =
+    !!input && typeof input.sceneName === 'string' && !!input.sceneName;
+  const target = input && input.target;
+  const hasExplicitTarget = !!target && typeof target === 'object';
+  if (hasLegacyScene && hasExplicitTarget) {
+    throw new AgentError({ code: 'ambiguous_events_target' });
+  }
+  if (!hasLegacyScene && !hasExplicitTarget) {
+    throw new AgentError({ code: 'missing_events_target' });
+  }
+  if (hasLegacyScene) return;
+
+  if (target.kind === 'scene') {
+    if (!target.sceneName || typeof target.sceneName !== 'string') {
+      throw new AgentError({ code: 'scene_not_found' });
+    }
+    return;
+  }
+  if (target.kind !== 'extension-function') {
+    throw new AgentError({
+      code: 'invalid_events_target_kind',
+      details: { kind: target.kind },
+    });
+  }
+  if (
+    !target.extensionName ||
+    typeof target.extensionName !== 'string' ||
+    !target.functionName ||
+    typeof target.functionName !== 'string'
+  ) {
+    throw new AgentError({ code: 'invalid_extension_function_target' });
+  }
+  const ownerKind = target.ownerKind || 'extension';
+  if (!['extension', 'behavior', 'object'].includes(ownerKind)) {
+    throw new AgentError({
+      code: 'invalid_events_function_owner',
+      details: { ownerKind },
+    });
+  }
+  if (
+    ownerKind !== 'extension' &&
+    (!target.ownerName || typeof target.ownerName !== 'string')
+  ) {
+    throw new AgentError({
+      code: 'events_function_owner_name_required',
+      details: { ownerKind },
+    });
   }
 };
 
@@ -116,16 +193,16 @@ export const createEventCommandDescriptors = ({
   {
     name: 'events.read',
     description:
-      'Read the canonical serialized event list for a scene in the live GDevelop project.',
+      'Read canonical serialized events from a live scene or a project extension function/method event sheet. Returns stable handles and an eventsRevision for localized edits.',
     inputSchema: READ_SCHEMA,
     metadata: makeCommandMetadata({ requiresProject: true }),
-    validateInput: input => assertSceneName(input.sceneName),
-    execute: ({ input }) => eventTools.readSceneEventsJson(input),
+    validateInput: input => assertEventsTarget(input),
+    execute: ({ input }) => eventTools.readEventsJson(input),
   },
   {
     name: 'events.insert',
     description:
-      'Insert canonical serialized events into the live event tree at root, as subevents, or before/after a stable event handle.',
+      'Insert canonical serialized events into the targeted live event tree at root, as subevents, or before/after a stable event handle.',
     inputSchema: INSERT_SCHEMA,
     metadata: makeCommandMetadata({
       readOnly: false,
@@ -134,19 +211,19 @@ export const createEventCommandDescriptors = ({
       modifiesProject: true,
     }),
     validateInput: input => {
-      assertSceneName(input.sceneName);
+      assertEventsTarget(input);
       assertEventsRevision(input.expectedEventsRevision);
       if (!Array.isArray(input.eventsJson) || input.eventsJson.length === 0) {
         throw new AgentError({ code: 'invalid_events_json' });
       }
       assertEventPlacement(input);
     },
-    execute: ({ input }) => eventTools.insertSceneEvents(input),
+    execute: ({ input }) => eventTools.insertEvents(input),
   },
   {
     name: 'events.delete',
     description:
-      'Delete one event or subevent by stable handle from the live event tree after checking the scene event revision.',
+      'Delete one event or subevent by stable handle from a scene or extension-function event tree after checking its event revision.',
     inputSchema: DELETE_SCHEMA,
     metadata: makeCommandMetadata({
       readOnly: false,
@@ -156,16 +233,16 @@ export const createEventCommandDescriptors = ({
       modifiesProject: true,
     }),
     validateInput: input => {
-      assertSceneName(input.sceneName);
+      assertEventsTarget(input);
       assertEventsRevision(input.expectedEventsRevision);
       assertEventHandle(input.handle);
     },
-    execute: ({ input }) => eventTools.deleteSceneEvent(input),
+    execute: ({ input }) => eventTools.deleteEvent(input),
   },
   {
     name: 'events.move',
     description:
-      'Move one event subtree to root, into another event, or before/after another stable handle without replacing the event tree.',
+      'Move one event subtree inside the targeted scene or extension-function event tree without replacing the full tree.',
     inputSchema: MOVE_SCHEMA,
     metadata: makeCommandMetadata({
       readOnly: false,
@@ -174,17 +251,17 @@ export const createEventCommandDescriptors = ({
       modifiesProject: true,
     }),
     validateInput: input => {
-      assertSceneName(input.sceneName);
+      assertEventsTarget(input);
       assertEventsRevision(input.expectedEventsRevision);
       assertEventHandle(input.handle);
       assertEventPlacement(input);
     },
-    execute: ({ input }) => eventTools.moveSceneEvent(input),
+    execute: ({ input }) => eventTools.moveEvent(input),
   },
   {
     name: 'events.update',
     description:
-      'Replace only one targeted event node from canonical JSON, preserving its persistent id and subevents by default.',
+      'Replace one targeted event node from canonical JSON, preserving its persistent id and subevents by default in either scene or extension-function scope.',
     inputSchema: UPDATE_SCHEMA,
     metadata: makeCommandMetadata({
       readOnly: false,
@@ -193,7 +270,7 @@ export const createEventCommandDescriptors = ({
       modifiesProject: true,
     }),
     validateInput: input => {
-      assertSceneName(input.sceneName);
+      assertEventsTarget(input);
       assertEventsRevision(input.expectedEventsRevision);
       assertEventHandle(input.handle);
       if (!input.eventJson || typeof input.eventJson !== 'object') {
@@ -206,12 +283,12 @@ export const createEventCommandDescriptors = ({
         throw new AgentError({ code: 'invalid_preserve_subevents' });
       }
     },
-    execute: ({ input }) => eventTools.updateSceneEvent(input),
+    execute: ({ input }) => eventTools.updateEvent(input),
   },
   {
     name: 'events.apply',
     description:
-      'Explicit bulk fallback: replace or append canonical serialized events when a localized events.insert/delete/update/move operation is not suitable.',
+      'Explicit bulk fallback: replace or append canonical serialized events in a scene or extension-function event sheet when localized operations are not suitable.',
     inputSchema: APPLY_SCHEMA,
     metadata: makeCommandMetadata({
       readOnly: false,
@@ -220,7 +297,7 @@ export const createEventCommandDescriptors = ({
       modifiesProject: true,
     }),
     validateInput: input => {
-      assertSceneName(input.sceneName);
+      assertEventsTarget(input);
       if (!Array.isArray(input.eventsJson)) {
         throw new AgentError({ code: 'invalid_events_json' });
       }
@@ -232,6 +309,6 @@ export const createEventCommandDescriptors = ({
         throw new AgentError({ code: 'invalid_events_mode' });
       }
     },
-    execute: ({ input }) => eventTools.applySceneEventsJson(input),
+    execute: ({ input }) => eventTools.applyEventsJson(input),
   },
 ];

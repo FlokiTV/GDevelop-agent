@@ -4,12 +4,14 @@ import { createEventCommandDescriptors } from './EventCommands';
 
 const makeHost = (project: any = {}) => {
   const eventTools = {
-    readSceneEventsJson: jest.fn(input => ({ sceneName: input.sceneName })),
-    insertSceneEvents: jest.fn(input => ({ inserted: 1, ...input })),
-    deleteSceneEvent: jest.fn(input => ({ deleted: true, ...input })),
-    moveSceneEvent: jest.fn(input => ({ moved: true, ...input })),
-    updateSceneEvent: jest.fn(input => ({ updated: true, ...input })),
-    applySceneEventsJson: jest.fn(input => ({ applied: true, ...input })),
+    readEventsJson: jest.fn(input => ({
+      target: input.target || input.sceneName,
+    })),
+    insertEvents: jest.fn(input => ({ inserted: 1, ...input })),
+    deleteEvent: jest.fn(input => ({ deleted: true, ...input })),
+    moveEvent: jest.fn(input => ({ moved: true, ...input })),
+    updateEvent: jest.fn(input => ({ updated: true, ...input })),
+    applyEventsJson: jest.fn(input => ({ applied: true, ...input })),
   };
   return {
     eventTools,
@@ -57,7 +59,7 @@ describe('EventCommands', () => {
     });
   });
 
-  test('routes canonical read, localized edits and bulk fallback through EventTools', async () => {
+  test('keeps legacy sceneName routing while using generic EventTools methods', async () => {
     const { host, eventTools } = makeHost();
     await host.execute('events.read', { sceneName: 'Scene' });
     await host.execute('events.insert', {
@@ -88,40 +90,76 @@ describe('EventCommands', () => {
       eventsJson: [],
       mode: 'replace',
     });
-    expect(eventTools.readSceneEventsJson).toHaveBeenCalledWith({
+    expect(eventTools.readEventsJson).toHaveBeenCalledWith({
       sceneName: 'Scene',
     });
-    expect(eventTools.insertSceneEvents).toHaveBeenCalledWith({
-      sceneName: 'Scene',
-      expectedEventsRevision: 'events:abc',
-      eventsJson: [{ type: 'BuiltinCommonInstructions::Comment' }],
-      afterHandle: 'event:fp:abc',
-    });
-    expect(eventTools.deleteSceneEvent).toHaveBeenCalledWith({
-      sceneName: 'Scene',
-      expectedEventsRevision: 'events:def',
-      handle: 'event:fp:def',
-    });
-    expect(eventTools.moveSceneEvent).toHaveBeenCalledWith({
-      sceneName: 'Scene',
-      expectedEventsRevision: 'events:ghi',
-      handle: 'event:fp:ghi',
-      beforeHandle: 'event:fp:jkl',
-    });
-    expect(eventTools.updateSceneEvent).toHaveBeenCalledWith({
-      sceneName: 'Scene',
-      expectedEventsRevision: 'events:mno',
-      handle: 'event:fp:mno',
-      eventJson: { type: 'BuiltinCommonInstructions::Standard' },
-    });
-    expect(eventTools.applySceneEventsJson).toHaveBeenCalledWith({
+    expect(eventTools.insertEvents).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sceneName: 'Scene',
+        afterHandle: 'event:fp:abc',
+      })
+    );
+    expect(eventTools.deleteEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ sceneName: 'Scene', handle: 'event:fp:def' })
+    );
+    expect(eventTools.moveEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sceneName: 'Scene',
+        beforeHandle: 'event:fp:jkl',
+      })
+    );
+    expect(eventTools.updateEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ sceneName: 'Scene', handle: 'event:fp:mno' })
+    );
+    expect(eventTools.applyEventsJson).toHaveBeenCalledWith({
       sceneName: 'Scene',
       eventsJson: [],
       mode: 'replace',
     });
   });
 
-  test('validates event payload before invoking EventTools', async () => {
+  test('routes extension-function targets for free, behavior and object methods', async () => {
+    const { host, eventTools } = makeHost();
+    const freeTarget = {
+      kind: 'extension-function',
+      extensionName: 'Logic',
+      functionName: 'Tick',
+    };
+    const behaviorTarget = {
+      kind: 'extension-function',
+      extensionName: 'Logic',
+      ownerKind: 'behavior',
+      ownerName: 'Mover',
+      functionName: 'DoMove',
+    };
+    const objectTarget = {
+      kind: 'extension-function',
+      extensionName: 'Logic',
+      ownerKind: 'object',
+      ownerName: 'Panel',
+      functionName: 'Refresh',
+    };
+
+    await host.execute('events.read', { target: freeTarget });
+    await host.execute('events.read', { target: behaviorTarget });
+    await host.execute('events.insert', {
+      target: objectTarget,
+      expectedEventsRevision: 'events:123',
+      eventsJson: [{ type: 'BuiltinCommonInstructions::Comment' }],
+    });
+
+    expect(eventTools.readEventsJson).toHaveBeenNthCalledWith(1, {
+      target: freeTarget,
+    });
+    expect(eventTools.readEventsJson).toHaveBeenNthCalledWith(2, {
+      target: behaviorTarget,
+    });
+    expect(eventTools.insertEvents).toHaveBeenCalledWith(
+      expect.objectContaining({ target: objectTarget })
+    );
+  });
+
+  test('validates target and event payload before invoking EventTools', async () => {
     const { host, eventTools } = makeHost();
     await expect(
       host.execute('events.apply', {
@@ -129,7 +167,23 @@ describe('EventCommands', () => {
         eventsJson: {},
       })
     ).rejects.toMatchObject({ code: 'invalid_events_json' });
-    expect(eventTools.applySceneEventsJson).not.toHaveBeenCalled();
+    await expect(
+      host.execute('events.read', {
+        sceneName: 'Scene',
+        target: { kind: 'scene', sceneName: 'Other' },
+      })
+    ).rejects.toMatchObject({ code: 'ambiguous_events_target' });
+    await expect(
+      host.execute('events.read', {
+        target: {
+          kind: 'extension-function',
+          extensionName: 'Logic',
+          ownerKind: 'behavior',
+          functionName: 'DoMove',
+        },
+      })
+    ).rejects.toMatchObject({ code: 'events_function_owner_name_required' });
+    expect(eventTools.applyEventsJson).not.toHaveBeenCalled();
   });
 
   test('requires an open project through AgentHost', async () => {
