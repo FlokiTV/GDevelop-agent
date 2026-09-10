@@ -11,6 +11,8 @@ import { createExternalProjectItemsService } from './editor/ExternalProjectItems
 import { createEditorVisualService } from './editor/EditorVisualService';
 import { createExtensionAuthoringService } from './editor/ExtensionAuthoringService';
 import { createMetadataDiscoveryService } from './editor/MetadataDiscoveryService';
+import { createDocumentationService } from './editor/DocumentationService';
+import { createStoreService } from './editor/StoreService';
 import { createExportService } from './editor/ExportService';
 import { createProjectLifecycleService } from './editor/ProjectLifecycleService';
 import { createValidationService } from './editor/ValidationService';
@@ -32,6 +34,7 @@ type Options = {|
   i18n: any,
   eventsFunctionsExtensionsState: any,
   resourceManagementProps: any,
+  assetStoreEnvironment: 'live' | 'staging',
   hasUnsavedChanges: boolean,
   projectRevisionTracker: any,
   editorCallbacks: any,
@@ -83,6 +86,7 @@ export const createRendererIntegration = ({
   i18n,
   eventsFunctionsExtensionsState,
   resourceManagementProps,
+  assetStoreEnvironment,
   hasUnsavedChanges,
   projectRevisionTracker,
   editorCallbacks,
@@ -162,6 +166,7 @@ export const createRendererIntegration = ({
   const metadataDiscoveryService = project
     ? createMetadataDiscoveryService({ project })
     : null;
+  const documentationService = createDocumentationService();
 
   const restoreProjectCheckpoint = async (checkpoint: any) => {
     const openSceneEditors = editorVisualTools
@@ -241,6 +246,11 @@ export const createRendererIntegration = ({
     clearGameplayTestFramePreview,
     documentObject,
   });
+  const storeService = createStoreService({
+    environment: assetStoreEnvironment,
+    assetTools,
+    editorFunctionService,
+  });
   const projectLifecycleService = createProjectLifecycleService({
     project,
     fileIdentifier,
@@ -311,6 +321,8 @@ export const createRendererIntegration = ({
       externalProjectItemsService,
       extensionAuthoringService,
       metadataDiscoveryService,
+      documentationService,
+      storeService,
       exportService,
       previewService,
       projectLifecycleService,

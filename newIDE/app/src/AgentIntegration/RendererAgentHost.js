@@ -8,6 +8,8 @@ import { createEventCommandDescriptors } from './editor/EventCommands';
 import { createExternalProjectItemsCommandDescriptors } from './editor/ExternalProjectItemsCommands';
 import { createExtensionAuthoringCommandDescriptors } from './editor/ExtensionAuthoringCommands';
 import { createMetadataDiscoveryCommandDescriptors } from './editor/MetadataDiscoveryCommands';
+import { createDocumentationCommandDescriptors } from './editor/DocumentationCommands';
+import { createStoreCommandDescriptors } from './editor/StoreCommands';
 import { createExportCommandDescriptors } from './editor/ExportCommands';
 import { createProjectLifecycleCommandDescriptors } from './editor/ProjectLifecycleCommands';
 import { createResourceCommandDescriptors } from './editor/ResourceCommands';
@@ -26,6 +28,8 @@ type Options = {|
   externalProjectItemsService: any,
   extensionAuthoringService: any,
   metadataDiscoveryService: any,
+  documentationService: any,
+  storeService: any,
   exportService: any,
   previewService: any,
   projectLifecycleService: any,
@@ -44,6 +48,8 @@ export const createRendererAgentHost = ({
   externalProjectItemsService,
   extensionAuthoringService,
   metadataDiscoveryService,
+  documentationService,
+  storeService,
   exportService,
   previewService,
   projectLifecycleService,
@@ -67,6 +73,8 @@ export const createRendererAgentHost = ({
       ...createMetadataDiscoveryCommandDescriptors({
         metadataDiscoveryService,
       }),
+      ...createDocumentationCommandDescriptors({ documentationService }),
+      ...createStoreCommandDescriptors({ storeService }),
       ...createResourceCommandDescriptors({ assetTools }),
       ...createDiagnosticsCommandDescriptors({ diagnosticsTools }),
       ...createEditorVisualCommandDescriptors({ editorVisualService }),

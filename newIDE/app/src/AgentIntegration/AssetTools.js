@@ -410,6 +410,80 @@ export const createAssetTools = ({
     };
   };
 
+  const importStoreResource = (request: any) => {
+    const storeResource = request && request.resource;
+    if (
+      !storeResource ||
+      typeof storeResource.url !== 'string' ||
+      !storeResource.url ||
+      typeof storeResource.type !== 'string' ||
+      !storeResource.type
+    ) {
+      throw new Error('invalid_store_resource');
+    }
+    if (!isURL(storeResource.url)) {
+      throw new Error('invalid_store_resource_url');
+    }
+
+    const kind = storeResource.type;
+    const resourcesManager = project.getResourcesManager();
+    let defaultResourceName = null;
+    if (path) {
+      try {
+        defaultResourceName = path.basename(new URL(storeResource.url).pathname);
+      } catch (error) {
+        defaultResourceName = path.basename(storeResource.url);
+      }
+    }
+    const resourceName =
+      (typeof request.resourceName === 'string' && request.resourceName.trim()) ||
+      defaultResourceName ||
+      (typeof storeResource.name === 'string' && storeResource.name.trim()) ||
+      null;
+    if (!resourceName) throw new Error('missing_resource_name');
+
+    if (resourcesManager.hasResource(resourceName)) {
+      if (!request.overwrite) {
+        throw new Error(`resource_already_exists:${resourceName}`);
+      }
+      const existingResource = resourcesManager.getResource(resourceName);
+      if (existingResource.getKind() !== kind) {
+        throw new Error(
+          `resource_kind_mismatch:${existingResource.getKind()}:${kind}`
+        );
+      }
+      existingResource.setFile(storeResource.url);
+      existingResource.setUserAdded(true);
+      existingResource.setOrigin('gdevelop-asset-store', storeResource.url);
+      applyResourceDefaults(project, existingResource);
+      notifyChanged('usage');
+      return {
+        imported: true,
+        overwritten: true,
+        resource: getResourceInfo(project, resourceName),
+      };
+    }
+
+    const newResource = createNewResource(kind);
+    if (!newResource) throw new Error(`unsupported_resource_kind:${kind}`);
+    try {
+      newResource.setName(resourceName);
+      newResource.setFile(storeResource.url);
+      newResource.setUserAdded(true);
+      newResource.setOrigin('gdevelop-asset-store', storeResource.url);
+      applyResourceDefaults(project, newResource);
+      resourcesManager.addResource(newResource);
+    } finally {
+      newResource.delete();
+    }
+    notifyChanged('added');
+    return {
+      imported: true,
+      overwritten: false,
+      resource: getResourceInfo(project, resourceName),
+    };
+  };
+
   const replaceLocalResource = async (request: any) => {
     if (!request.resourceName || typeof request.resourceName !== 'string') {
       throw new Error('missing_resource_name');
@@ -557,6 +631,7 @@ export const createAssetTools = ({
     listResources,
     inspectResource,
     importLocalResource,
+    importStoreResource,
     replaceLocalResource,
     renameResource,
     removeResource,

@@ -302,4 +302,33 @@ describe('AgentIntegration AssetTools', () => {
     project.delete();
     fs.rmSync(projectFolder, { recursive: true, force: true });
   });
+
+  it('imports a public store resource with canonical provenance and defaults', () => {
+    const project = gd.ProjectHelper.createNewGDJSProject();
+    const { tools, onNewResourcesAdded, triggerUnsavedChanges } = makeTools(
+      project
+    );
+    const url = 'https://resources.gdevelop-app.com/audio/jump.ogg';
+
+    const result = tools.importStoreResource({
+      resource: {
+        name: 'jump.ogg',
+        type: 'audio',
+        url,
+      },
+      resourceName: 'jump.ogg',
+    });
+
+    expect(result.imported).toBe(true);
+    expect(result.overwritten).toBe(false);
+    const resource = project.getResourcesManager().getResource('jump.ogg');
+    expect(resource.getKind()).toBe('audio');
+    expect(resource.getFile()).toBe(url);
+    expect(resource.getOriginName()).toBe('gdevelop-asset-store');
+    expect(resource.getOriginIdentifier()).toBe(url);
+    expect(onNewResourcesAdded).toHaveBeenCalledTimes(1);
+    expect(triggerUnsavedChanges).toHaveBeenCalledTimes(1);
+
+    project.delete();
+  });
 });

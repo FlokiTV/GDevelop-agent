@@ -6,6 +6,8 @@ const EXPECTED_PUBLIC_COMMANDS = [
   'agent.commands.describe',
   'agent.commands.list',
   'diagnostics.inspect',
+  'docs.read',
+  'docs.search',
   'editor.functions.call',
   'editor.functions.call-batch',
   'editor.functions.describe',
@@ -112,6 +114,12 @@ const EXPECTED_PUBLIC_COMMANDS = [
   'safety.transactions.rollback',
   'safety.transactions.status',
   'scene.open',
+  'store.objects.import',
+  'store.objects.inspect',
+  'store.objects.search',
+  'store.resources.import',
+  'store.resources.inspect',
+  'store.resources.search',
   'validation.run',
 ];
 

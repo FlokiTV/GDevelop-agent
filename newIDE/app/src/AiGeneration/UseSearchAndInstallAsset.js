@@ -13,6 +13,7 @@ import { retryIfFailed } from '../Utils/RetryIfFailed';
 import { useInstallAsset } from '../AssetStore/NewObjectDialog';
 import { type ResourceManagementProps } from '../ResourcesList/ResourceSource';
 import { AssetStoreContext } from '../AssetStore/AssetStoreContext';
+import { listAllPublicAssets } from '../Utils/GDevelopServices/Asset';
 
 type _FuncReturnType = {
   searchAndInstallAsset: AssetSearchAndInstallOptions => Promise<AssetSearchAndInstallResult>,
@@ -32,7 +33,9 @@ export const useSearchAndInstallAsset = ({
   const { profile, getAuthorizationHeader } = React.useContext(
     AuthenticatedUserContext
   );
-  const { getAssetShortHeaderFromId } = React.useContext(AssetStoreContext);
+  const { getAssetShortHeaderFromId, environment } = React.useContext(
+    AssetStoreContext
+  );
   const installAsset = useInstallAsset({
     project,
     resourceManagementProps,
@@ -49,15 +52,32 @@ export const useSearchAndInstallAsset = ({
         exactOrPartialAssetId,
         ...assetSearchOptions
       }: AssetSearchAndInstallOptions): Promise<AssetSearchAndInstallResult> => {
-        if (!profile) throw new Error('User should be authenticated.');
-
         let assetShortHeader;
         if (exactOrPartialAssetId) {
-          // If an exact or partial asset id is provided, first try to
-          // fetch the asset directly by its id.
-          const foundAssetShortHeader = getAssetShortHeaderFromId(
+          // Resolve an exact public asset id without requiring the generation
+          // service. The in-memory Asset Store catalog is preferred; if it is
+          // not warm yet, load the same public catalog used by the editor.
+          let foundAssetShortHeader = getAssetShortHeaderFromId(
             exactOrPartialAssetId
           );
+          if (!foundAssetShortHeader) {
+            try {
+              const { publicAssetShortHeaders } = await listAllPublicAssets({
+                environment,
+              });
+              foundAssetShortHeader = publicAssetShortHeaders.find(
+                header => header.id === exactOrPartialAssetId
+              );
+            } catch (error) {
+              // Keep backward-compatible behavior: a failed public-catalog
+              // lookup can still fall through to the authenticated semantic
+              // search below when a profile is available.
+              console.warn(
+                'Unable to resolve public asset id from the Asset API:',
+                error
+              );
+            }
+          }
           if (foundAssetShortHeader) {
             if (objectType && foundAssetShortHeader.objectType !== objectType) {
               return {
@@ -72,7 +92,7 @@ export const useSearchAndInstallAsset = ({
             }
             assetShortHeader = foundAssetShortHeader;
           }
-          // If not found by id, fall through to the search below.
+          // If not found by exact public id, fall through to the search below.
         }
 
         if (!assetShortHeader) {
@@ -86,6 +106,7 @@ export const useSearchAndInstallAsset = ({
               isTheFirstOfItsTypeInProject: false,
             };
           }
+          if (!profile) throw new Error('User should be authenticated.');
           const assetSearch: AssetSearch = await retryIfFailed(
             { times: 3, backoff: { initialDelay: 300, factor: 2 } },
             () =>
@@ -142,7 +163,13 @@ export const useSearchAndInstallAsset = ({
             installOutput.isTheFirstOfItsTypeInProject,
         };
       },
-      [installAsset, profile, getAuthorizationHeader, getAssetShortHeaderFromId]
+      [
+        installAsset,
+        profile,
+        getAuthorizationHeader,
+        getAssetShortHeaderFromId,
+        environment,
+      ]
     ),
   };
 };

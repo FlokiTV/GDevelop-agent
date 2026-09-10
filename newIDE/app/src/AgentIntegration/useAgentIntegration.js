@@ -28,6 +28,7 @@ import { useGenerateEvents } from '../AiGeneration/UseGenerateEvents';
 import { useSearchAndInstallAsset } from '../AiGeneration/UseSearchAndInstallAsset';
 import { useSearchAndInstallResource } from '../AiGeneration/UseSearchAndInstallResource';
 import { ObjectStoreContext } from '../AssetStore/ObjectStoreContext';
+import { AssetStoreContext } from '../AssetStore/AssetStoreContext';
 import { ExtensionStoreContext } from '../AssetStore/ExtensionStore/ExtensionStoreContext';
 import EventsFunctionsExtensionsContext from '../EventsFunctionsExtensionsLoader/EventsFunctionsExtensionsContext';
 import { enumerateObjectTypes } from '../ObjectsList/EnumerateObjects';
@@ -159,6 +160,9 @@ export default function useAgentIntegration({
   const { translatedObjectShortHeadersByType, fetchObjects } = React.useContext(
     ObjectStoreContext
   );
+  const { environment: assetStoreEnvironment } = React.useContext(
+    AssetStoreContext
+  );
   const { fetchExtensionsAndFilters } = React.useContext(ExtensionStoreContext);
   const eventsFunctionsExtensionsState = React.useContext(
     EventsFunctionsExtensionsContext
@@ -279,6 +283,7 @@ export default function useAgentIntegration({
         i18n,
         eventsFunctionsExtensionsState,
         resourceManagementProps,
+        assetStoreEnvironment,
         hasUnsavedChanges,
         projectRevisionTracker,
         editorCallbacks,
@@ -362,6 +367,7 @@ export default function useAgentIntegration({
       previewDebuggerServer,
       runtimeTelemetry,
       resourceManagementProps,
+      assetStoreEnvironment,
       onOpenLayout,
       triggerUnsavedChanges,
       forceUpdate,
