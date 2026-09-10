@@ -10,8 +10,12 @@ const EVENT_TARGET_SCHEMA = {
   additionalProperties: false,
   required: ['kind'],
   properties: {
-    kind: { type: 'string', enum: ['scene', 'extension-function'] },
+    kind: {
+      type: 'string',
+      enum: ['scene', 'external-events', 'extension-function'],
+    },
     sceneName: { type: 'string', minLength: 1 },
+    externalEventsName: { type: 'string', minLength: 1 },
     extensionName: { type: 'string', minLength: 1 },
     ownerKind: {
       type: 'string',
@@ -130,6 +134,15 @@ const assertEventsTarget = (input: any) => {
     }
     return;
   }
+  if (target.kind === 'external-events') {
+    if (
+      !target.externalEventsName ||
+      typeof target.externalEventsName !== 'string'
+    ) {
+      throw new AgentError({ code: 'external_events_not_found' });
+    }
+    return;
+  }
   if (target.kind !== 'extension-function') {
     throw new AgentError({
       code: 'invalid_events_target_kind',
@@ -193,7 +206,7 @@ export const createEventCommandDescriptors = ({
   {
     name: 'events.read',
     description:
-      'Read canonical serialized events from a live scene or a project extension function/method event sheet. Returns stable handles and an eventsRevision for localized edits.',
+      'Read canonical serialized events from a live scene, External Events sheet, or project extension function/method event sheet. Returns stable handles and an eventsRevision for localized edits.',
     inputSchema: READ_SCHEMA,
     metadata: makeCommandMetadata({ requiresProject: true }),
     validateInput: input => assertEventsTarget(input),
@@ -223,7 +236,7 @@ export const createEventCommandDescriptors = ({
   {
     name: 'events.delete',
     description:
-      'Delete one event or subevent by stable handle from a scene or extension-function event tree after checking its event revision.',
+      'Delete one event or subevent by stable handle from a scene, External Events sheet, or extension-function event tree after checking its event revision.',
     inputSchema: DELETE_SCHEMA,
     metadata: makeCommandMetadata({
       readOnly: false,
@@ -242,7 +255,7 @@ export const createEventCommandDescriptors = ({
   {
     name: 'events.move',
     description:
-      'Move one event subtree inside the targeted scene or extension-function event tree without replacing the full tree.',
+      'Move one event subtree inside the targeted scene, External Events sheet, or extension-function event tree without replacing the full tree.',
     inputSchema: MOVE_SCHEMA,
     metadata: makeCommandMetadata({
       readOnly: false,
@@ -261,7 +274,7 @@ export const createEventCommandDescriptors = ({
   {
     name: 'events.update',
     description:
-      'Replace one targeted event node from canonical JSON, preserving its persistent id and subevents by default in either scene or extension-function scope.',
+      'Replace one targeted event node from canonical JSON, preserving its persistent id and subevents by default in scene, External Events, or extension-function scope.',
     inputSchema: UPDATE_SCHEMA,
     metadata: makeCommandMetadata({
       readOnly: false,
@@ -288,7 +301,7 @@ export const createEventCommandDescriptors = ({
   {
     name: 'events.apply',
     description:
-      'Explicit bulk fallback: replace or append canonical serialized events in a scene or extension-function event sheet when localized operations are not suitable.',
+      'Explicit bulk fallback: replace or append canonical serialized events in a scene, External Events sheet, or extension-function event sheet when localized operations are not suitable.',
     inputSchema: APPLY_SCHEMA,
     metadata: makeCommandMetadata({
       readOnly: false,

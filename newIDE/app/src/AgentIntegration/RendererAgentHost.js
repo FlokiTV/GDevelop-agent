@@ -5,6 +5,7 @@ import { createDiagnosticsCommandDescriptors } from './editor/DiagnosticsCommand
 import { createEditorFunctionCommandDescriptors } from './editor/EditorFunctionCommands';
 import { createEditorVisualCommandDescriptors } from './editor/EditorVisualCommands';
 import { createEventCommandDescriptors } from './editor/EventCommands';
+import { createExternalProjectItemsCommandDescriptors } from './editor/ExternalProjectItemsCommands';
 import { createExtensionAuthoringCommandDescriptors } from './editor/ExtensionAuthoringCommands';
 import { createMetadataDiscoveryCommandDescriptors } from './editor/MetadataDiscoveryCommands';
 import { createExportCommandDescriptors } from './editor/ExportCommands';
@@ -22,6 +23,7 @@ type Options = {|
   editorFunctionService: {| run: (options: any) => Promise<any> |},
   editorVisualService: any,
   eventTools: any,
+  externalProjectItemsService: any,
   extensionAuthoringService: any,
   metadataDiscoveryService: any,
   exportService: any,
@@ -39,6 +41,7 @@ export const createRendererAgentHost = ({
   editorFunctionService,
   editorVisualService,
   eventTools,
+  externalProjectItemsService,
   extensionAuthoringService,
   metadataDiscoveryService,
   exportService,
@@ -55,6 +58,9 @@ export const createRendererAgentHost = ({
       ...createProjectLifecycleCommandDescriptors({ projectLifecycleService }),
       ...createSafetyCommandDescriptors({ safetyService }),
       ...createEventCommandDescriptors({ eventTools }),
+      ...createExternalProjectItemsCommandDescriptors({
+        externalProjectItemsService,
+      }),
       ...createExtensionAuthoringCommandDescriptors({
         extensionAuthoringService,
       }),

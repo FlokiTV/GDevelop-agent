@@ -468,6 +468,51 @@ describe('AgentIntegration EventTools', () => {
     expect(onSceneEventsModifiedOutsideEditor).not.toHaveBeenCalled();
   });
 
+  it('reads and mutates External Events with the same canonical revisions and handles', () => {
+    const externalEvents = project.insertNewExternalEvents('SharedLogic', 0);
+    externalEvents.setAssociatedLayout('Target');
+    externalEvents
+      .getEvents()
+      .insertNewEvent(project, 'BuiltinCommonInstructions::Standard', 0);
+    const targetDescriptor = {
+      kind: 'external-events',
+      externalEventsName: 'SharedLogic',
+    };
+    const tools = makeTools();
+    const before = tools.readEventsJson({ target: targetDescriptor });
+    const comment = tools.readSceneEventsJson({ sceneName: 'Target' });
+
+    expect(before).toMatchObject({
+      target: {
+        kind: 'external-events',
+        externalEventsName: 'SharedLogic',
+      },
+      eventsCount: 1,
+    });
+    expect(before.events[0].handle).toMatch(/^event:fp:[0-9a-f]{32}$/);
+
+    const inserted = tools.insertEvents({
+      target: targetDescriptor,
+      expectedEventsRevision: before.eventsRevision,
+      eventsJson: comment.eventsJson,
+      afterHandle: before.events[0].handle,
+    });
+    expect(inserted.events[0].path).toEqual([1]);
+    expect(inserted.eventsRevision).not.toBe(before.eventsRevision);
+    expect(externalEvents.getEvents().getEventsCount()).toBe(2);
+    expect(triggerUnsavedChanges).toHaveBeenCalledTimes(1);
+    expect(forceUpdate).toHaveBeenCalledTimes(1);
+    expect(onSceneEventsModifiedOutsideEditor).not.toHaveBeenCalled();
+
+    const deleted = tools.deleteEvent({
+      target: targetDescriptor,
+      expectedEventsRevision: inserted.eventsRevision,
+      handle: inserted.events[0].handle,
+    });
+    expect(deleted.deleted).toBe(true);
+    expect(externalEvents.getEvents().getEventsCount()).toBe(1);
+  });
+
   it('reads and mutates a free extension function with the same canonical revisions and handles', () => {
     const extension = project.insertNewEventsFunctionsExtension('Logic', 0);
     const eventsFunction = extension

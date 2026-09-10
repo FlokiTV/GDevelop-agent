@@ -7,6 +7,7 @@ import {
 } from './EditorVisualTools';
 import { createEventTools } from './EventTools';
 import { createEditorFunctionService } from './editor/EditorFunctionService';
+import { createExternalProjectItemsService } from './editor/ExternalProjectItemsService';
 import { createEditorVisualService } from './editor/EditorVisualService';
 import { createExtensionAuthoringService } from './editor/ExtensionAuthoringService';
 import { createMetadataDiscoveryService } from './editor/MetadataDiscoveryService';
@@ -140,6 +141,13 @@ export const createRendererIntegration = ({
         diagnosticsTools,
         triggerUnsavedChanges,
         onSceneEventsModifiedOutsideEditor,
+        forceUpdate,
+      })
+    : null;
+  const externalProjectItemsService = project
+    ? createExternalProjectItemsService({
+        project,
+        triggerUnsavedChanges,
         forceUpdate,
       })
     : null;
@@ -300,6 +308,7 @@ export const createRendererIntegration = ({
       editorFunctionService,
       editorVisualService,
       eventTools,
+      externalProjectItemsService,
       extensionAuthoringService,
       metadataDiscoveryService,
       exportService,

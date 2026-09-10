@@ -275,6 +275,35 @@ const resolveEventsTarget = (project: gdProject, request: any) => {
     };
   }
 
+  if (target.kind === 'external-events') {
+    const externalEventsName =
+      typeof target.externalEventsName === 'string'
+        ? target.externalEventsName
+        : '';
+    if (
+      !externalEventsName ||
+      !project.hasExternalEventsNamed(externalEventsName)
+    ) {
+      throw makeError('external_events_not_found', undefined, {
+        externalEventsName,
+      });
+    }
+    const externalEvents = project.getExternalEvents(externalEventsName);
+    return {
+      kind: 'external-events',
+      scene: null,
+      externalEvents,
+      rootEvents: externalEvents.getEvents(),
+      responseTarget: { kind: 'external-events', externalEventsName },
+      sceneName: null,
+      externalEventsName,
+      extensionName: null,
+      ownerKind: null,
+      ownerName: null,
+      functionName: null,
+    };
+  }
+
   if (target.kind !== 'extension-function') {
     throw makeError('invalid_events_target_kind', undefined, {
       kind: target.kind,
@@ -602,6 +631,12 @@ export const createEventTools = ({
             details.locationType === 'scene') &&
           (details.locationName === target.sceneName ||
             issue.sceneName === target.sceneName)
+        );
+      }
+      if (target.kind === 'external-events') {
+        return (
+          details.locationType === 'external-events' &&
+          details.locationName === target.externalEventsName
         );
       }
       if (

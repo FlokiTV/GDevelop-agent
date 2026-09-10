@@ -118,6 +118,24 @@ describe('EventCommands', () => {
     });
   });
 
+  test('routes External Events targets without scene shorthand', async () => {
+    const { host, eventTools } = makeHost();
+    const target = {
+      kind: 'external-events',
+      externalEventsName: 'SharedLogic',
+    };
+    await host.execute('events.read', { target });
+    await host.execute('events.insert', {
+      target,
+      expectedEventsRevision: 'events:ext',
+      eventsJson: [{ type: 'BuiltinCommonInstructions::Comment' }],
+    });
+    expect(eventTools.readEventsJson).toHaveBeenCalledWith({ target });
+    expect(eventTools.insertEvents).toHaveBeenCalledWith(
+      expect.objectContaining({ target })
+    );
+  });
+
   test('routes extension-function targets for free, behavior and object methods', async () => {
     const { host, eventTools } = makeHost();
     const freeTarget = {
