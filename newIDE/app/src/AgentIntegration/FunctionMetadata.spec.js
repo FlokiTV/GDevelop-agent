@@ -99,6 +99,12 @@ describe('AgentIntegration FunctionMetadata', () => {
     });
   });
 
+  it('uses explicit portable types for inferred arguments that are known by the native implementation', () => {
+    expect(
+      getFunctionMetadata('read_game_project_json').inputSchema.properties.path
+    ).toMatchObject({ type: 'string' });
+  });
+
   it('uses a generated example in a real EditorFunction call', async () => {
     const project = gd.ProjectHelper.createNewGDJSProject();
     try {

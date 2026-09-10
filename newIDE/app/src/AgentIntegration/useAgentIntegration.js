@@ -25,7 +25,7 @@ import {
 } from '../EditorFunctions/OutsideEditorChanges';
 import { useEnsureExtensionInstalled } from '../AiGeneration/UseEnsureExtensionInstalled';
 import { useGenerateEvents } from '../AiGeneration/UseGenerateEvents';
-import { useSearchAndInstallAsset } from '../AiGeneration/UseSearchAndInstallAsset';
+import { useSearchAndInstallAsset } from './useAgentSearchAndInstallAsset';
 import { useSearchAndInstallResource } from '../AiGeneration/UseSearchAndInstallResource';
 import { ObjectStoreContext } from '../AssetStore/ObjectStoreContext';
 import { AssetStoreContext } from '../AssetStore/AssetStoreContext';

@@ -123,6 +123,13 @@ const argumentOverrides: {
         'One or more test metadata changes. Test source changes must use run_gameplay_test.',
     },
   },
+  read_game_project_json: {
+    path: {
+      type: 'string',
+      description:
+        'Optional dot/bracket path into the simplified project JSON. Empty or omitted reads the bounded root.',
+    },
+  },
   search_docs: {
     query: {
       name: 'query',

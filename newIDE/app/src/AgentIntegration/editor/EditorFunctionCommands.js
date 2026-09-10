@@ -1,5 +1,5 @@
 // @flow
-import { AgentError } from '../core/AgentError';
+import { AgentError, AGENT_ERROR_CODES } from '../core/AgentError';
 import {
   makeCommandMetadata,
   type CommandDescriptor,
@@ -8,7 +8,42 @@ import {
   getFunctionMetadata,
   getFunctionMetadataStats,
   listFunctionMetadata,
+  type AgentFunctionMetadata,
 } from '../FunctionMetadata';
+
+const GENERIC_EDITOR_FUNCTION_COMMAND_NAMES = new Set([
+  'editor.functions.list',
+  'editor.functions.describe',
+  'editor.functions.call',
+  'editor.functions.call-batch',
+]);
+
+const DESTRUCTIVE_EDITOR_FUNCTION_NAMES = new Set([
+  'add_or_edit_variable',
+  'change_behavior_property',
+  'change_gameplay_tests',
+  'change_object_properties_effects',
+  'change_object_property',
+  'change_project_properties_resources',
+  'change_scene_properties_layers_effects_groups',
+  'create_object',
+  'create_or_replace_object',
+  'put_2d_instances',
+  'put_3d_instances',
+  'remove_behavior',
+  'run_gameplay_test',
+  'run_script',
+]);
+
+const LONG_RUNNING_EDITOR_FUNCTION_TIMEOUTS = new Map([
+  ['add_scene_events', 180000],
+  ['create_object', 180000],
+  ['create_or_replace_object', 180000],
+  ['generate_events', 180000],
+  ['initialize_project', 180000],
+  ['run_gameplay_test', 180000],
+  ['run_script', 180000],
+]);
 
 const assertFunctionName = (name: any) => {
   if (!name || typeof name !== 'string') {
@@ -43,6 +78,176 @@ const assertExecutableFunction = (name: string, project: ?gdProject) => {
   return metadata;
 };
 
+const matchesSchemaType = (value: any, type: string): boolean => {
+  switch (type) {
+    case 'array':
+      return Array.isArray(value);
+    case 'boolean':
+      return typeof value === 'boolean';
+    case 'integer':
+      return Number.isInteger(value);
+    case 'number':
+      return typeof value === 'number' && Number.isFinite(value);
+    case 'object':
+      return !!value && typeof value === 'object' && !Array.isArray(value);
+    case 'string':
+      return typeof value === 'string';
+    case 'null':
+      return value === null;
+    default:
+      return true;
+  }
+};
+
+const validateKnownFunctionArguments = (
+  input: { [string]: any },
+  metadata: AgentFunctionMetadata
+) => {
+  const schema = metadata.inputSchema || {};
+  const properties = schema.properties || {};
+  const required = Array.isArray(schema.required) ? schema.required : [];
+
+  required.forEach(argumentName => {
+    if (input[argumentName] === undefined) {
+      throw new AgentError({
+        code: AGENT_ERROR_CODES.INVALID_COMMAND_INPUT,
+        message: `Missing required EditorFunction argument: ${argumentName}.`,
+        details: { functionName: metadata.name, argumentName },
+      });
+    }
+  });
+
+  Object.keys(properties).forEach(argumentName => {
+    if (input[argumentName] === undefined) return;
+    const propertySchema = properties[argumentName] || {};
+    const value = input[argumentName];
+    const allowedTypes = propertySchema.type
+      ? [propertySchema.type]
+      : Array.isArray(propertySchema.anyOf)
+      ? propertySchema.anyOf
+          .map(option => option && option.type)
+          .filter(type => typeof type === 'string')
+      : [];
+
+    if (
+      allowedTypes.length &&
+      !allowedTypes.some(type => matchesSchemaType(value, type))
+    ) {
+      throw new AgentError({
+        code: AGENT_ERROR_CODES.INVALID_COMMAND_INPUT,
+        message: `Invalid type for EditorFunction argument: ${argumentName}.`,
+        details: {
+          functionName: metadata.name,
+          argumentName,
+          allowedTypes,
+        },
+      });
+    }
+    if (
+      Array.isArray(propertySchema.enum) &&
+      !propertySchema.enum.includes(value)
+    ) {
+      throw new AgentError({
+        code: AGENT_ERROR_CODES.INVALID_COMMAND_INPUT,
+        message: `Invalid value for EditorFunction argument: ${argumentName}.`,
+        details: {
+          functionName: metadata.name,
+          argumentName,
+          allowedValues: propertySchema.enum,
+        },
+      });
+    }
+  });
+};
+
+export const getTypedEditorFunctionCommandName = (
+  functionName: string
+): string => {
+  if (!/^[a-z][a-z0-9_]*$/.test(functionName)) {
+    throw new Error(`invalid_editor_function_name:${functionName}`);
+  }
+  return `editor.functions.${functionName.replace(/_/g, '-')}`;
+};
+
+const getTypedEditorFunctionCommandMetadata = (
+  metadata: AgentFunctionMetadata
+) => {
+  const modifiesProject = metadata.mayModifyProject;
+  const defaultTimeoutMs = LONG_RUNNING_EDITOR_FUNCTION_TIMEOUTS.get(
+    metadata.name
+  );
+  return makeCommandMetadata({
+    readOnly: !modifiesProject,
+    destructive: DESTRUCTIVE_EDITOR_FUNCTION_NAMES.has(metadata.name),
+    idempotent: !modifiesProject,
+    longRunning: !!defaultTimeoutMs,
+    requiresProject: metadata.requiresProject,
+    modifiesProject,
+    ...(defaultTimeoutMs ? { defaultTimeoutMs } : {}),
+    ...(!modifiesProject && metadata.requiresProject
+      ? { cacheScope: 'project-revision', ttlMs: 30000 }
+      : {}),
+  });
+};
+
+const getTypedEditorFunctionInputSchema = (metadata: AgentFunctionMetadata) => {
+  const examples = metadata.examples
+    .map(example => example && example.arguments)
+    .filter(
+      argumentsValue => !!argumentsValue && typeof argumentsValue === 'object'
+    )
+    .filter(argumentsValue => {
+      try {
+        validateKnownFunctionArguments(argumentsValue, metadata);
+        return true;
+      } catch (error) {
+        return false;
+      }
+    });
+  return {
+    ...metadata.inputSchema,
+    ...(examples.length ? { examples } : {}),
+  };
+};
+
+export const createTypedEditorFunctionCommandDescriptors = ({
+  editorFunctionService,
+}: {|
+  editorFunctionService: {| run: (options: any) => Promise<any> |},
+|}): Array<CommandDescriptor> => {
+  const commandNames = new Set(GENERIC_EDITOR_FUNCTION_COMMAND_NAMES);
+  return listFunctionMetadata({ executableOnly: true }).map(metadata => {
+    const commandName = getTypedEditorFunctionCommandName(metadata.name);
+    if (commandNames.has(commandName)) {
+      throw new Error(`duplicate_typed_editor_function_command:${commandName}`);
+    }
+    commandNames.add(commandName);
+
+    return {
+      name: commandName,
+      description: `Execute the GDevelop EditorFunction '${
+        metadata.name
+      }' directly with its function-specific arguments. ${
+        metadata.description
+      }`,
+      inputSchema: getTypedEditorFunctionInputSchema(metadata),
+      metadata: getTypedEditorFunctionCommandMetadata(metadata),
+      validateInput: input => validateKnownFunctionArguments(input, metadata),
+      execute: ({ input, requestContext }) =>
+        editorFunctionService.run({
+          signal: requestContext && requestContext.signal,
+          calls: [
+            {
+              name: metadata.name,
+              arguments: input,
+            },
+          ],
+          save: false,
+        }),
+    };
+  });
+};
+
 const LIST_SCHEMA = {
   type: 'object',
   additionalProperties: false,
@@ -66,7 +271,7 @@ const CALL_SCHEMA = {
   examples: [
     {
       name: 'inspect_variables',
-      arguments: { scope: 'global' },
+      arguments: { variable_scope: 'global' },
     },
   ],
 };
@@ -100,7 +305,7 @@ const BATCH_SCHEMA = {
   examples: [
     {
       calls: [
-        { name: 'inspect_variables', arguments: { scope: 'global' } },
+        { name: 'inspect_variables', arguments: { variable_scope: 'global' } },
         { name: 'describe_instances', arguments: { scene_name: 'Scene' } },
       ],
     },
@@ -232,4 +437,5 @@ export const createEditorFunctionCommandDescriptors = ({
       });
     },
   },
+  ...createTypedEditorFunctionCommandDescriptors({ editorFunctionService }),
 ];
