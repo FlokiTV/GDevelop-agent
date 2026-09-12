@@ -10,6 +10,8 @@ import { createEditorFunctionService } from './editor/EditorFunctionService';
 import { createExternalProjectItemsService } from './editor/ExternalProjectItemsService';
 import { createEditorVisualService } from './editor/EditorVisualService';
 import { createExtensionAuthoringService } from './editor/ExtensionAuthoringService';
+import { createExtensionLifecycleService } from './editor/ExtensionLifecycleService';
+import { createObjectStructureService } from './editor/ObjectStructureService';
 import { createMetadataDiscoveryService } from './editor/MetadataDiscoveryService';
 import { createDocumentationService } from './editor/DocumentationService';
 import { createStoreService } from './editor/StoreService';
@@ -161,6 +163,24 @@ export const createRendererIntegration = ({
         triggerUnsavedChanges,
         forceUpdate,
         eventsFunctionsExtensionsState,
+      })
+    : null;
+  const extensionLifecycleService = project
+    ? createExtensionLifecycleService({
+        project,
+        eventsFunctionsExtensionsState,
+        triggerUnsavedChanges,
+        forceUpdate,
+        onWillInstallExtension,
+        onExtensionInstalled,
+      })
+    : null;
+  const objectStructureService = project
+    ? createObjectStructureService({
+        project,
+        triggerUnsavedChanges,
+        forceUpdate,
+        onObjectsModifiedOutsideEditor,
       })
     : null;
   const metadataDiscoveryService = project
@@ -320,6 +340,8 @@ export const createRendererIntegration = ({
       eventTools,
       externalProjectItemsService,
       extensionAuthoringService,
+      extensionLifecycleService,
+      objectStructureService,
       metadataDiscoveryService,
       documentationService,
       storeService,

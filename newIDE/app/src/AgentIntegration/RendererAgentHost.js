@@ -7,6 +7,8 @@ import { createEditorVisualCommandDescriptors } from './editor/EditorVisualComma
 import { createEventCommandDescriptors } from './editor/EventCommands';
 import { createExternalProjectItemsCommandDescriptors } from './editor/ExternalProjectItemsCommands';
 import { createExtensionAuthoringCommandDescriptors } from './editor/ExtensionAuthoringCommands';
+import { createExtensionLifecycleCommandDescriptors } from './editor/ExtensionLifecycleCommands';
+import { createObjectStructureCommandDescriptors } from './editor/ObjectStructureCommands';
 import { createMetadataDiscoveryCommandDescriptors } from './editor/MetadataDiscoveryCommands';
 import { createDocumentationCommandDescriptors } from './editor/DocumentationCommands';
 import { createStoreCommandDescriptors } from './editor/StoreCommands';
@@ -27,6 +29,8 @@ type Options = {|
   eventTools: any,
   externalProjectItemsService: any,
   extensionAuthoringService: any,
+  extensionLifecycleService: any,
+  objectStructureService: any,
   metadataDiscoveryService: any,
   documentationService: any,
   storeService: any,
@@ -47,6 +51,8 @@ export const createRendererAgentHost = ({
   eventTools,
   externalProjectItemsService,
   extensionAuthoringService,
+  extensionLifecycleService,
+  objectStructureService,
   metadataDiscoveryService,
   documentationService,
   storeService,
@@ -70,6 +76,10 @@ export const createRendererAgentHost = ({
       ...createExtensionAuthoringCommandDescriptors({
         extensionAuthoringService,
       }),
+      ...createExtensionLifecycleCommandDescriptors({
+        extensionLifecycleService,
+      }),
+      ...createObjectStructureCommandDescriptors({ objectStructureService }),
       ...createMetadataDiscoveryCommandDescriptors({
         metadataDiscoveryService,
       }),
