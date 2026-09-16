@@ -15,6 +15,8 @@ import { createObjectStructureService } from './editor/ObjectStructureService';
 import { createMetadataDiscoveryService } from './editor/MetadataDiscoveryService';
 import { createDocumentationService } from './editor/DocumentationService';
 import { createStoreService } from './editor/StoreService';
+import { createRemoteResourceService } from './editor/RemoteResourceService';
+import { createAssetProcessingService } from './editor/AssetProcessingService';
 import { createExportService } from './editor/ExportService';
 import { createProjectLifecycleService } from './editor/ProjectLifecycleService';
 import { createValidationService } from './editor/ValidationService';
@@ -271,6 +273,14 @@ export const createRendererIntegration = ({
     assetTools,
     editorFunctionService,
   });
+  const remoteResourceService =
+    project && assetTools
+      ? createRemoteResourceService({ project, assetTools })
+      : null;
+  const assetProcessingService =
+    project && assetTools
+      ? createAssetProcessingService({ project, assetTools })
+      : null;
   const projectLifecycleService = createProjectLifecycleService({
     project,
     fileIdentifier,
@@ -345,6 +355,8 @@ export const createRendererIntegration = ({
       metadataDiscoveryService,
       documentationService,
       storeService,
+      remoteResourceService,
+      assetProcessingService,
       exportService,
       previewService,
       projectLifecycleService,

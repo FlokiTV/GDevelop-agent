@@ -303,6 +303,88 @@ describe('AgentIntegration AssetTools', () => {
     fs.rmSync(projectFolder, { recursive: true, force: true });
   });
 
+  it('persists namespaced agent provenance without a filesystem sidecar', async () => {
+    const project = gd.ProjectHelper.createNewGDJSProject();
+    const projectFolder = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'gd-agent-assets-provenance-')
+    );
+    const sourceFolder = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'gd-agent-assets-provenance-source-')
+    );
+    const sourceFile = path.join(sourceFolder, 'remote.png');
+    fs.writeFileSync(sourceFile, Buffer.from([1, 2, 3]));
+    project.setProjectFile(path.join(projectFolder, 'game.json'));
+    const { tools } = makeTools(project);
+    const provenance = {
+      schema: 'gdevelop-agent-resource-provenance/v1',
+      source: 'remote-url',
+      sourceUrl: 'https://example.com/remote.png',
+      sha256: 'a'.repeat(64),
+      byteLength: 3,
+      contentType: 'image/png',
+    };
+
+    const result = await tools.importLocalResource({
+      filePath: sourceFile,
+      resourceName: 'remote.png',
+      kind: 'image',
+      copyToProject: true,
+      origin: {
+        name: 'remote-url',
+        identifier: 'https://example.com/remote.png',
+      },
+      provenance,
+    });
+
+    expect(result.provenancePersisted).toBe(true);
+    const inspected = tools.inspectResource('remote.png');
+    expect(inspected.originName).toBe('remote-url');
+    expect(inspected.originIdentifier).toBe('https://example.com/remote.png');
+    expect(inspected.provenance).toEqual(provenance);
+    expect(JSON.parse(inspected.metadata).agentIntegrationProvenance).toEqual(
+      provenance
+    );
+
+    project.delete();
+    fs.rmSync(projectFolder, { recursive: true, force: true });
+    fs.rmSync(sourceFolder, { recursive: true, force: true });
+  });
+
+  it('preserves opaque metadata when provenance cannot be merged safely', async () => {
+    const project = gd.ProjectHelper.createNewGDJSProject();
+    const projectFolder = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'gd-agent-assets-provenance-opaque-')
+    );
+    const sourceFile = path.join(projectFolder, 'replacement.png');
+    fs.writeFileSync(sourceFile, Buffer.from([4, 5, 6]));
+    project.setProjectFile(path.join(projectFolder, 'game.json'));
+    addImageResource(project, 'player.png', 'old.png');
+    const resource = project.getResourcesManager().getResource('player.png');
+    resource.setMetadata('opaque-not-json');
+    const { tools } = makeTools(project);
+
+    const result = await tools.replaceLocalResource({
+      resourceName: 'player.png',
+      filePath: sourceFile,
+      copyToProject: false,
+      origin: {
+        name: 'remote-url',
+        identifier: 'https://example.com/replacement.png',
+      },
+      provenance: { source: 'remote-url', sha256: 'b'.repeat(64) },
+    });
+
+    expect(result.provenancePersisted).toBe(false);
+    expect(resource.getMetadata()).toBe('opaque-not-json');
+    expect(resource.getOriginName()).toBe('remote-url');
+    expect(resource.getOriginIdentifier()).toBe(
+      'https://example.com/replacement.png'
+    );
+
+    project.delete();
+    fs.rmSync(projectFolder, { recursive: true, force: true });
+  });
+
   it('imports a public store resource with canonical provenance and defaults', () => {
     const project = gd.ProjectHelper.createNewGDJSProject();
     const { tools, onNewResourcesAdded, triggerUnsavedChanges } = makeTools(

@@ -18,6 +18,8 @@ const fs = optionalRequire('fs');
 const path = optionalRequire('path');
 
 export const DEFAULT_MAX_LOCAL_RESOURCE_FILE_BYTES = 256 * 1024 * 1024;
+export const AGENT_RESOURCE_PROVENANCE_METADATA_KEY =
+  'agentIntegrationProvenance';
 
 type AssetToolsOptions = {|
   project: gdProject,
@@ -161,6 +163,63 @@ const getObjectNamesUsingResource = (
   return names;
 };
 
+const getStoredAgentProvenance = (resource: gdResource): ?any => {
+  const metadata = resource.getMetadata();
+  if (!metadata) return null;
+  try {
+    const parsed = JSON.parse(metadata);
+    return parsed && typeof parsed === 'object'
+      ? parsed[AGENT_RESOURCE_PROVENANCE_METADATA_KEY] || null
+      : null;
+  } catch (error) {
+    return null;
+  }
+};
+
+const applyRequestProvenance = (
+  resource: gdResource,
+  request: any
+): boolean => {
+  if (request && request.origin && typeof request.origin === 'object') {
+    const originName =
+      typeof request.origin.name === 'string' ? request.origin.name : '';
+    const originIdentifier =
+      typeof request.origin.identifier === 'string'
+        ? request.origin.identifier
+        : '';
+    resource.setOrigin(originName, originIdentifier);
+  }
+  if (
+    !request ||
+    !request.provenance ||
+    typeof request.provenance !== 'object'
+  ) {
+    return false;
+  }
+
+  const existingMetadata = resource.getMetadata();
+  let parsed = {};
+  if (existingMetadata) {
+    try {
+      parsed = JSON.parse(existingMetadata);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        return false;
+      }
+    } catch (error) {
+      // Preserve opaque/non-JSON metadata rather than destroying it merely to
+      // persist agent provenance. The operation still returns provenance.
+      return false;
+    }
+  }
+  resource.setMetadata(
+    JSON.stringify({
+      ...parsed,
+      [AGENT_RESOURCE_PROVENANCE_METADATA_KEY]: request.provenance,
+    })
+  );
+  return true;
+};
+
 const getResourceInfo = (
   project: gdProject,
   resourceName: string,
@@ -188,6 +247,7 @@ const getResourceInfo = (
     useFile: resource.useFile(),
     userAdded: resource.isUserAdded(),
     metadata: resource.getMetadata() || null,
+    provenance: getStoredAgentProvenance(resource),
     originName: resource.getOriginName() || null,
     originIdentifier: resource.getOriginIdentifier() || null,
     fileStatus:
@@ -236,7 +296,9 @@ const prepareLocalFile = async ({
     throw new Error('resource_file_not_found');
   }
   if (sourceStat.size > maxLocalFileBytes) {
-    throw new Error(`resource_file_too_large:${sourceStat.size}:${maxLocalFileBytes}`);
+    throw new Error(
+      `resource_file_too_large:${sourceStat.size}:${maxLocalFileBytes}`
+    );
   }
 
   const projectFolder = getProjectFolder(project);
@@ -382,21 +444,28 @@ export const createAssetTools = ({
       existingResource.setFile(preparedFile.storedFilePath);
       existingResource.setUserAdded(true);
       if (request.preserveOrigin !== true) existingResource.setOrigin('', '');
+      const provenancePersisted = applyRequestProvenance(
+        existingResource,
+        request
+      );
       applyResourceDefaults(project, existingResource);
       notifyChanged('usage');
       return {
         imported: true,
         overwritten: true,
+        ...(request.provenance ? { provenancePersisted } : {}),
         resource: getResourceInfo(project, resourceName),
       };
     }
 
     const newResource = createNewResource(kind);
     if (!newResource) throw new Error(`unsupported_resource_kind:${kind}`);
+    let provenancePersisted = false;
     try {
       newResource.setName(resourceName);
       newResource.setFile(preparedFile.storedFilePath);
       newResource.setUserAdded(true);
+      provenancePersisted = applyRequestProvenance(newResource, request);
       applyResourceDefaults(project, newResource);
       resourcesManager.addResource(newResource);
     } finally {
@@ -406,6 +475,7 @@ export const createAssetTools = ({
     return {
       imported: true,
       overwritten: false,
+      ...(request.provenance ? { provenancePersisted } : {}),
       resource: getResourceInfo(project, resourceName),
     };
   };
@@ -430,13 +500,16 @@ export const createAssetTools = ({
     let defaultResourceName = null;
     if (path) {
       try {
-        defaultResourceName = path.basename(new URL(storeResource.url).pathname);
+        defaultResourceName = path.basename(
+          new URL(storeResource.url).pathname
+        );
       } catch (error) {
         defaultResourceName = path.basename(storeResource.url);
       }
     }
     const resourceName =
-      (typeof request.resourceName === 'string' && request.resourceName.trim()) ||
+      (typeof request.resourceName === 'string' &&
+        request.resourceName.trim()) ||
       defaultResourceName ||
       (typeof storeResource.name === 'string' && storeResource.name.trim()) ||
       null;
@@ -521,6 +594,7 @@ export const createAssetTools = ({
     resource.setFile(preparedFile.storedFilePath);
     resource.setUserAdded(true);
     if (request.preserveOrigin !== true) resource.setOrigin('', '');
+    const provenancePersisted = applyRequestProvenance(resource, request);
     applyResourceDefaults(project, resource);
 
     let previousFileDeleted = false;
@@ -540,6 +614,7 @@ export const createAssetTools = ({
       replaced: true,
       oldFile,
       previousFileDeleted,
+      ...(request.provenance ? { provenancePersisted } : {}),
       resource: getResourceInfo(project, request.resourceName),
     };
   };

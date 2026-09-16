@@ -15,6 +15,8 @@ import { createStoreCommandDescriptors } from './editor/StoreCommands';
 import { createExportCommandDescriptors } from './editor/ExportCommands';
 import { createProjectLifecycleCommandDescriptors } from './editor/ProjectLifecycleCommands';
 import { createResourceCommandDescriptors } from './editor/ResourceCommands';
+import { createRemoteResourceCommandDescriptors } from './editor/RemoteResourceCommands';
+import { createAssetProcessingCommandDescriptors } from './editor/AssetProcessingCommands';
 import { createValidationCommandDescriptors } from './editor/ValidationCommands';
 import { createPreviewCommandDescriptors } from './runtime/PreviewCommands';
 import { createRuntimeCommandDescriptors } from './runtime/RuntimeCommands';
@@ -34,6 +36,8 @@ type Options = {|
   metadataDiscoveryService: any,
   documentationService: any,
   storeService: any,
+  remoteResourceService: any,
+  assetProcessingService: any,
   exportService: any,
   previewService: any,
   projectLifecycleService: any,
@@ -56,6 +60,8 @@ export const createRendererAgentHost = ({
   metadataDiscoveryService,
   documentationService,
   storeService,
+  remoteResourceService,
+  assetProcessingService,
   exportService,
   previewService,
   projectLifecycleService,
@@ -86,6 +92,8 @@ export const createRendererAgentHost = ({
       ...createDocumentationCommandDescriptors({ documentationService }),
       ...createStoreCommandDescriptors({ storeService }),
       ...createResourceCommandDescriptors({ assetTools }),
+      ...createRemoteResourceCommandDescriptors({ remoteResourceService }),
+      ...createAssetProcessingCommandDescriptors({ assetProcessingService }),
       ...createDiagnosticsCommandDescriptors({ diagnosticsTools }),
       ...createEditorVisualCommandDescriptors({ editorVisualService }),
       ...createValidationCommandDescriptors({ validationService }),

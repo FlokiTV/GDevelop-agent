@@ -93,7 +93,8 @@ The threat model explicitly covers:
 - **DNS rebinding / forged Host**: the Node HTTP boundary accepts only localhost/loopback Host values;
 - **browser CSRF / hostile Origin**: requests with a non-local `Origin` are rejected before authentication or MCP dispatch;
 - **token leakage**: a new cryptographically random token is created on every startup, stored in a private token file, never embedded in discovery JSON and never intentionally written to request/result logs;
-- **resource exhaustion**: authenticated HTTP bodies are capped at 4 MiB, JSON nesting at 64 levels, concurrent authenticated requests at 32 globally and 8 per admission client, local resource source files at 256 MiB and PNG capture results at 16 MiB;
+- **resource exhaustion**: authenticated HTTP bodies are capped at 4 MiB, JSON nesting at 64 levels, concurrent authenticated requests at 32 globally and 8 per admission client, local resource source files at 256 MiB, remote resource downloads at a bounded caller/default limit with a 256 MiB hard maximum, and PNG capture results at 16 MiB;
+- **remote resource SSRF/content attacks**: `resources.import-url` / `resources.replace-url` allow only HTTP(S), reject credentials, localhost/single-label/internal/private/reserved targets, resolve and pin public DNS addresses for each request/redirect, bound redirects/timeouts/bytes, sniff content type, support expected SHA-256, reject unsafe MIME/kind mismatches and redact URL query/fragment data from persisted provenance;
 - **filesystem traversal and unsafe deletion**: local resource imports operate only on an explicitly supplied source path and copy into the project by default; physical resource deletion is allowed only for a resolved project-local file that is not shared or still referenced;
 - **stale or replayed mutations**: project/event revision preconditions reject stale writes, while `idempotencyKey` deduplicates retry-safe mutation replay and rejects reuse with different input;
 - **destructive operations**: destructive metadata is projected to MCP annotations for client UX, but server-side checks remain authoritative. Opening/closing over dirty work requires explicit `discardUnsavedChanges`; resource deletion refuses in-use/shared/outside-project files; checkpoint restore/transaction rollback remain explicit destructive commands.
@@ -137,7 +138,7 @@ The registry currently exposes command families for:
 - native GDevelop EditorFunctions: `editor.functions.*`;
 - scene/editor visual context: `scene.open`, `editor.visual.status`, `editor.instances.select`, `editor.selection.focus`;
 - deterministic events: `events.read`, `events.apply`;
-- resources/assets: `resources.*`;
+- resources/assets: `resources.*`, including bounded remote URL import/replace with persisted provenance plus deterministic local image/WAV processing (`resources.processing.capabilities`, `resources.image.transform`, `resources.image.slice-spritesheet`, `resources.audio.transform`);
 - checkpoints and transactions: `safety.*`;
 - diagnostics and aggregate validation: `diagnostics.inspect`, `validation.run`;
 - preview lifecycle: `preview.status`, `preview.start`, `preview.hot-reload`, `preview.control`, `preview.close-all`;
@@ -220,6 +221,15 @@ node app/AgentIntegration/scripts/McpLiveGate.js --project-path C:\\path\\to\\ga
 ```
 
 The gate calls only read-only discovery/status surfaces: `tools/list`, `agent.capabilities`, `project.status`, `desktop.windows.list`, `editor.visual.status`, `preview.status` and `runtime.status` when each is available. It does not mutate or save the project. Use it to prove that a real external-style client can discover and inspect the currently running editor before running any canonical mutation scenario.
+
+For CAP-11/12, a dedicated mutation acceptance scenario requires a fresh editor with no project open. It creates and saves a temporary project, imports a public image through `resources.import-url`, verifies redacted persisted provenance, performs deterministic image and PCM16 WAV transforms, uses the processed image in a Sprite preview, exports HTML5, rolls the transaction back and removes the temporary project by default:
+
+```text
+cd newIDE/electron-app
+node app/AgentIntegration/scripts/McpRemoteResourcesProcessingLiveScenario.js --allow-mutate
+```
+
+The scenario writes only sanitized replay/export evidence to its output directory; use `--output <dir>` to choose that directory. `--keep-project` preserves the otherwise temporary saved project for diagnosis.
 
 ## Compatibility and tests
 
