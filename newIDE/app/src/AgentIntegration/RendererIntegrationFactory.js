@@ -17,6 +17,7 @@ import { createDocumentationService } from './editor/DocumentationService';
 import { createStoreService } from './editor/StoreService';
 import { createRemoteResourceService } from './editor/RemoteResourceService';
 import { createAssetProcessingService } from './editor/AssetProcessingService';
+import { createBuildService } from './editor/BuildService';
 import { createExportService } from './editor/ExportService';
 import { createProjectLifecycleService } from './editor/ProjectLifecycleService';
 import { createValidationService } from './editor/ValidationService';
@@ -39,6 +40,7 @@ type Options = {|
   eventsFunctionsExtensionsState: any,
   resourceManagementProps: any,
   assetStoreEnvironment: 'live' | 'staging',
+  authenticatedUser: any,
   hasUnsavedChanges: boolean,
   projectRevisionTracker: any,
   editorCallbacks: any,
@@ -91,6 +93,7 @@ export const createRendererIntegration = ({
   eventsFunctionsExtensionsState,
   resourceManagementProps,
   assetStoreEnvironment,
+  authenticatedUser,
   hasUnsavedChanges,
   projectRevisionTracker,
   editorCallbacks,
@@ -281,6 +284,15 @@ export const createRendererIntegration = ({
     project && assetTools
       ? createAssetProcessingService({ project, assetTools })
       : null;
+  const buildService = createBuildService({
+    project,
+    i18n,
+    authenticatedUser,
+    eventsFunctionsExtensionsState,
+    triggerUnsavedChanges,
+    forceUpdate,
+    isDesktopEnvironment: !!pathModule,
+  });
   const projectLifecycleService = createProjectLifecycleService({
     project,
     fileIdentifier,
@@ -357,6 +369,7 @@ export const createRendererIntegration = ({
       storeService,
       remoteResourceService,
       assetProcessingService,
+      buildService,
       exportService,
       previewService,
       projectLifecycleService,

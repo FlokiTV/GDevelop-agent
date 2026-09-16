@@ -31,6 +31,7 @@ import { ObjectStoreContext } from '../AssetStore/ObjectStoreContext';
 import { AssetStoreContext } from '../AssetStore/AssetStoreContext';
 import { ExtensionStoreContext } from '../AssetStore/ExtensionStore/ExtensionStoreContext';
 import EventsFunctionsExtensionsContext from '../EventsFunctionsExtensionsLoader/EventsFunctionsExtensionsContext';
+import AuthenticatedUserContext from '../Profile/AuthenticatedUserContext';
 import { enumerateObjectTypes } from '../ObjectsList/EnumerateObjects';
 import { type FileMetadata } from '../ProjectsStorage';
 import { createRendererIntegration } from './RendererIntegrationFactory';
@@ -167,6 +168,7 @@ export default function useAgentIntegration({
   const eventsFunctionsExtensionsState = React.useContext(
     EventsFunctionsExtensionsContext
   );
+  const authenticatedUser = React.useContext(AuthenticatedUserContext);
 
   React.useEffect(
     () => {
@@ -284,6 +286,7 @@ export default function useAgentIntegration({
         eventsFunctionsExtensionsState,
         resourceManagementProps,
         assetStoreEnvironment,
+        authenticatedUser,
         hasUnsavedChanges,
         projectRevisionTracker,
         editorCallbacks,
@@ -368,6 +371,7 @@ export default function useAgentIntegration({
       runtimeTelemetry,
       resourceManagementProps,
       assetStoreEnvironment,
+      authenticatedUser,
       onOpenLayout,
       triggerUnsavedChanges,
       forceUpdate,

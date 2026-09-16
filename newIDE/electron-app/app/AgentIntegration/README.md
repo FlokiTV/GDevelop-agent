@@ -145,7 +145,8 @@ The registry currently exposes command families for:
 - runtime observation: `runtime.status`, `runtime.snapshot`, `runtime.logs`, `runtime.assert`, `runtime.wait-for`;
 - desktop windows/capture: `desktop.windows.list`, `desktop.window.capture`;
 - preview input: `preview.input.*`;
-- HTML5 output: `export.html5`.
+- build target/configuration discovery and authenticated remote build lifecycle: `build.targets.list`, `build.configuration.*`, `build.start`, `build.status`, `build.cancel`, `build.result`;
+- local HTML5 output: `export.html5`.
 
 `desktop.window.capture` is returned as MCP `image/png` content instead of embedding PNG bytes in a JSON text payload.
 
@@ -163,7 +164,7 @@ A safe agent workflow is:
 8. correct the project while keeping the editor/project open;
 9. run `diagnostics.inspect` / `validation.run` and review checkpoint diff when appropriate;
 10. call `project.save` or `project.save-as` only when saving is explicitly intended;
-11. use `export.html5` when an output build is required.
+11. call `build.targets.list` before choosing a delivery target; use `export.html5` for local HTML5 or `build.start` + `build.status` + `build.result` for an available authenticated remote build target.
 
 Mutations never auto-hot-reload as a hidden side effect. After a hot-reload-compatible edit, the agent explicitly calls `preview.hot-reload`; ordinary iteration should keep the existing preview/debugger alive rather than closing and restarting it. `preview.start` is reserved for starting a missing preview, while restart is only used when the underlying GDevelop lifecycle genuinely requires it.
 
@@ -230,6 +231,16 @@ node app/AgentIntegration/scripts/McpRemoteResourcesProcessingLiveScenario.js --
 ```
 
 The scenario writes only sanitized replay/export evidence to its output directory; use `--output <dir>` to choose that directory. `--keep-project` preserves the otherwise temporary saved project for diagnosis.
+
+For CAP-14, `McpBuildTargetsLiveScenario.js` validates capability-driven target discovery, an explicit machine-readable unsupported iOS target, native package/version/orientation/loading-screen round-trip and local HTML5 export. Remote installable builds are deliberately separate: `--allow-remote-build` opts in to consuming one available build quota slot with `payWithCredits=false`, and `--require-installable` turns a completed Windows EXE into a mandatory acceptance gate. Provider credentials, user ids, upload bucket keys and log keys are sanitized from tool results/replays.
+
+```text
+cd newIDE/electron-app
+node app/AgentIntegration/scripts/McpBuildTargetsLiveScenario.js --allow-mutate
+node app/AgentIntegration/scripts/McpBuildTargetsLiveScenario.js --allow-mutate --allow-remote-build --require-installable
+```
+
+`build.cancel` is intentionally truthful: the current GDevelop Build API does not expose a cancellation endpoint, so a provider-started build returns `supported: false` / `reasonCode: "provider_cancel_not_supported"`; AgentIntegration does not misuse build deletion as cancellation.
 
 ## Compatibility and tests
 
