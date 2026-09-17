@@ -3,6 +3,7 @@ import debuggerDump from '../fixtures/DebuggerGameDataDump.json';
 import {
   createRuntimeTelemetry,
   evaluateRuntimeCondition,
+  summarizeProfilerOutput,
   summarizeRuntimeDump,
   transformVariablesContainer,
 } from './RuntimeTelemetry';
@@ -66,6 +67,13 @@ const createDebuggerServer = ({
         parsedMessage: { command: 'console.log', payload: log },
       });
     },
+    emitMessage: (command, payload = null, id = 'preview-1') => {
+      if (!callbacks) return;
+      callbacks.onHandleParsedMessage({
+        id,
+        parsedMessage: { command, payload },
+      });
+    },
   };
   return server;
 };
@@ -97,12 +105,15 @@ describe('AgentIntegration RuntimeTelemetry', () => {
     const dump = cloneDump();
     const scene = dump._sceneStack._stack[0];
     const template = scene._instances.items.Player[0];
-    scene._instances.items.StressObject = Array.from({ length: 500 }, (_, index) => ({
-      ...template,
-      id: `stress-${index}`,
-      x: index,
-      y: index * 2,
-    }));
+    scene._instances.items.StressObject = Array.from(
+      { length: 500 },
+      (_, index) => ({
+        ...template,
+        id: `stress-${index}`,
+        x: index,
+        y: index * 2,
+      })
+    );
 
     const snapshot = summarizeRuntimeDump(dump, { maxInstances: 100 });
     expect(snapshot.totalInstances).toBeGreaterThanOrEqual(500);
@@ -235,6 +246,71 @@ describe('AgentIntegration RuntimeTelemetry', () => {
     expect(result.passed).toBe(true);
     expect(result.timedOut).toBe(false);
     expect(result.attempts).toBe(2);
+    telemetry.dispose();
+  });
+
+  it('summarizes native profiler output with bounded section paths', () => {
+    expect(
+      summarizeProfilerOutput({
+        framesAverageMeasures: {
+          time: 20,
+          subsections: {
+            events: {
+              time: 8,
+              subsections: {
+                Guard: { time: 3, subsections: {} },
+              },
+            },
+          },
+        },
+        stats: { framesCount: 10, averageDrawCallsCount: 4 },
+      })
+    ).toMatchObject({
+      averageFrameTimeMs: 20,
+      estimatedFps: 50,
+      sections: [
+        { name: 'events', averageTimeMs: 8 },
+        { name: 'events > Guard', averageTimeMs: 3 },
+      ],
+      stats: { framesCount: 10, averageDrawCallsCount: 4 },
+      limitations: { frameDistribution: false, maxSectionTimes: false },
+    });
+  });
+
+  it('starts and stops the native preview profiler through existing debugger messages', async () => {
+    const server = createDebuggerServer();
+    const telemetry = createRuntimeTelemetry(server);
+
+    const startPromise = telemetry.startProfiler();
+    server.emitMessage('profiler.started');
+    await expect(startPromise).resolves.toMatchObject({
+      debuggerId: 'preview-1',
+      profiling: true,
+      alreadyRunning: false,
+    });
+    expect(server.sendMessage).toHaveBeenCalledWith('preview-1', {
+      command: 'profiler.start',
+    });
+    expect(telemetry.getProfilerStatus()).toMatchObject({
+      profiling: true,
+      hasOutput: false,
+    });
+
+    const stopPromise = telemetry.stopProfiler();
+    server.emitMessage('profiler.output', {
+      framesAverageMeasures: { time: 25, subsections: {} },
+      stats: { framesCount: 5 },
+    });
+    server.emitMessage('profiler.stopped');
+    await expect(stopPromise).resolves.toMatchObject({
+      debuggerId: 'preview-1',
+      profiling: false,
+      output: { averageFrameTimeMs: 25, estimatedFps: 40 },
+    });
+    expect(telemetry.getProfilerStatus()).toMatchObject({
+      profiling: false,
+      hasOutput: true,
+    });
     telemetry.dispose();
   });
 });

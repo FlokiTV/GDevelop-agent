@@ -4,6 +4,7 @@ const DEFAULT_REQUEST_TIMEOUT_MS = 2500;
 const DEFAULT_MAX_INSTANCES = 200;
 const MAX_INSTANCES = 1000;
 const MAX_LOGS_PER_DEBUGGER = 200;
+const MAX_PROFILER_SECTIONS = 200;
 const MAX_WAIT_MS = 30000;
 const MIN_POLL_MS = 100;
 const MAX_POLL_MS = 5000;
@@ -281,6 +282,52 @@ export const evaluateRuntimeCondition = (
   return { passed, path: condition.path, operator, expected, actual };
 };
 
+export const summarizeProfilerOutput = (output: any): any => {
+  if (!output || typeof output !== 'object') {
+    throw makeError('invalid_profiler_output');
+  }
+  const root = output.framesAverageMeasures;
+  if (!root || typeof root !== 'object') {
+    throw makeError('invalid_profiler_output');
+  }
+  const sections = [];
+  const visit = (section: any, path: string) => {
+    const subsections =
+      section && section.subsections && typeof section.subsections === 'object'
+        ? section.subsections
+        : {};
+    Object.keys(subsections).forEach(name => {
+      if (sections.length >= MAX_PROFILER_SECTIONS) return;
+      const child = subsections[name];
+      const fullName = path ? `${path} > ${name}` : name;
+      sections.push({
+        name: fullName,
+        averageTimeMs: child && typeof child.time === 'number' ? child.time : 0,
+      });
+      visit(child, fullName);
+    });
+  };
+  visit(root, '');
+  sections.sort((left, right) => right.averageTimeMs - left.averageTimeMs);
+  const averageFrameTimeMs = typeof root.time === 'number' ? root.time : null;
+  return {
+    averageFrameTimeMs,
+    estimatedFps:
+      averageFrameTimeMs && averageFrameTimeMs > 0
+        ? 1000 / averageFrameTimeMs
+        : null,
+    sections,
+    sectionsTruncated: sections.length >= MAX_PROFILER_SECTIONS,
+    stats: output.stats && typeof output.stats === 'object' ? output.stats : {},
+    limitations: {
+      frameDistribution: false,
+      maxSectionTimes: false,
+      hint:
+        'Use runtime.profile.run for bounded frame distribution, worst-frame and max-section telemetry.',
+    },
+  };
+};
+
 type Waiter = {|
   id: string,
   command: string,
@@ -292,6 +339,8 @@ type Waiter = {|
 export const createRuntimeTelemetry = (previewDebuggerServer: any): any => {
   if (!previewDebuggerServer) throw makeError('preview_debugger_unavailable');
   const logsByDebugger: Map<string, Array<any>> = new Map();
+  const profilingByDebugger: Map<string, boolean> = new Map();
+  const profilerOutputByDebugger: Map<string, any> = new Map();
   const waiters: Array<Waiter> = [];
   let disposed = false;
 
@@ -334,6 +383,8 @@ export const createRuntimeTelemetry = (previewDebuggerServer: any): any => {
     },
     onConnectionClosed: ({ id }) => {
       logsByDebugger.delete(id);
+      profilingByDebugger.delete(id);
+      profilerOutputByDebugger.delete(id);
     },
     onConnectionOpened: () => {},
     onConnectionErrored: ({ id, errorMessage }) => {
@@ -377,6 +428,12 @@ export const createRuntimeTelemetry = (previewDebuggerServer: any): any => {
             timestamp: Date.now(),
           })
         );
+      } else if (parsedMessage.command === 'profiler.started') {
+        profilingByDebugger.set(id, true);
+      } else if (parsedMessage.command === 'profiler.output') {
+        profilerOutputByDebugger.set(id, parsedMessage.payload);
+      } else if (parsedMessage.command === 'profiler.stopped') {
+        profilingByDebugger.set(id, false);
       }
       resolveWaiters(id, parsedMessage);
     },
@@ -509,6 +566,60 @@ export const createRuntimeTelemetry = (previewDebuggerServer: any): any => {
     };
   };
 
+  const getProfilerStatus = (request: any = {}): any => {
+    const debuggerId = selectDebuggerId(request.debuggerId);
+    const rawOutput = profilerOutputByDebugger.get(debuggerId) || null;
+    return {
+      debuggerId,
+      profiling: profilingByDebugger.get(debuggerId) === true,
+      hasOutput: !!rawOutput,
+      lastOutput: rawOutput ? summarizeProfilerOutput(rawOutput) : null,
+    };
+  };
+
+  const startProfiler = async (request: any = {}): Promise<any> => {
+    const debuggerId = selectDebuggerId(request.debuggerId);
+    if (profilingByDebugger.get(debuggerId) === true) {
+      return { debuggerId, profiling: true, alreadyRunning: true };
+    }
+    profilerOutputByDebugger.delete(debuggerId);
+    await requestMessageWithRetry(
+      debuggerId,
+      'profiler.start',
+      'profiler.started',
+      clampInteger(
+        request.requestTimeoutMs,
+        DEFAULT_REQUEST_TIMEOUT_MS,
+        250,
+        10000
+      )
+    );
+    profilingByDebugger.set(debuggerId, true);
+    return { debuggerId, profiling: true, alreadyRunning: false };
+  };
+
+  const stopProfiler = async (request: any = {}): Promise<any> => {
+    const debuggerId = selectDebuggerId(request.debuggerId);
+    const output = await requestMessageWithRetry(
+      debuggerId,
+      'profiler.stop',
+      'profiler.output',
+      clampInteger(
+        request.requestTimeoutMs,
+        DEFAULT_REQUEST_TIMEOUT_MS,
+        250,
+        10000
+      )
+    );
+    profilerOutputByDebugger.set(debuggerId, output);
+    profilingByDebugger.set(debuggerId, false);
+    return {
+      debuggerId,
+      profiling: false,
+      output: summarizeProfilerOutput(output),
+    };
+  };
+
   const assertRuntime = async (request: any = {}): Promise<any> => {
     const snapshot = await getSnapshot(request);
     return {
@@ -567,6 +678,8 @@ export const createRuntimeTelemetry = (previewDebuggerServer: any): any => {
       waiter.reject(makeError('runtime_telemetry_disposed'));
     }
     logsByDebugger.clear();
+    profilingByDebugger.clear();
+    profilerOutputByDebugger.clear();
   };
 
   return {
@@ -574,6 +687,9 @@ export const createRuntimeTelemetry = (previewDebuggerServer: any): any => {
     getStatus,
     getSnapshot,
     getLogs,
+    getProfilerStatus,
+    startProfiler,
+    stopProfiler,
     assertRuntime,
     waitFor,
     dispose,

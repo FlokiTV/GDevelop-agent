@@ -44,6 +44,7 @@ type Options = {|
   previewService: any,
   projectLifecycleService: any,
   runtimeTelemetry: any,
+  runtimeDiagnosticsService: any,
   safetyService: any,
   validationService: any,
 |};
@@ -69,6 +70,7 @@ export const createRendererAgentHost = ({
   previewService,
   projectLifecycleService,
   runtimeTelemetry,
+  runtimeDiagnosticsService,
   safetyService,
   validationService,
 }: Options): AgentHost =>
@@ -103,7 +105,10 @@ export const createRendererAgentHost = ({
       ...createValidationCommandDescriptors({ validationService }),
       ...createExportCommandDescriptors({ exportService }),
       ...createPreviewCommandDescriptors({ previewService }),
-      ...createRuntimeCommandDescriptors({ runtimeTelemetry }),
+      ...createRuntimeCommandDescriptors({
+        runtimeTelemetry,
+        runtimeDiagnosticsService,
+      }),
       ...createEditorFunctionCommandDescriptors({ editorFunctionService }),
     ],
   });

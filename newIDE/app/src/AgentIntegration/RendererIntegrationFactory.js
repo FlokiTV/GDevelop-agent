@@ -22,6 +22,7 @@ import { createExportService } from './editor/ExportService';
 import { createProjectLifecycleService } from './editor/ProjectLifecycleService';
 import { createValidationService } from './editor/ValidationService';
 import { createPreviewService } from './runtime/PreviewService';
+import { createRuntimeDiagnosticsService } from './runtime/RuntimeDiagnosticsService';
 import { createSafetyService } from './safety/SafetyService';
 import { createRendererAgentHost } from './RendererAgentHost';
 
@@ -271,6 +272,12 @@ export const createRendererIntegration = ({
     clearGameplayTestFramePreview,
     documentObject,
   });
+  const runtimeDiagnosticsService = createRuntimeDiagnosticsService({
+    project,
+    eventTools,
+    editorFunctionService,
+    runtimeTelemetry,
+  });
   const storeService = createStoreService({
     environment: assetStoreEnvironment,
     assetTools,
@@ -374,6 +381,7 @@ export const createRendererIntegration = ({
       previewService,
       projectLifecycleService,
       runtimeTelemetry,
+      runtimeDiagnosticsService,
       safetyService,
       validationService,
     }),
