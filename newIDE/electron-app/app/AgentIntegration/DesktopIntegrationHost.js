@@ -5,6 +5,12 @@ const {
 } = require('./PreviewInteractionService');
 const { createWindowCaptureService } = require('./WindowCaptureService');
 const { createPreviewQaService } = require('./PreviewQaService');
+const {
+  createMultiplayerPreviewService,
+} = require('./MultiplayerPreviewService');
+const {
+  createPreviewNetworkDiagnosticsService,
+} = require('./PreviewNetworkDiagnosticsService');
 const { createDesktopCommandRegistry } = require('./DesktopCommandRegistry');
 
 const createDesktopIntegrationHost = ({
@@ -35,16 +41,31 @@ const createDesktopIntegrationHost = ({
     windowCaptureService,
     previewInteractionService,
   });
+  const multiplayerPreviewService = createMultiplayerPreviewService({
+    BrowserWindow,
+    isRegisteredPreviewWindow,
+    previewInteractionService,
+  });
+  const previewNetworkDiagnosticsService = createPreviewNetworkDiagnosticsService(
+    {
+      BrowserWindow,
+      isRegisteredPreviewWindow,
+      multiplayerPreviewService,
+    }
+  );
   const desktopCommandRegistry = createDesktopCommandRegistry({
     windowCaptureService,
     previewInteractionService,
     previewQaService,
+    multiplayerPreviewService,
+    previewNetworkDiagnosticsService,
   });
 
   let disposed = false;
   const dispose = () => {
     if (disposed) return;
     disposed = true;
+    previewNetworkDiagnosticsService.dispose();
     rendererBridge.dispose();
     removeWindowRegistrationHandlers();
     windowRegistry.clear();
@@ -55,6 +76,8 @@ const createDesktopIntegrationHost = ({
     rendererBridge,
     previewInteractionService,
     previewQaService,
+    multiplayerPreviewService,
+    previewNetworkDiagnosticsService,
     windowCaptureService,
     desktopCommandRegistry,
     dispose,

@@ -305,6 +305,157 @@ const DESCRIPTORS = [
     },
     metadata: metadata({ readOnly: true }),
   },
+  {
+    name: 'preview.multiplayer.capabilities',
+    description:
+      'Describe multi-preview orchestration and network diagnostics/shaping capabilities without claiming unavailable network primitives.',
+    inputSchema: emptyObjectSchema(),
+    metadata: metadata({ readOnly: true, idempotent: true }),
+  },
+  {
+    name: 'preview.multiplayer.clients.list',
+    description: 'List live preview clients and their assigned stable aliases.',
+    inputSchema: emptyObjectSchema(),
+    metadata: metadata({ readOnly: true, idempotent: true }),
+  },
+  {
+    name: 'preview.multiplayer.clients.assign',
+    description:
+      'Atomically assign stable aliases to a bounded set of live preview windows.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['clients'],
+      properties: {
+        clients: {
+          type: 'array',
+          minItems: 1,
+          maxItems: 8,
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['alias', 'previewWindowId'],
+            properties: {
+              alias: { type: 'string', minLength: 1, maxLength: 64 },
+              previewWindowId: PREVIEW_WINDOW_SCHEMA,
+            },
+          },
+        },
+      },
+    },
+    metadata: metadata({ idempotent: true }),
+  },
+  {
+    name: 'preview.multiplayer.batch',
+    description:
+      'Run an ordered bounded batch of input, input-sequence, runtime-status or runtime-reset actions against aliased preview clients.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['actions'],
+      properties: {
+        actions: {
+          type: 'array',
+          minItems: 1,
+          maxItems: 200,
+          items: {
+            type: 'object',
+            required: ['alias', 'operation'],
+            properties: {
+              alias: { type: 'string', minLength: 1, maxLength: 64 },
+              operation: {
+                type: 'string',
+                enum: ['input', 'sequence', 'runtime-status', 'runtime-reset'],
+              },
+              event: { type: 'object' },
+              steps: { type: 'array', maxItems: 200 },
+            },
+          },
+        },
+      },
+    },
+    metadata: metadata({ longRunning: true }),
+  },
+  {
+    name: 'preview.multiplayer.runtime-status',
+    description:
+      'Read synthetic runtime status across all assigned preview aliases or a selected subset.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        aliases: {
+          type: 'array',
+          minItems: 1,
+          maxItems: 8,
+          items: { type: 'string', minLength: 1, maxLength: 64 },
+        },
+      },
+    },
+    metadata: metadata({ readOnly: true, idempotent: true }),
+  },
+  {
+    name: 'preview.network.capabilities',
+    description:
+      'Describe bounded redacted HTTP/WebSocket diagnostics and truthful network-shaping support.',
+    inputSchema: emptyObjectSchema(),
+    metadata: metadata({ readOnly: true, idempotent: true }),
+  },
+  {
+    name: 'preview.network.capture.start',
+    description:
+      'Start bounded redacted HTTP/WebSocket metadata capture for one aliased preview client.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['alias'],
+      properties: {
+        alias: { type: 'string', minLength: 1, maxLength: 64 },
+        maxEvents: { type: 'integer', minimum: 1, maximum: 2000 },
+      },
+    },
+    metadata: metadata(),
+  },
+  {
+    name: 'preview.network.capture.status',
+    description:
+      'Return capture state and bounded event counts for one aliased preview client.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['alias'],
+      properties: { alias: { type: 'string', minLength: 1, maxLength: 64 } },
+    },
+    metadata: metadata({ readOnly: true, idempotent: true }),
+  },
+  {
+    name: 'preview.network.capture.read',
+    description:
+      'Read recent redacted network metadata without response bodies or WebSocket frame payloads.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['alias'],
+      properties: {
+        alias: { type: 'string', minLength: 1, maxLength: 64 },
+        limit: { type: 'integer', minimum: 1, maximum: 2000 },
+        clear: { type: 'boolean' },
+      },
+    },
+    metadata: metadata({ readOnly: true }),
+  },
+  {
+    name: 'preview.network.capture.stop',
+    description:
+      'Stop network metadata capture, detach the debugger and return the final bounded redacted events.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['alias'],
+      properties: { alias: { type: 'string', minLength: 1, maxLength: 64 } },
+    },
+    metadata: metadata(),
+  },
 ];
 
 const makeResult = (descriptor, data) => ({
@@ -320,6 +471,8 @@ const createDesktopCommandRegistry = ({
   windowCaptureService,
   previewInteractionService,
   previewQaService,
+  multiplayerPreviewService,
+  previewNetworkDiagnosticsService,
 }) => {
   const handlers = {
     'desktop.windows.list': () => windowCaptureService.listWindows(),
@@ -360,6 +513,26 @@ const createDesktopCommandRegistry = ({
       previewQaService.captureBaseline(input || {}),
     'preview.visual.baseline.compare': input =>
       previewQaService.compareBaseline(input || {}),
+    'preview.multiplayer.capabilities': () =>
+      multiplayerPreviewService.capabilities(),
+    'preview.multiplayer.clients.list': () =>
+      multiplayerPreviewService.listClients(),
+    'preview.multiplayer.clients.assign': input =>
+      multiplayerPreviewService.assignAliases(input || {}),
+    'preview.multiplayer.batch': input =>
+      multiplayerPreviewService.runBatch(input || {}),
+    'preview.multiplayer.runtime-status': input =>
+      multiplayerPreviewService.runtimeStatus(input || {}),
+    'preview.network.capabilities': () =>
+      previewNetworkDiagnosticsService.capabilities(),
+    'preview.network.capture.start': input =>
+      previewNetworkDiagnosticsService.start(input || {}),
+    'preview.network.capture.status': input =>
+      previewNetworkDiagnosticsService.status(input || {}),
+    'preview.network.capture.read': input =>
+      previewNetworkDiagnosticsService.read(input || {}),
+    'preview.network.capture.stop': input =>
+      previewNetworkDiagnosticsService.stop(input || {}),
   };
   const descriptorsByName = new Map(
     DESCRIPTORS.map(descriptor => [descriptor.name, descriptor])

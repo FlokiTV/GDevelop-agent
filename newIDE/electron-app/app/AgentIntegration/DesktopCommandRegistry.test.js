@@ -10,6 +10,7 @@ test('lists deterministic desktop command descriptors without protocol metadata'
     windowCaptureService: {},
     previewInteractionService: {},
     previewQaService: {},
+    multiplayerPreviewService: {},
   });
   const descriptors = registry.listDescriptors();
 
@@ -67,6 +68,22 @@ test('executes windows, capture and preview input through injected services', as
       resetRuntime: input => {
         calls.push(['resetRuntime', input]);
         return { reset: true };
+      },
+    },
+    multiplayerPreviewService: {
+      capabilities: () => ({ multiPreview: { supported: true } }),
+      listClients: () => [{ windowId: 2, alias: 'host' }],
+      assignAliases: input => {
+        calls.push(['assignClients', input]);
+        return { clients: input.clients };
+      },
+      runBatch: async input => {
+        calls.push(['multiplayerBatch', input]);
+        return { results: [] };
+      },
+      runtimeStatus: async input => {
+        calls.push(['multiplayerStatus', input]);
+        return { clients: [] };
       },
     },
     previewQaService: {
@@ -178,6 +195,28 @@ test('executes windows, capture and preview input through injected services', as
     command: 'preview.visual.baseline.compare',
     input: { previewWindowId: 2, baselineId: 'menu' },
   });
+  const multiplayerCapabilities = await registry.execute({
+    command: 'preview.multiplayer.capabilities',
+    input: {},
+  });
+  assert.equal(multiplayerCapabilities.data.multiPreview.supported, true);
+  const clients = await registry.execute({
+    command: 'preview.multiplayer.clients.list',
+    input: {},
+  });
+  assert.equal(clients.data[0].alias, 'host');
+  await registry.execute({
+    command: 'preview.multiplayer.clients.assign',
+    input: { clients: [{ alias: 'host', previewWindowId: 2 }] },
+  });
+  await registry.execute({
+    command: 'preview.multiplayer.batch',
+    input: { actions: [{ alias: 'host', operation: 'runtime-status' }] },
+  });
+  await registry.execute({
+    command: 'preview.multiplayer.runtime-status',
+    input: { aliases: ['host'] },
+  });
 
   assert.deepEqual(calls.map(call => call[0]), [
     'capture',
@@ -194,6 +233,9 @@ test('executes windows, capture and preview input through injected services', as
     'replay',
     'baselineCapture',
     'baselineCompare',
+    'assignClients',
+    'multiplayerBatch',
+    'multiplayerStatus',
   ]);
 });
 
@@ -202,6 +244,7 @@ test('rejects unknown desktop commands', async () => {
     windowCaptureService: {},
     previewInteractionService: {},
     previewQaService: {},
+    multiplayerPreviewService: {},
   });
   await assert.rejects(
     registry.execute({ command: 'desktop.missing', input: {} }),

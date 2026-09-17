@@ -146,12 +146,18 @@ The registry currently exposes command families for:
 - desktop windows/capture: `desktop.windows.list`, `desktop.window.capture`;
 - preview input: `preview.input.*`;
 - preview QA: `preview.qa.capabilities`, `preview.input.record.*`, `preview.input.replay`, `preview.visual.baseline.*`;
+- multiplayer preview orchestration: `preview.multiplayer.capabilities`, `preview.multiplayer.clients.*`, `preview.multiplayer.batch`, `preview.multiplayer.runtime-status`;
+- bounded network diagnostics: `preview.network.capabilities`, `preview.network.capture.*`;
 - build target/configuration discovery and authenticated remote build lifecycle: `build.targets.list`, `build.configuration.*`, `build.start`, `build.status`, `build.cancel`, `build.result`;
 - local HTML5 output: `export.html5`.
 
 `desktop.window.capture` is returned as MCP `image/png` content instead of embedding PNG bytes in a JSON text payload.
 
 `preview.qa.capabilities` is capability-driven: normalized keyboard/mouse record/replay, runtime reset and exact PNG SHA-256 baselines are available. Fixed timestep, seeded randomness, decoded pixel-tolerance/ignore-region comparison and content viewport/DPR/orientation/safe-area emulation are reported as unsupported until the preview runtime exposes reliable primitives for them.
+
+`preview.multiplayer.*` discovers the live external preview BrowserWindows already created by GDevelop (including `preview.start({ numberOfWindows: N })`), then lets a client assign bounded stable aliases such as `host`/`guest` and address ordered input/runtime-status batches by alias. Aliases are process-local orchestration state and are pruned when their preview closes; they do not modify or persist in the project.
+
+`preview.network.capture.*` uses Electron's `webContents.debugger`/CDP `Network` domain only for an explicitly aliased preview. Capture is bounded (maximum 2000 recent events), redacts credential-bearing URL query fields and sensitive headers by default, records HTTP request/response/failure metadata and WebSocket lifecycle/handshake metadata, and intentionally omits response bodies and WebSocket frame payloads. It refuses to attach when another debugger client already owns that `webContents`. Network shaping/latency/loss simulation is reported as unsupported rather than emulated through an unreliable hidden mechanism.
 
 ## Recommended live-editing loop
 
@@ -244,6 +250,13 @@ node app/AgentIntegration/scripts/McpBuildTargetsLiveScenario.js --allow-mutate 
 ```
 
 `build.cancel` is intentionally truthful: the current GDevelop Build API does not expose a cancellation endpoint, so a provider-started build returns `supported: false` / `reasonCode: "provider_cancel_not_supported"`; AgentIntegration does not misuse build deletion as cancellation.
+
+For CAP-20/21, `McpMultiplayerNetworkLiveScenario.js` creates a temporary project, starts two real external preview windows in one call, assigns `host`/`guest` aliases, checks cross-client runtime state, sends an ordered aliased input/status batch, exercises bounded network-capture start/status/read/stop on one preview, then closes previews and proves transaction rollback without reopening the project. An offline empty scene can legitimately produce zero captured network events; the acceptance verifies the real CDP lifecycle and does not fabricate traffic.
+
+```text
+cd newIDE/electron-app
+node app/AgentIntegration/scripts/McpMultiplayerNetworkLiveScenario.js --allow-mutate
+```
 
 ## Compatibility and tests
 
