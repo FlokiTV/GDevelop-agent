@@ -9,6 +9,7 @@ test('lists deterministic desktop command descriptors without protocol metadata'
   const registry = createDesktopCommandRegistry({
     windowCaptureService: {},
     previewInteractionService: {},
+    previewQaService: {},
   });
   const descriptors = registry.listDescriptors();
 
@@ -68,6 +69,35 @@ test('executes windows, capture and preview input through injected services', as
         return { reset: true };
       },
     },
+    previewQaService: {
+      capabilities: () => ({
+        deterministicGameplay: { inputReplay: { supported: true } },
+      }),
+      startRecording: input => {
+        calls.push(['recordStart', input]);
+        return { recordingId: 'walk' };
+      },
+      sendAndRecord: input => {
+        calls.push(['recordSend', input]);
+        return { sent: true };
+      },
+      stopRecording: input => {
+        calls.push(['recordStop', input]);
+        return { recordingId: 'walk', steps: [] };
+      },
+      replay: async input => {
+        calls.push(['replay', input]);
+        return { sent: true, steps: 1 };
+      },
+      captureBaseline: async input => {
+        calls.push(['baselineCapture', input]);
+        return { baselineId: input.baselineId, sha256: 'abc' };
+      },
+      compareBaseline: async input => {
+        calls.push(['baselineCompare', input]);
+        return { baselineId: input.baselineId, passed: true };
+      },
+    },
   });
 
   const windows = await registry.execute({
@@ -116,26 +146,62 @@ test('executes windows, capture and preview input through injected services', as
     command: 'preview.input.runtime-reset',
     input: { previewWindowId: 2 },
   });
-
-  assert.deepEqual(
-    calls.map(call => call[0]),
-    [
-      'capture',
-      'sendInput',
-      'sendSequence',
-      'resetInput',
-      'sendTouch',
-      'sendGamepad',
-      'getRuntimeStatus',
-      'resetRuntime',
-    ]
+  const capabilities = await registry.execute({
+    command: 'preview.qa.capabilities',
+    input: {},
+  });
+  assert.equal(
+    capabilities.data.deterministicGameplay.inputReplay.supported,
+    true
   );
+  await registry.execute({
+    command: 'preview.input.record.start',
+    input: { previewWindowId: 2, recordingId: 'walk' },
+  });
+  await registry.execute({
+    command: 'preview.input.record.send',
+    input: { previewWindowId: 2, event: { type: 'keyDown', keyCode: 'W' } },
+  });
+  await registry.execute({
+    command: 'preview.input.record.stop',
+    input: { recordingId: 'walk' },
+  });
+  await registry.execute({
+    command: 'preview.input.replay',
+    input: { previewWindowId: 2, recordingId: 'walk' },
+  });
+  await registry.execute({
+    command: 'preview.visual.baseline.capture',
+    input: { previewWindowId: 2, baselineId: 'menu' },
+  });
+  await registry.execute({
+    command: 'preview.visual.baseline.compare',
+    input: { previewWindowId: 2, baselineId: 'menu' },
+  });
+
+  assert.deepEqual(calls.map(call => call[0]), [
+    'capture',
+    'sendInput',
+    'sendSequence',
+    'resetInput',
+    'sendTouch',
+    'sendGamepad',
+    'getRuntimeStatus',
+    'resetRuntime',
+    'recordStart',
+    'recordSend',
+    'recordStop',
+    'replay',
+    'baselineCapture',
+    'baselineCompare',
+  ]);
 });
 
 test('rejects unknown desktop commands', async () => {
   const registry = createDesktopCommandRegistry({
     windowCaptureService: {},
     previewInteractionService: {},
+    previewQaService: {},
   });
   await assert.rejects(
     registry.execute({ command: 'desktop.missing', input: {} }),

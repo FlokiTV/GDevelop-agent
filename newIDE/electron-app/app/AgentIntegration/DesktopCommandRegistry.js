@@ -205,6 +205,106 @@ const DESCRIPTORS = [
     },
     metadata: metadata({ idempotent: true }),
   },
+  {
+    name: 'preview.qa.capabilities',
+    description:
+      'Describe deterministic gameplay, input replay, visual regression and device simulation capabilities without claiming unsupported runtime controls.',
+    inputSchema: emptyObjectSchema(),
+    metadata: metadata({ readOnly: true, idempotent: true }),
+  },
+  {
+    name: 'preview.input.record.start',
+    description:
+      'Start a bounded normalized keyboard/mouse recording for one preview.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['previewWindowId'],
+      properties: {
+        previewWindowId: PREVIEW_WINDOW_SCHEMA,
+        recordingId: { type: 'string', minLength: 1, maxLength: 120 },
+      },
+    },
+    metadata: metadata(),
+  },
+  {
+    name: 'preview.input.record.send',
+    description:
+      'Send and append one normalized keyboard/mouse event to the active recording.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['previewWindowId', 'event'],
+      properties: {
+        previewWindowId: PREVIEW_WINDOW_SCHEMA,
+        event: { type: 'object', required: ['type'] },
+      },
+    },
+    metadata: metadata(),
+  },
+  {
+    name: 'preview.input.record.stop',
+    description:
+      'Stop the active recording and return its portable normalized sequence.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: { recordingId: { type: 'string' } },
+    },
+    metadata: metadata(),
+  },
+  {
+    name: 'preview.input.replay',
+    description:
+      'Replay a recorded normalized sequence against a preview, resetting synthetic runtime/input state first by default.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['previewWindowId', 'recordingId'],
+      properties: {
+        previewWindowId: PREVIEW_WINDOW_SCHEMA,
+        recordingId: { type: 'string', minLength: 1 },
+        resetBefore: { type: 'boolean' },
+      },
+    },
+    metadata: metadata({ longRunning: true }),
+  },
+  {
+    name: 'preview.visual.baseline.capture',
+    description:
+      'Capture a bounded preview PNG baseline in process memory and return its SHA-256 identity.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['previewWindowId', 'baselineId'],
+      properties: {
+        previewWindowId: PREVIEW_WINDOW_SCHEMA,
+        baselineId: { type: 'string', minLength: 1, maxLength: 120 },
+        region: { type: 'object' },
+        maxWidth: { type: 'integer', minimum: 1, maximum: 8192 },
+        maxHeight: { type: 'integer', minimum: 1, maximum: 8192 },
+      },
+    },
+    metadata: metadata({ readOnly: true }),
+  },
+  {
+    name: 'preview.visual.baseline.compare',
+    description:
+      'Capture the preview and compare it with a stored baseline using exact PNG SHA-256 equality.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['previewWindowId', 'baselineId'],
+      properties: {
+        previewWindowId: PREVIEW_WINDOW_SCHEMA,
+        baselineId: { type: 'string', minLength: 1 },
+        region: { type: 'object' },
+        maxWidth: { type: 'integer', minimum: 1, maximum: 8192 },
+        maxHeight: { type: 'integer', minimum: 1, maximum: 8192 },
+      },
+    },
+    metadata: metadata({ readOnly: true }),
+  },
 ];
 
 const makeResult = (descriptor, data) => ({
@@ -219,6 +319,7 @@ const makeResult = (descriptor, data) => ({
 const createDesktopCommandRegistry = ({
   windowCaptureService,
   previewInteractionService,
+  previewQaService,
 }) => {
   const handlers = {
     'desktop.windows.list': () => windowCaptureService.listWindows(),
@@ -247,6 +348,18 @@ const createDesktopCommandRegistry = ({
       previewInteractionService.getRuntimeStatus(input || {}),
     'preview.input.runtime-reset': input =>
       previewInteractionService.resetRuntime(input || {}),
+    'preview.qa.capabilities': () => previewQaService.capabilities(),
+    'preview.input.record.start': input =>
+      previewQaService.startRecording(input || {}),
+    'preview.input.record.send': input =>
+      previewQaService.sendAndRecord(input || {}),
+    'preview.input.record.stop': input =>
+      previewQaService.stopRecording(input || {}),
+    'preview.input.replay': input => previewQaService.replay(input || {}),
+    'preview.visual.baseline.capture': input =>
+      previewQaService.captureBaseline(input || {}),
+    'preview.visual.baseline.compare': input =>
+      previewQaService.compareBaseline(input || {}),
   };
   const descriptorsByName = new Map(
     DESCRIPTORS.map(descriptor => [descriptor.name, descriptor])

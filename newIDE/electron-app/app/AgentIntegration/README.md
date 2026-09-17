@@ -145,10 +145,13 @@ The registry currently exposes command families for:
 - runtime observation: `runtime.status`, `runtime.snapshot`, `runtime.logs`, `runtime.assert`, `runtime.wait-for`;
 - desktop windows/capture: `desktop.windows.list`, `desktop.window.capture`;
 - preview input: `preview.input.*`;
+- preview QA: `preview.qa.capabilities`, `preview.input.record.*`, `preview.input.replay`, `preview.visual.baseline.*`;
 - build target/configuration discovery and authenticated remote build lifecycle: `build.targets.list`, `build.configuration.*`, `build.start`, `build.status`, `build.cancel`, `build.result`;
 - local HTML5 output: `export.html5`.
 
 `desktop.window.capture` is returned as MCP `image/png` content instead of embedding PNG bytes in a JSON text payload.
+
+`preview.qa.capabilities` is capability-driven: normalized keyboard/mouse record/replay, runtime reset and exact PNG SHA-256 baselines are available. Fixed timestep, seeded randomness, decoded pixel-tolerance/ignore-region comparison and content viewport/DPR/orientation/safe-area emulation are reported as unsupported until the preview runtime exposes reliable primitives for them.
 
 ## Recommended live-editing loop
 
