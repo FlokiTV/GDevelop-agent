@@ -47,8 +47,8 @@ jobs:
         run: npm ci --ignore-scripts
 
       - name: Prepare renderer test libGD
-        working-directory: newIDE/app
-        run: node scripts/import-libGD.js
+        working-directory: newIDE/app/scripts
+        run: node import-libGD.js
 
       - name: Renderer characterization and boundaries
         working-directory: newIDE/app
