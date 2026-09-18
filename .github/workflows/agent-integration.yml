@@ -29,6 +29,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Fetch upstream master for architecture guard
+        run: git fetch https://github.com/4ian/GDevelop.git master:refs/remotes/upstream/master
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
