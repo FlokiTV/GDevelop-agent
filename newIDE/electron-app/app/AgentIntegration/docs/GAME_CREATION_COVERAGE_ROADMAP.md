@@ -456,6 +456,10 @@ This benchmark is the completion gate for the roadmap, not merely protocol unit 
 
 **Completion evidence (2026-09-18):** `McpAutonomousBenchmarkLiveScenario.js` passed against a fresh packaged Windows build using only the public MCP endpoint. The run negotiated protocol `2026-07-28` with 211 tools; discovered the Sprite structural capability and a zero-parameter scene condition rather than hard-coding model identifiers; consumed documentation and Resource Store metadata; authored a scene, structured object, extension action, external events and external layout; validated one live runtime instance with `runtime.assert`, exact visual baseline comparison and profiling; saved and exported HTML5; completed the available `web-online` build with an artifact URL; reconnected the MCP client without losing the live project; and restored a post-reconnect transaction rollback without using project close/reopen as a normal synchronization mechanism. Generated replay/evidence artifacts are intentionally transient and are not committed.
 
+## Post-roadmap hardening
+
+CAP-01 through CAP-25 define the completed functional coverage roadmap. Ongoing upstream maintenance, re-certification and known optional boundaries are tracked separately in [`MCP_POST_ROADMAP_HARDENING.md`](./MCP_POST_ROADMAP_HARDENING.md). The first follow-up is CAP-26 / Continuous MCP Certification: re-certify the current upstream-merged `master`, emit a machine-readable certification manifest, classify schema/capability drift and add tiered CI so future upstream merges cannot silently regress the product-level autonomous workflow.
+
 ---
 
 # Work sequencing and dependencies
