@@ -8,6 +8,7 @@ import { AgentHost } from './AgentHost';
 import { makeCommandMetadata } from './CommandRegistry';
 import { createCoreCommandDescriptors } from './CoreCommands';
 import { ProjectRevisionTracker } from './ProjectRevisionTracker';
+import { SemanticConcurrency } from './SemanticConcurrency';
 
 const makeDescriptor = (name, overrides = {}) => ({
   name,
@@ -183,6 +184,63 @@ describe('AgentHost', () => {
     expect(read.meta.projectRevision).toBe(1);
   });
 
+  it('enforces granular semantic revisions and owner-aware leases in addition to project revision', async () => {
+    const semanticConcurrency = new SemanticConcurrency();
+    const execute = jest.fn(() => ({ created: true }));
+    const host = new AgentHost({
+      environment: { project: {}, semanticConcurrency },
+      descriptors: [
+        makeDescriptor('scene.create', {
+          metadata: makeCommandMetadata({
+            readOnly: false,
+            idempotent: false,
+            requiresProject: true,
+            modifiesProject: true,
+            semanticScopes: ['scenes'],
+          }),
+          execute,
+        }),
+      ],
+    });
+
+    const first = await host.execute(
+      'scene.create',
+      {},
+      {
+        expectedSemanticRevisions: { scenes: 0 },
+      }
+    );
+    expect(first.meta.semanticRevisions).toEqual([
+      { scope: 'scenes', revision: 1 },
+    ]);
+    await expect(
+      host.execute(
+        'scene.create',
+        {},
+        {
+          expectedSemanticRevisions: { scenes: 0 },
+        }
+      )
+    ).rejects.toMatchObject({ code: 'revision_conflict' });
+
+    const lease = semanticConcurrency.acquireLease({
+      scope: 'scenes',
+      owner: 'client-a',
+      ttlMs: 5000,
+    });
+    await expect(host.execute('scene.create', {})).rejects.toMatchObject({
+      code: 'semantic_scope_locked',
+    });
+    await expect(
+      host.execute('scene.create', {}, { semanticLeaseOwner: 'client-a' })
+    ).resolves.toMatchObject({ data: { created: true } });
+    semanticConcurrency.releaseLease({
+      scope: 'scenes',
+      owner: 'client-a',
+      leaseId: lease.leaseId,
+    });
+  });
+
   it('deduplicates retries with idempotencyKey and rejects key reuse with different input', async () => {
     const execute = jest.fn(async ({ input }) => ({ created: input.name }));
     const host = new AgentHost({
@@ -330,6 +388,7 @@ describe('core commands', () => {
 
     const list = await host.execute('agent.commands.list', { query: 'status' });
     expect(list.data.commands.map(command => command.name)).toEqual([
+      'agent.concurrency.status',
       'project.status',
     ]);
 
@@ -339,7 +398,7 @@ describe('core commands', () => {
     expect(description.data.command.metadata.readOnly).toBe(true);
 
     const capabilities = await host.execute('agent.capabilities');
-    expect(capabilities.data.commandCount).toBe(4);
-    expect(capabilities.data.commands).toHaveLength(4);
+    expect(capabilities.data.commandCount).toBe(8);
+    expect(capabilities.data.commands).toHaveLength(8);
   });
 });

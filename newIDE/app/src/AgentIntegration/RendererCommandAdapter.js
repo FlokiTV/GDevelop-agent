@@ -39,6 +39,8 @@ export const attachRendererAgentHostToIpc = ({
       traceId?: string,
       traceContext?: any,
       expectedRevision?: number,
+      expectedSemanticRevisions?: { [string]: number },
+      semanticLeaseOwner?: string,
       idempotencyKey?: string,
     |}
   ) => {
@@ -49,6 +51,8 @@ export const attachRendererAgentHostToIpc = ({
       traceId,
       traceContext,
       expectedRevision,
+      expectedSemanticRevisions,
+      semanticLeaseOwner,
       idempotencyKey,
     } = payload || {};
     if (!requestId || typeof requestId !== 'string') return;
@@ -66,6 +70,14 @@ export const attachRendererAgentHostToIpc = ({
           : {}),
         ...(Number.isInteger(expectedRevision) && expectedRevision >= 0
           ? { expectedRevision }
+          : {}),
+        ...(expectedSemanticRevisions &&
+        typeof expectedSemanticRevisions === 'object' &&
+        !Array.isArray(expectedSemanticRevisions)
+          ? { expectedSemanticRevisions }
+          : {}),
+        ...(typeof semanticLeaseOwner === 'string' && semanticLeaseOwner
+          ? { semanticLeaseOwner }
           : {}),
         ...(typeof idempotencyKey === 'string' && idempotencyKey
           ? { idempotencyKey }

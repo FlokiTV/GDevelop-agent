@@ -15,6 +15,7 @@ export type CommandResult = {|
     readOnly: boolean,
     modifiesProject: boolean,
     projectRevision: ?number,
+    semanticRevisions?: Array<any>,
     durationMs: number,
     idempotencyReplayed: boolean,
   |},
@@ -101,6 +102,12 @@ export class AgentHost {
     const normalizedInput = normalizeInput(input);
     const environment = this._environment || {};
     const revisionTracker = environment.projectRevisionTracker || null;
+    const semanticConcurrency = environment.semanticConcurrency || null;
+    const semanticScopes = Array.isArray(descriptor.metadata.semanticScopes)
+      ? descriptor.metadata.semanticScopes
+      : descriptor.metadata.modifiesProject
+      ? ['project']
+      : [];
     const readCurrentRevision = () =>
       revisionTracker ? revisionTracker.synchronize() : null;
 
@@ -156,6 +163,15 @@ export class AgentHost {
       }
 
       try {
+        if (descriptor.metadata.modifiesProject && semanticConcurrency) {
+          semanticConcurrency.assertExpected(
+            requestContext.expectedSemanticRevisions
+          );
+          semanticConcurrency.assertLeaseAccess(
+            semanticScopes,
+            requestContext.semanticLeaseOwner || null
+          );
+        }
         if (descriptor.validateInput) descriptor.validateInput(normalizedInput);
         const data = await descriptor.execute({
           environment,
@@ -168,7 +184,13 @@ export class AgentHost {
             ? revisionTracker.markMutation()
             : null
           : readCurrentRevision();
-        return { data, projectRevision };
+        const semanticRevisions =
+          descriptor.metadata.modifiesProject && semanticConcurrency
+            ? semanticConcurrency.mark(semanticScopes)
+            : semanticConcurrency
+            ? semanticConcurrency.snapshot(semanticScopes)
+            : [];
+        return { data, projectRevision, semanticRevisions };
       } catch (error) {
         const normalizedError = normalizeAgentError(error);
         if (
@@ -212,6 +234,9 @@ export class AgentHost {
         readOnly: descriptor.metadata.readOnly,
         modifiesProject: descriptor.metadata.modifiesProject,
         projectRevision: execution.projectRevision,
+        ...(execution.semanticRevisions && execution.semanticRevisions.length
+          ? { semanticRevisions: execution.semanticRevisions }
+          : {}),
         durationMs: Math.max(0, Date.now() - startedAt),
         idempotencyReplayed,
       },

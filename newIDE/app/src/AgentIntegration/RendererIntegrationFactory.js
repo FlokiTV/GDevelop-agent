@@ -24,7 +24,13 @@ import { createValidationService } from './editor/ValidationService';
 import { createPreviewService } from './runtime/PreviewService';
 import { createRuntimeDiagnosticsService } from './runtime/RuntimeDiagnosticsService';
 import { createSafetyService } from './safety/SafetyService';
+import { SemanticConcurrency } from './core/SemanticConcurrency';
 import { createRendererAgentHost } from './RendererAgentHost';
+
+const semanticConcurrencyByProject: WeakMap<
+  any,
+  SemanticConcurrency
+> = new WeakMap();
 
 const gd: libGDevelop = global.gd;
 
@@ -133,6 +139,13 @@ export const createRendererIntegration = ({
   clearGameplayTestFramePreview,
   documentObject,
 }: Options) => {
+  let semanticConcurrency = project
+    ? semanticConcurrencyByProject.get(project)
+    : undefined;
+  if (!semanticConcurrency) {
+    semanticConcurrency = new SemanticConcurrency();
+    if (project) semanticConcurrencyByProject.set(project, semanticConcurrency);
+  }
   const assetTools = project
     ? createAssetTools({
         project,
@@ -347,6 +360,7 @@ export const createRendererIntegration = ({
         fileIdentifier,
         hasUnsavedChanges,
         projectRevisionTracker,
+        semanticConcurrency,
         getProjectStatus: () => ({
           projectOpen: !!project,
           fileIdentifier,

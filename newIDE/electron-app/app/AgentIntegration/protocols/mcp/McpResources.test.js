@@ -6,7 +6,11 @@ const {
 } = require('@modelcontextprotocol/client');
 const { PROTOCOL_VERSION } = require('./McpServerFactory');
 const { startMcpHttpServer } = require('./McpHttpServer');
-const { RESOURCE_DEFINITIONS, toResourceContents } = require('./McpResources');
+const {
+  RESOURCE_DEFINITIONS,
+  toResourceContents,
+  notifyGDevelopResourcesUpdated,
+} = require('./McpResources');
 
 const connectClient = async ({ url, token, windowId }) => {
   const client = new Client(
@@ -30,6 +34,11 @@ test('resource catalog is deterministic and serializes command envelopes as JSON
     'gdevelop://project/status',
     'gdevelop://editor/visual',
     'gdevelop://project/resources',
+    'gdevelop://types/objects',
+    'gdevelop://types/behaviors',
+    'gdevelop://types/effects',
+    'gdevelop://runtime/status',
+    'gdevelop://project/concurrency',
   ]);
   const result = toResourceContents(RESOURCE_DEFINITIONS[0], {
     command: 'project.status',
@@ -42,6 +51,25 @@ test('resource catalog is deterministic and serializes command envelopes as JSON
   assert.deepEqual(JSON.parse(result.contents[0].text).data, {
     projectOpen: true,
   });
+});
+
+test('routes resource update notifications to semantic resource families', async () => {
+  const sent = [];
+  const server = {
+    server: {
+      sendResourceUpdated: async ({ uri }) => sent.push(uri),
+    },
+  };
+  const resources = await notifyGDevelopResourcesUpdated({
+    server,
+    command: 'resources.rename',
+  });
+  assert.deepEqual(resources, [
+    'gdevelop://project/status',
+    'gdevelop://project/resources',
+    'gdevelop://project/concurrency',
+  ]);
+  assert.deepEqual(sent, resources);
 });
 
 test('official MCP client lists and reads fresh targeted GDevelop resources', async () => {

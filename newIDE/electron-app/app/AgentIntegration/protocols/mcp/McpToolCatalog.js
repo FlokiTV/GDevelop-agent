@@ -24,6 +24,18 @@ const withCommandResultEnvelope = outputSchema => {
           projectRevision: {
             anyOf: [{ type: 'integer', minimum: 0 }, { type: 'null' }],
           },
+          semanticRevisions: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['scope', 'revision'],
+              properties: {
+                scope: { type: 'string' },
+                revision: { type: 'integer', minimum: 0 },
+              },
+            },
+          },
         },
       },
     },
@@ -46,6 +58,19 @@ const withRevisionPrecondition = (inputSchema, modifiesProject) => {
         minimum: 0,
         description:
           'Optional optimistic concurrency precondition. The command fails with revision_conflict if the open project changed since this revision was read.',
+      },
+      expectedSemanticRevisions: {
+        type: 'object',
+        additionalProperties: { type: 'integer', minimum: 0 },
+        description:
+          'Optional granular optimistic concurrency preconditions keyed by semantic scope. Project-wide expectedRevision remains the safety net.',
+      },
+      semanticLeaseOwner: {
+        type: 'string',
+        minLength: 1,
+        maxLength: 200,
+        description:
+          'Optional owner id used to access semantic scopes currently leased by this client.',
       },
       idempotencyKey: {
         type: 'string',

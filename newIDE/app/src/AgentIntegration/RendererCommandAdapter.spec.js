@@ -41,6 +41,8 @@ describe('RendererCommandAdapter', () => {
         baggage: 'feature=agent',
       },
       expectedRevision: 7,
+      expectedSemanticRevisions: { project: 3 },
+      semanticLeaseOwner: 'client-a',
       idempotencyKey: 'retry-1',
     });
 
@@ -56,6 +58,8 @@ describe('RendererCommandAdapter', () => {
           baggage: 'feature=agent',
         },
         expectedRevision: 7,
+        expectedSemanticRevisions: { project: 3 },
+        semanticLeaseOwner: 'client-a',
         idempotencyKey: 'retry-1',
         signal: expect.anything(),
       }

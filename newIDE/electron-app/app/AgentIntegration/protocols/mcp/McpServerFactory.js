@@ -2,7 +2,10 @@ const crypto = require('crypto');
 const { McpServer } = require('@modelcontextprotocol/server');
 const { descriptorsToToolRegistrations } = require('./McpToolCatalog');
 const { registerGDevelopPrompts } = require('./McpPrompts');
-const { registerGDevelopResources } = require('./McpResources');
+const {
+  registerGDevelopResources,
+  notifyGDevelopResourcesUpdated,
+} = require('./McpResources');
 const {
   registerOperationsResource,
   sendProgress,
@@ -150,6 +153,8 @@ const createMcpServerFactory = ({
             input && typeof input === 'object' ? input : {};
           const {
             expectedRevision,
+            expectedSemanticRevisions,
+            semanticLeaseOwner,
             idempotencyKey,
             ...commandInput
           } = normalizedInput;
@@ -267,6 +272,17 @@ const createMcpServerFactory = ({
                 ? { expectedRevision }
                 : {}),
               ...(registration.modifiesProject &&
+              expectedSemanticRevisions &&
+              typeof expectedSemanticRevisions === 'object' &&
+              !Array.isArray(expectedSemanticRevisions)
+                ? { expectedSemanticRevisions }
+                : {}),
+              ...(registration.modifiesProject &&
+              typeof semanticLeaseOwner === 'string' &&
+              semanticLeaseOwner
+                ? { semanticLeaseOwner }
+                : {}),
+              ...(registration.modifiesProject &&
               typeof idempotencyKey === 'string' &&
               idempotencyKey
                 ? { idempotencyKey }
@@ -274,6 +290,12 @@ const createMcpServerFactory = ({
               timeoutMs: registration.timeoutMs,
               signal: requestSignal,
               ...targeting,
+            });
+          }
+          if (registration.modifiesProject) {
+            await notifyGDevelopResourcesUpdated({
+              server,
+              command: registration.name,
             });
           }
           const durationMs = Math.max(0, Date.now() - startedAt);

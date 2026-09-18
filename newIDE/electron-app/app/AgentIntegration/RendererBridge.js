@@ -101,6 +101,8 @@ const createRendererBridge = ({
     traceId,
     traceContext,
     expectedRevision,
+    expectedSemanticRevisions,
+    semanticLeaseOwner,
     idempotencyKey,
     projectPath,
     windowId,
@@ -164,6 +166,14 @@ const createRendererBridge = ({
           : {}),
         ...(Number.isInteger(expectedRevision) && expectedRevision >= 0
           ? { expectedRevision }
+          : {}),
+        ...(expectedSemanticRevisions &&
+        typeof expectedSemanticRevisions === 'object' &&
+        !Array.isArray(expectedSemanticRevisions)
+          ? { expectedSemanticRevisions }
+          : {}),
+        ...(typeof semanticLeaseOwner === 'string' && semanticLeaseOwner
+          ? { semanticLeaseOwner }
           : {}),
         ...(typeof idempotencyKey === 'string' && idempotencyKey
           ? { idempotencyKey }

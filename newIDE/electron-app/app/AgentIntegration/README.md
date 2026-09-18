@@ -148,6 +148,8 @@ The registry currently exposes command families for:
 - preview QA: `preview.qa.capabilities`, `preview.input.record.*`, `preview.input.replay`, `preview.visual.baseline.*`;
 - multiplayer preview orchestration: `preview.multiplayer.capabilities`, `preview.multiplayer.clients.*`, `preview.multiplayer.batch`, `preview.multiplayer.runtime-status`;
 - bounded network diagnostics: `preview.network.capabilities`, `preview.network.capture.*`;
+- granular concurrency: `agent.concurrency.capabilities`, `agent.concurrency.status`, `agent.concurrency.lease.*`;
+- rich live MCP resources for project/editor/resources/types/runtime/concurrency, with `notifications/resources/updated` after relevant successful mutations;
 - build target/configuration discovery and authenticated remote build lifecycle: `build.targets.list`, `build.configuration.*`, `build.start`, `build.status`, `build.cancel`, `build.result`;
 - local HTML5 output: `export.html5`.
 
@@ -188,6 +190,8 @@ Checkpoints and transactions are in-memory safety mechanisms. They are not a rep
 ## Revisions, retries and recovery
 
 Every project mutation is evaluated against the live in-memory revision. Mutating MCP schemas accept an optional `expectedRevision`; a stale precondition fails with `revision_conflict` instead of overwriting a user or another agent's intervening change. Mutations may also carry an `idempotencyKey`: retrying the same command with the same key and input returns the original result, while reusing the key with different input is rejected.
+
+CAP-22/23 adds optional semantic concurrency without weakening that project-wide safety net. Mutating tools accept `expectedSemanticRevisions` keyed by descriptor-declared scope (falling back to `project`); successful mutations advance only their semantic scopes and return the resulting revisions in command metadata. `agent.concurrency.lease.acquire/release` provides process-local owner-aware leases with bounded TTL (1–300 seconds). Leases are cooperative concurrency controls, never persisted in the project, and a foreign mutation against a leased scope fails with `semantic_scope_locked`. The MCP resource catalog exposes live project/editor/resource/type/runtime/concurrency snapshots, and the installed MCP SDK's `notifications/resources/updated` primitive is used best-effort after relevant successful mutations so subscribed clients can refresh without polling every resource.
 
 Risky multi-step work should use explicit `safety.*` checkpoint/transaction handles. Handles are application state, not transport-session state, so reconnecting an MCP client does not require reopening the project. Long-running commands expose a bounded process-local `operationId` through result metadata and `gdevelop://mcp/operations`; completed/cancelled status remains queryable by a fresh client while the same GDevelop process is alive.
 
@@ -256,6 +260,13 @@ For CAP-20/21, `McpMultiplayerNetworkLiveScenario.js` creates a temporary projec
 ```text
 cd newIDE/electron-app
 node app/AgentIntegration/scripts/McpMultiplayerNetworkLiveScenario.js --allow-mutate
+```
+
+For CAP-22/23, `McpConcurrencyResourcesLiveScenario.js` verifies the packaged editor's granular concurrency and rich-resource contract: it acquires a project-scope lease, proves a foreign mutation is rejected, performs a mutation with both project-wide and semantic revision preconditions as the lease owner, verifies the semantic revision advances, reads every rich resource through the official MCP client, releases the lease and rolls the project transaction back without reopening the project.
+
+```text
+cd newIDE/electron-app
+node app/AgentIntegration/scripts/McpConcurrencyResourcesLiveScenario.js --allow-mutate
 ```
 
 ## Compatibility and tests

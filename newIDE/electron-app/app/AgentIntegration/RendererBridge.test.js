@@ -54,6 +54,8 @@ test('executes commands only over AgentIntegration channels', async () => {
     traceId: 'trace-1',
     traceContext,
     expectedRevision: 7,
+    expectedSemanticRevisions: { project: 3 },
+    semanticLeaseOwner: 'client-a',
     idempotencyKey: 'retry-1',
   });
   assert.deepEqual(fixture.sent[0], {
@@ -65,6 +67,8 @@ test('executes commands only over AgentIntegration channels', async () => {
       traceId: 'trace-1',
       traceContext,
       expectedRevision: 7,
+      expectedSemanticRevisions: { project: 3 },
+      semanticLeaseOwner: 'client-a',
       idempotencyKey: 'retry-1',
     },
   });

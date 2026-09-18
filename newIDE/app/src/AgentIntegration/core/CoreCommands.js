@@ -1,9 +1,6 @@
 // @flow
 import { AgentError } from './AgentError';
-import {
-  makeCommandMetadata,
-  type CommandDescriptor,
-} from './CommandRegistry';
+import { makeCommandMetadata, type CommandDescriptor } from './CommandRegistry';
 
 const EMPTY_OBJECT_SCHEMA = {
   type: 'object',
@@ -62,7 +59,8 @@ export const createCoreCommandDescriptors = (): Array<CommandDescriptor> => [
   },
   {
     name: 'agent.commands.list',
-    description: 'List registered AgentIntegration commands in deterministic order.',
+    description:
+      'List registered AgentIntegration commands in deterministic order.',
     inputSchema: {
       type: 'object',
       additionalProperties: false,
@@ -114,6 +112,104 @@ export const createCoreCommandDescriptors = (): Array<CommandDescriptor> => [
     },
     execute: ({ input, registry }) => ({
       command: registry.describe(input.name),
+    }),
+  },
+  {
+    name: 'agent.concurrency.capabilities',
+    description:
+      'Describe granular semantic revision and bounded lease concurrency support.',
+    inputSchema: EMPTY_OBJECT_SCHEMA,
+    metadata: DISCOVERY_METADATA,
+    execute: ({ environment }) => ({
+      semanticRevisions: { supported: !!environment.semanticConcurrency },
+      semanticLeases: {
+        supported: !!environment.semanticConcurrency,
+        processLocal: true,
+        persisted: false,
+        minTtlMs: 1000,
+        maxTtlMs: 300000,
+      },
+      projectRevisionSafetyNet: true,
+    }),
+  },
+  {
+    name: 'agent.concurrency.status',
+    description:
+      'Read semantic scope revisions and active bounded leases for the live project.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        scopes: {
+          type: 'array',
+          items: { type: 'string', minLength: 1 },
+          maxItems: 100,
+        },
+      },
+    },
+    metadata: makeCommandMetadata({ requiresProject: true }),
+    execute: ({ environment, input }) => {
+      const concurrency = environment.semanticConcurrency;
+      if (!concurrency) return { supported: false, scopes: [], leases: [] };
+      const scopes =
+        Array.isArray(input.scopes) && input.scopes.length
+          ? input.scopes
+          : ['project'];
+      return {
+        supported: true,
+        scopes: concurrency.snapshot(scopes),
+        leases: concurrency.listLeases(),
+      };
+    },
+  },
+  {
+    name: 'agent.concurrency.lease.acquire',
+    description:
+      'Acquire or renew a process-local bounded semantic lease for a project scope.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['scope', 'owner'],
+      properties: {
+        scope: { type: 'string', minLength: 1 },
+        owner: { type: 'string', minLength: 1 },
+        ttlMs: {
+          type: 'integer',
+          minimum: 1000,
+          maximum: 300000,
+          default: 30000,
+        },
+      },
+    },
+    metadata: makeCommandMetadata({
+      requiresProject: true,
+      readOnly: false,
+      idempotent: false,
+    }),
+    execute: ({ environment, input }) => ({
+      lease: environment.semanticConcurrency.acquireLease(input),
+    }),
+  },
+  {
+    name: 'agent.concurrency.lease.release',
+    description: 'Release a semantic lease owned by the caller.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['scope', 'owner', 'leaseId'],
+      properties: {
+        scope: { type: 'string', minLength: 1 },
+        owner: { type: 'string', minLength: 1 },
+        leaseId: { type: 'string', minLength: 1 },
+      },
+    },
+    metadata: makeCommandMetadata({
+      requiresProject: true,
+      readOnly: false,
+      idempotent: true,
+    }),
+    execute: ({ environment, input }) => ({
+      released: environment.semanticConcurrency.releaseLease(input),
     }),
   },
   {

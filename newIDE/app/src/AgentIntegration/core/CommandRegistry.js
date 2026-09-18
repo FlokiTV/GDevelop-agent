@@ -11,6 +11,7 @@ export type CommandMetadata = {|
   defaultTimeoutMs?: number,
   cacheScope?: 'process' | 'project-revision' | 'request',
   ttlMs?: number,
+  semanticScopes?: Array<string>,
 |};
 
 export type CommandExecutionContext = {|
@@ -116,10 +117,23 @@ const assertDescriptor = (descriptor: CommandDescriptor) => {
   }
   if (
     descriptor.metadata.ttlMs !== undefined &&
-    (!Number.isFinite(descriptor.metadata.ttlMs) || descriptor.metadata.ttlMs < 0)
+    (!Number.isFinite(descriptor.metadata.ttlMs) ||
+      descriptor.metadata.ttlMs < 0)
   ) {
     throw new AgentError({
       code: 'invalid_command_ttl',
+      details: { name: descriptor.name },
+    });
+  }
+  if (
+    descriptor.metadata.semanticScopes !== undefined &&
+    (!Array.isArray(descriptor.metadata.semanticScopes) ||
+      descriptor.metadata.semanticScopes.some(
+        scope => typeof scope !== 'string' || !scope.trim()
+      ))
+  ) {
+    throw new AgentError({
+      code: 'invalid_command_semantic_scopes',
       details: { name: descriptor.name },
     });
   }
