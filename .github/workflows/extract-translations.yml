@@ -14,6 +14,9 @@ on:
 jobs:
   extract-translations:
     runs-on: ubuntu-latest
+    env:
+      CROWDIN_PROJECT_ID: ${{ secrets.CROWDIN_PROJECT_ID }}
+      CROWDIN_PERSONAL_TOKEN: ${{ secrets.CROWDIN_PERSONAL_TOKEN }}
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-node@v3
@@ -35,12 +38,13 @@ jobs:
 
       # Only upload on Crowdin for the master branch
       - name: Install Crowdin CLI
-        if: github.ref == 'refs/heads/master'
+        if: github.ref == 'refs/heads/master' && env.CROWDIN_PROJECT_ID != '' && env.CROWDIN_PERSONAL_TOKEN != ''
         run: npm i -g @crowdin/cli
 
       - name: Upload translations to Crowdin
+        if: github.ref == 'refs/heads/master' && env.CROWDIN_PROJECT_ID != '' && env.CROWDIN_PERSONAL_TOKEN != ''
         run: crowdin upload sources
-        if: github.ref == 'refs/heads/master'
-        env:
-          CROWDIN_PROJECT_ID: ${{ secrets.CROWDIN_PROJECT_ID }}
-          CROWDIN_PERSONAL_TOKEN: ${{ secrets.CROWDIN_PERSONAL_TOKEN }}
+
+      - name: Skip Crowdin upload when credentials are unavailable
+        if: github.ref == 'refs/heads/master' && (env.CROWDIN_PROJECT_ID == '' || env.CROWDIN_PERSONAL_TOKEN == '')
+        run: echo "Crowdin credentials are not configured; translation extraction succeeded and upload is skipped."

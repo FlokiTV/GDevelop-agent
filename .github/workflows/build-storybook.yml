@@ -20,6 +20,10 @@ on:
 jobs:
   build-storybook:
     runs-on: ubuntu-latest
+    env:
+      BUILD_STORYBOOK_AWS_ACCESS_KEY_ID: ${{ secrets.BUILD_STORYBOOK_AWS_ACCESS_KEY_ID }}
+      BUILD_STORYBOOK_AWS_SECRET_ACCESS_KEY: ${{ secrets.BUILD_STORYBOOK_AWS_SECRET_ACCESS_KEY }}
+      CHROMATIC_PROJECT_TOKEN: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
     steps:
       - uses: actions/checkout@v3
         with:
@@ -32,10 +36,11 @@ jobs:
           cache-dependency-path: "newIDE/app/package-lock.json"
 
       - name: Configure AWS Credentials
+        if: env.BUILD_STORYBOOK_AWS_ACCESS_KEY_ID != '' && env.BUILD_STORYBOOK_AWS_SECRET_ACCESS_KEY != ''
         uses: aws-actions/configure-aws-credentials@v2
         with:
-          aws-access-key-id: ${{ secrets.BUILD_STORYBOOK_AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.BUILD_STORYBOOK_AWS_SECRET_ACCESS_KEY }}
+          aws-access-key-id: ${{ env.BUILD_STORYBOOK_AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ env.BUILD_STORYBOOK_AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
       - name: Install newIDE dependencies
@@ -48,24 +53,27 @@ jobs:
 
       # Publish on S3 to allow quick testing of components.
       - name: Publish Storybook to S3 bucket (specific commit)
+        if: env.BUILD_STORYBOOK_AWS_ACCESS_KEY_ID != '' && env.BUILD_STORYBOOK_AWS_SECRET_ACCESS_KEY != ''
         run: aws s3 sync ./build-storybook/ s3://gdevelop-storybook/$(git rev-parse --abbrev-ref HEAD)/commit/$(git rev-parse HEAD)/ --delete
         working-directory: newIDE/app
 
       - name: Publish Storybook to S3 bucket (latest)
+        if: env.BUILD_STORYBOOK_AWS_ACCESS_KEY_ID != '' && env.BUILD_STORYBOOK_AWS_SECRET_ACCESS_KEY != ''
         run: aws s3 sync ./build-storybook/ s3://gdevelop-storybook/$(git rev-parse --abbrev-ref HEAD)/latest/ --delete
         working-directory: newIDE/app
 
       - name: Log urls to the Storybook
+        if: env.BUILD_STORYBOOK_AWS_ACCESS_KEY_ID != '' && env.BUILD_STORYBOOK_AWS_SECRET_ACCESS_KEY != ''
         run: |
           echo "Find the latest Storybook for this branch on https://gdevelop-storybook.s3.amazonaws.com/$(git rev-parse --abbrev-ref HEAD)/latest/index.html"
           echo "Find the Storybook for this commit on https://gdevelop-storybook.s3.amazonaws.com/$(git rev-parse --abbrev-ref HEAD)/commit/$(git rev-parse HEAD)/index.html"
 
       # Publish on Chromatic, only when manually launched (too costly to run on every commit).
       - name: Publish Storybook to Chromatic
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch' && env.CHROMATIC_PROJECT_TOKEN != ''
         uses: chromaui/action@v1
         with:
           workingDir: newIDE/app
           storybookBuildDir: "build-storybook"
           token: ${{ secrets.GITHUB_TOKEN }}
-          projectToken: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
+          projectToken: ${{ env.CHROMATIC_PROJECT_TOKEN }}
