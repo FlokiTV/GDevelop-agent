@@ -12,6 +12,7 @@ const READ_ONLY_PROBE_TOOLS = [
   'desktop.windows.list',
   'editor.visual.status',
   'preview.status',
+  'publication.integrations.list',
   'runtime.status',
 ];
 

@@ -150,7 +150,8 @@ The registry currently exposes command families for:
 - bounded network diagnostics: `preview.network.capabilities`, `preview.network.capture.*`;
 - granular concurrency: `agent.concurrency.capabilities`, `agent.concurrency.status`, `agent.concurrency.lease.*`;
 - rich live MCP resources for project/editor/resources/types/runtime/concurrency, with `notifications/resources/updated` after relevant successful mutations;
-- build target/configuration discovery and authenticated remote build lifecycle: `build.targets.list`, `build.configuration.*`, `build.start`, `build.status`, `build.cancel`, `build.result`;
+- build target/configuration discovery and authenticated remote build lifecycle: `build.targets.list`, `build.configuration.*`, `build.start`, `build.status`, `build.cancel`, `build.result`, including the separate `web-online` artifact target;
+- opt-in publication: `publication.integrations.list`, `publication.prepare`, `publication.publish`; the gd.games adapter uses only the editor session, requires explicit publication intent plus MCP destructive confirmation, and never accepts or returns credentials;
 - local HTML5 output: `export.html5`.
 
 `desktop.window.capture` is returned as MCP `image/png` content instead of embedding PNG bytes in a JSON text payload.
@@ -175,7 +176,8 @@ A safe agent workflow is:
 8. correct the project while keeping the editor/project open;
 9. run `diagnostics.inspect` / `validation.run` and review checkpoint diff when appropriate;
 10. call `project.save` or `project.save-as` only when saving is explicitly intended;
-11. call `build.targets.list` before choosing a delivery target; use `export.html5` for local HTML5 or `build.start` + `build.status` + `build.result` for an available authenticated remote build target.
+11. call `build.targets.list` before choosing a delivery target; use `export.html5` for local HTML5 or `build.start` + `build.status` + `build.result` for an available authenticated remote build target;
+12. when public gd.games publication is explicitly intended, call `publication.integrations.list`, create/resolve a completed `web-online` build separately, review `publication.prepare`, then call `publication.publish` only after the user confirms the external publication effect.
 
 Mutations never auto-hot-reload as a hidden side effect. After a hot-reload-compatible edit, the agent explicitly calls `preview.hot-reload`; ordinary iteration should keep the existing preview/debugger alive rather than closing and restarting it. `preview.start` is reserved for starting a missing preview, while restart is only used when the underlying GDevelop lifecycle genuinely requires it.
 
@@ -234,7 +236,7 @@ node app/AgentIntegration/scripts/McpLiveGate.js --window-id 1 --output mcp-live
 node app/AgentIntegration/scripts/McpLiveGate.js --project-path C:\\path\\to\\game.json
 ```
 
-The gate calls only read-only discovery/status surfaces: `tools/list`, `agent.capabilities`, `project.status`, `desktop.windows.list`, `editor.visual.status`, `preview.status` and `runtime.status` when each is available. It does not mutate or save the project. Use it to prove that a real external-style client can discover and inspect the currently running editor before running any canonical mutation scenario.
+The gate calls only read-only discovery/status surfaces: `tools/list`, `agent.capabilities`, `project.status`, `desktop.windows.list`, `editor.visual.status`, `preview.status`, `publication.integrations.list` and `runtime.status` when each is available. It does not mutate or save the project. Use it to prove that a real external-style client can discover and inspect the currently running editor before running any canonical mutation scenario.
 
 For CAP-11/12, a dedicated mutation acceptance scenario requires a fresh editor with no project open. It creates and saves a temporary project, imports a public image through `resources.import-url`, verifies redacted persisted provenance, performs deterministic image and PCM16 WAV transforms, uses the processed image in a Sprite preview, exports HTML5, rolls the transaction back and removes the temporary project by default:
 
@@ -267,6 +269,13 @@ For CAP-22/23, `McpConcurrencyResourcesLiveScenario.js` verifies the packaged ed
 ```text
 cd newIDE/electron-app
 node app/AgentIntegration/scripts/McpConcurrencyResourcesLiveScenario.js --allow-mutate
+```
+
+For CAP-24, `McpPublicationLiveScenario.js` is deliberately read-only. It proves the packaged editor exposes the `gd-games` adapter, credential policy, dry-run/publish annotations and the separate `web-online` build prerequisite without creating a remote build or changing a public game. Real publication remains behind `publication.prepare`, `confirmPublication=true` and MCP destructive elicitation.
+
+```text
+cd newIDE/electron-app
+node app/AgentIntegration/scripts/McpPublicationLiveScenario.js --output artifacts/cap24-publication.json
 ```
 
 ## Compatibility and tests

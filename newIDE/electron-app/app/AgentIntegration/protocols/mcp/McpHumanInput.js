@@ -40,6 +40,14 @@ const getDestructiveConfirmation = (command, input) => {
               'The project-local file will be permanently deleted when safety checks allow it.',
           }
         : null;
+    case 'publication.publish':
+      return value.confirmPublication === true
+        ? {
+            action: 'publish a web build to gd.games',
+            consequence:
+              'The public game will immediately point to the selected immutable build.',
+          }
+        : null;
     default:
       return null;
   }

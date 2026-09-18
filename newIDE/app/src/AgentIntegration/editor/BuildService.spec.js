@@ -13,6 +13,9 @@ jest.mock(
     localOnlineCordovaExportPipeline: {},
   })
 );
+jest.mock('../../ExportAndShare/LocalExporters/LocalOnlineWebExport', () => ({
+  localOnlineWebExportPipeline: {},
+}));
 
 const gd: libGDevelop = global.gd;
 
@@ -35,12 +38,20 @@ const makePipeline = (name, buildType) => {
     logsKey: 'secret-log-key',
     status: 'pending',
     type: buildType,
-    targets: name === 'electron' ? ['winExe'] : ['androidApk'],
+    targets:
+      name === 'electron'
+        ? ['winExe']
+        : name === 'cordova'
+        ? ['androidApk']
+        : ['s3'],
+    ...(name === 'web' ? { s3Key: 'private-web-storage-key' } : {}),
     updatedAt: 123,
   };
   return {
     name,
-    getInitialExportState: jest.fn(() => ({ targets: [] })),
+    getInitialExportState: jest.fn(() =>
+      name === 'web' ? null : { targets: [] }
+    ),
     prepareExporter: jest.fn(async () => ({
       exporter: { delete: jest.fn() },
     })),
@@ -66,6 +77,7 @@ describe('AgentIntegration BuildService', () => {
   let forceUpdate;
   let electronPipeline;
   let cordovaPipeline;
+  let webPipeline;
   let authenticatedUser;
   let getBuildById;
   let service;
@@ -84,6 +96,7 @@ describe('AgentIntegration BuildService', () => {
     forceUpdate = jest.fn();
     electronPipeline = makePipeline('electron', 'electron-build');
     cordovaPipeline = makePipeline('cordova', 'cordova-build');
+    webPipeline = makePipeline('web', 'web-build');
     authenticatedUser = makeAuthenticatedUser();
     getBuildById = jest.fn();
     service = createBuildService({
@@ -98,6 +111,7 @@ describe('AgentIntegration BuildService', () => {
       isDesktopEnvironment: true,
       electronPipeline,
       cordovaPipeline,
+      webPipeline,
       getBuildById,
     });
   });
@@ -109,12 +123,21 @@ describe('AgentIntegration BuildService', () => {
   it('discovers local, authenticated remote and explicit unsupported targets without secrets', () => {
     const result = service.listTargets();
     const html5 = result.targets.find(target => target.id === 'html5-local');
+    const web = result.targets.find(target => target.id === 'web-online');
     const windows = result.targets.find(target => target.id === 'windows-exe');
     const ios = result.targets.find(target => target.id === 'ios-app-store');
 
     expect(html5).toMatchObject({
       deliveryKind: 'local-export',
       command: 'export.html5',
+      availability: { state: 'available' },
+    });
+    expect(web).toMatchObject({
+      deliveryKind: 'remote-build',
+      platform: 'web',
+      artifactKind: 'web',
+      installable: false,
+      provider: { buildType: 'web-build', target: 's3' },
       availability: { state: 'available' },
     });
     expect(windows).toMatchObject({
@@ -145,6 +168,7 @@ describe('AgentIntegration BuildService', () => {
       isDesktopEnvironment: true,
       electronPipeline,
       cordovaPipeline,
+      webPipeline,
       getBuildById,
     });
     const windows = loggedOutService
@@ -217,7 +241,26 @@ describe('AgentIntegration BuildService', () => {
     expect(triggerUnsavedChanges).not.toHaveBeenCalled();
   });
 
-  it('starts desktop and Android provider builds through the official injected pipelines without returning upload secrets', async () => {
+  it('starts web, desktop and Android provider builds through the official injected pipelines without returning upload secrets', async () => {
+    const web = await service.start({ targetId: 'web-online' });
+    expect(webPipeline.launchOnlineBuild).toHaveBeenCalledWith(
+      null,
+      authenticatedUser,
+      expect.any(String),
+      project.getProjectUuid(),
+      { gameName: 'Build Service Test', gameVersion: '1.2.3' },
+      false
+    );
+    expect(web).toMatchObject({
+      started: true,
+      targetId: 'web-online',
+      build: {
+        buildId: 'web-build-1',
+        status: 'pending',
+        buildType: 'web-build',
+      },
+    });
+
     const windows = await service.start({ targetId: 'windows-exe' });
     expect(electronPipeline.launchOnlineBuild).toHaveBeenCalledWith(
       expect.objectContaining({ targets: ['winExe'] }),

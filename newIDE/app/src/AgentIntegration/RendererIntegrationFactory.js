@@ -18,6 +18,7 @@ import { createStoreService } from './editor/StoreService';
 import { createRemoteResourceService } from './editor/RemoteResourceService';
 import { createAssetProcessingService } from './editor/AssetProcessingService';
 import { createBuildService } from './editor/BuildService';
+import { createPublicationService } from './editor/PublicationService';
 import { createExportService } from './editor/ExportService';
 import { createProjectLifecycleService } from './editor/ProjectLifecycleService';
 import { createValidationService } from './editor/ValidationService';
@@ -313,6 +314,10 @@ export const createRendererIntegration = ({
     forceUpdate,
     isDesktopEnvironment: !!pathModule,
   });
+  const publicationService = createPublicationService({
+    project,
+    authenticatedUser,
+  });
   const projectLifecycleService = createProjectLifecycleService({
     project,
     fileIdentifier,
@@ -391,6 +396,7 @@ export const createRendererIntegration = ({
       remoteResourceService,
       assetProcessingService,
       buildService,
+      publicationService,
       exportService,
       previewService,
       projectLifecycleService,

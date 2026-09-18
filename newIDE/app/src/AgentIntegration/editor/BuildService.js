@@ -2,6 +2,7 @@
 import { AgentError } from '../core/AgentError';
 import { localOnlineElectronExportPipeline } from '../../ExportAndShare/LocalExporters/LocalOnlineElectronExport';
 import { localOnlineCordovaExportPipeline } from '../../ExportAndShare/LocalExporters/LocalOnlineCordovaExport';
+import { localOnlineWebExportPipeline } from '../../ExportAndShare/LocalExporters/LocalOnlineWebExport';
 import {
   getBuild,
   getBuildArtifactUrl,
@@ -32,6 +33,17 @@ const IOS_ICON_SIZES = [
 ];
 
 const REMOTE_TARGETS = [
+  {
+    id: 'web-online',
+    label: 'Online web build',
+    platform: 'web',
+    artifactKind: 'web',
+    providerTarget: 's3',
+    artifactKey: 's3Key',
+    pipeline: 'web',
+    buildType: 'web-build',
+    installable: false,
+  },
   {
     id: 'windows-exe',
     label: 'Windows executable installer',
@@ -290,6 +302,7 @@ type Options = {|
   isDesktopEnvironment: boolean,
   electronPipeline?: any,
   cordovaPipeline?: any,
+  webPipeline?: any,
   getBuildById?: any,
 |};
 
@@ -303,6 +316,7 @@ export const createBuildService = ({
   isDesktopEnvironment,
   electronPipeline = localOnlineElectronExportPipeline,
   cordovaPipeline = localOnlineCordovaExportPipeline,
+  webPipeline = localOnlineWebExportPipeline,
   getBuildById = getBuild,
 }: Options) => {
   let buildPreparationInProgress = false;
@@ -669,15 +683,22 @@ export const createBuildService = ({
 
     const user = requireAuthenticatedUser();
     const pipeline =
-      target.pipeline === 'electron' ? electronPipeline : cordovaPipeline;
+      target.pipeline === 'electron'
+        ? electronPipeline
+        : target.pipeline === 'cordova'
+        ? cordovaPipeline
+        : webPipeline;
     const baseState = pipeline.getInitialExportState(currentProject);
-    const exportState = {
-      ...baseState,
-      targets: [target.providerTarget],
-      ...(target.pipeline === 'cordova'
-        ? { keystore: input.androidKeystore || 'new' }
-        : {}),
-    };
+    const exportState =
+      target.pipeline === 'web'
+        ? baseState
+        : {
+            ...baseState,
+            targets: [target.providerTarget],
+            ...(target.pipeline === 'cordova'
+              ? { keystore: input.androidKeystore || 'new' }
+              : {}),
+          };
     const context = {
       project: currentProject,
       exportState,

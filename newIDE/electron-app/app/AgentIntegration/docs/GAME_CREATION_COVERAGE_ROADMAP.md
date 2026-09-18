@@ -433,6 +433,8 @@ Potential adapters include gd.games and optional third-party targets such as itc
 
 **Acceptance:** implement only targets with a stable supported API and a secure credential story. Lack of a third-party adapter must not block the core completeness milestone.
 
+**Implemented:** the supported adapter is `gd-games`. `build.start({ targetId: "web-online" })` creates the web artifact separately through GDevelop's official pipeline; `publication.prepare` validates ownership/type/completion and returns the dry-run manifest; `publication.publish` requires explicit intent plus MCP destructive elicitation and updates only `publicWebBuildId` through the editor-authenticated Game API. Credentials are never accepted, persisted or returned. `McpPublicationLiveScenario.js` verifies the packaged discovery/annotation/credential boundary without performing a real publication.
+
 ### CAP-25 — Final autonomous game-creation benchmark
 
 Create a product-level benchmark that starts from a clean/open GDevelop project and requires an external MCP host to build a representative game without repository-side shortcuts.

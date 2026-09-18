@@ -29,6 +29,25 @@ test('requests input_required only for destructive intent flags', () => {
   );
 });
 
+test('requires MCP human confirmation for publication.publish', () => {
+  const confirmation = requireDestructiveConfirmation({
+    command: 'publication.publish',
+    input: {
+      integrationId: 'gd-games',
+      buildId: 'web-build-1',
+      confirmPublication: true,
+    },
+    requestContext: { mcpReq: {} },
+  });
+
+  assert.equal(confirmation.confirmed, false);
+  assert.equal(confirmation.inputRequired.resultType, 'input_required');
+  assert.match(
+    confirmation.inputRequired.inputRequests[CONFIRMATION_KEY].params.message,
+    /publish a web build to gd\.games/
+  );
+});
+
 test('accepts, declines and cancels explicit destructive confirmation', () => {
   const makeContext = response => ({
     mcpReq: {
