@@ -46,6 +46,10 @@ jobs:
         working-directory: newIDE/electron-app/app
         run: npm ci --ignore-scripts
 
+      - name: Prepare renderer test libGD
+        working-directory: newIDE/app
+        run: node scripts/import-libGD.js
+
       - name: Renderer characterization and boundaries
         working-directory: newIDE/app
         env:
