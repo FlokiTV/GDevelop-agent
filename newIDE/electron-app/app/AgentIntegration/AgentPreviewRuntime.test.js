@@ -123,7 +123,7 @@ test('installs runtime and dispatches a synthetic touch to the game canvas', asy
   const { runtime, canvasEvents } = makeHarness();
   const status = await runtime.ensureInstalled(12);
   assert.equal(status.installed, true);
-  assert.equal(status.version, 1);
+  assert.equal(status.version, 2);
 
   const result = await runtime.call(
     12,
@@ -173,4 +173,95 @@ test('virtual gamepad is exposed through navigator.getGamepads', async () => {
   assert.deepEqual(Array.from(context.navigator.getGamepads()[0].axes), [1, 0]);
   assert.equal(context.navigator.getGamepads()[0].buttons[1].pressed, true);
   assert.equal('handleAction' in runtime, false);
+});
+
+test('captures a bounded structured runtime snapshot without serializing RuntimeGame', async () => {
+  const { runtime, context } = makeHarness();
+  const scene = {
+    _name: 'Snapshot scene',
+    getName: () => 'Snapshot scene',
+    _timeManager: {
+      _elapsedTime: 20,
+      _timeFromStart: 1200,
+      _timeScale: 1,
+    },
+    _variables: {
+      _variables: {
+        items: {
+          Score: { _type: 'number', _value: 7 },
+        },
+      },
+    },
+    _instances: {
+      items: {
+        Player: [
+          {
+            id: 1,
+            name: 'Player',
+            type: 'Sprite',
+            x: 10,
+            y: 20,
+            zOrder: 3,
+            layer: '',
+            livingOnScene: true,
+            _variables: { _variables: { items: {} } },
+            _behaviors: [
+              {
+                name: 'Platformer',
+                type: 'PlatformBehavior::PlatformerObjectBehavior',
+                _activated: true,
+                speed: 42,
+                owner: {},
+              },
+            ],
+          },
+        ],
+        Coin: [
+          {
+            id: 2,
+            name: 'Coin',
+            type: 'Sprite',
+            x: 30,
+            y: 40,
+            _variables: { _variables: { items: {} } },
+            _behaviors: [],
+          },
+        ],
+      },
+    },
+  };
+  context.game = {
+    _paused: false,
+    isPaused: () => false,
+    _variables: {
+      _variables: {
+        items: {
+          GlobalScore: { _type: 'number', _value: 11 },
+        },
+      },
+    },
+    getSceneStack: () => ({
+      getCurrentScene: () => scene,
+    }),
+  };
+
+  const response = await runtime.call(12, 'snapshot', {
+    maxInstances: 1,
+    objectNames: ['Player'],
+  });
+  const snapshot = response.result;
+  assert.equal(snapshot.snapshotSource, 'bounded-preview-runtime');
+  assert.equal(snapshot.scene.name, 'Snapshot scene');
+  assert.equal(snapshot.scene.variables.Score.value, 7);
+  assert.equal(snapshot.globalVariables.GlobalScore.value, 11);
+  assert.equal(snapshot.objects.Player.count, 1);
+  assert.equal(snapshot.objects.Player.instances.length, 1);
+  assert.equal(
+    snapshot.objects.Player.instances[0].behaviors[0].state.speed,
+    42
+  );
+  assert.equal(snapshot.objects.Coin, undefined);
+  assert.equal(snapshot.totalInstances, 2);
+  assert.equal(snapshot.includedInstances, 1);
+  assert.equal(snapshot.truncatedInstances, 1);
 });

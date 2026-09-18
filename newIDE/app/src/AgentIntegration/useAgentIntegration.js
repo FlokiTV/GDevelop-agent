@@ -8,6 +8,7 @@ import { listAllExamples } from '../Utils/GDevelopServices/Example';
 import UrlStorageProvider from '../ProjectsStorage/UrlStorageProvider';
 import { type ResourceManagementProps } from '../ResourcesList/ResourceSource';
 import { createRuntimeTelemetry } from './RuntimeTelemetry';
+import { createDesktopRuntimeSnapshotProvider } from './DesktopRuntimeSnapshotProvider';
 import {
   prepareGameplayTestRunForAgent,
   watchGameplayTestFrameForAgent,
@@ -37,7 +38,7 @@ import { type FileMetadata } from '../ProjectsStorage';
 import { createRendererIntegration } from './RendererIntegrationFactory';
 import { ProjectRevisionTracker } from './core/ProjectRevisionTracker';
 import {
-  attachRendererIntegrationHost,
+  createRendererIntegrationHostBinding,
   registerRendererIntegration,
 } from './RendererIntegrationLifecycle';
 
@@ -169,6 +170,7 @@ export default function useAgentIntegration({
     EventsFunctionsExtensionsContext
   );
   const authenticatedUser = React.useContext(AuthenticatedUserContext);
+  const rendererIntegrationHostBindingRef = React.useRef<any>(null);
 
   React.useEffect(
     () => {
@@ -238,7 +240,12 @@ export default function useAgentIntegration({
   const runtimeTelemetry = React.useMemo(
     () =>
       previewDebuggerServer
-        ? createRuntimeTelemetry(previewDebuggerServer)
+        ? createRuntimeTelemetry(previewDebuggerServer, {
+            snapshotProvider:
+              ipcRenderer && typeof ipcRenderer.invoke === 'function'
+                ? createDesktopRuntimeSnapshotProvider(ipcRenderer)
+                : null,
+          })
         : null,
     [previewDebuggerServer]
   );
@@ -270,6 +277,18 @@ export default function useAgentIntegration({
       return registerRendererIntegration({ ipcRenderer, fileIdentifier });
     },
     [fileIdentifier]
+  );
+
+  React.useEffect(
+    () => () => {
+      const rendererIntegrationHostBinding =
+        rendererIntegrationHostBindingRef.current;
+      if (rendererIntegrationHostBinding) {
+        rendererIntegrationHostBinding.dispose();
+        rendererIntegrationHostBindingRef.current = null;
+      }
+    },
+    []
   );
 
   React.useEffect(
@@ -325,14 +344,18 @@ export default function useAgentIntegration({
         clearGameplayTestFramePreview,
         documentObject: document,
       });
-      const detachRendererAgentHost = attachRendererIntegrationHost({
-        ipcRenderer,
-        agentHost,
-      });
-
-      return () => {
-        detachRendererAgentHost();
-      };
+      const rendererIntegrationHostBinding =
+        rendererIntegrationHostBindingRef.current;
+      if (rendererIntegrationHostBinding) {
+        rendererIntegrationHostBinding.updateAgentHost(agentHost);
+      } else {
+        rendererIntegrationHostBindingRef.current = createRendererIntegrationHostBinding(
+          {
+            ipcRenderer,
+            agentHost,
+          }
+        );
+      }
     },
     [
       project,

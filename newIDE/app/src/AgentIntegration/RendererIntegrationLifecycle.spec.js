@@ -1,6 +1,7 @@
 // @flow
 import {
   attachRendererIntegrationHost,
+  createRendererIntegrationHostBinding,
   registerRendererIntegration,
   RENDERER_REGISTER_CHANNEL,
 } from './RendererIntegrationLifecycle';
@@ -29,17 +30,85 @@ describe('RendererIntegrationLifecycle', () => {
       fileIdentifier: 'C:\\Games\\project.json',
     });
 
-    expect(ipcRenderer.send).toHaveBeenNthCalledWith(1, RENDERER_REGISTER_CHANNEL, {
-      fileIdentifier: 'C:\\Games\\project.json',
-      active: true,
-    });
+    expect(ipcRenderer.send).toHaveBeenNthCalledWith(
+      1,
+      RENDERER_REGISTER_CHANNEL,
+      {
+        fileIdentifier: 'C:\\Games\\project.json',
+        active: true,
+      }
+    );
 
     dispose();
 
-    expect(ipcRenderer.send).toHaveBeenNthCalledWith(2, RENDERER_REGISTER_CHANNEL, {
-      fileIdentifier: null,
-      active: false,
+    expect(ipcRenderer.send).toHaveBeenNthCalledWith(
+      2,
+      RENDERER_REGISTER_CHANNEL,
+      {
+        fileIdentifier: null,
+        active: false,
+      }
+    );
+  });
+
+  it('updates the host without aborting a command already in flight', async () => {
+    const ipcRenderer = createIpcRenderer();
+    let firstSignal;
+    let resolveFirst;
+    const firstAgentHost = {
+      execute: jest.fn(
+        (command, input, context) =>
+          new Promise(resolve => {
+            firstSignal = context.signal;
+            resolveFirst = resolve;
+          })
+      ),
+    };
+    const secondAgentHost = {
+      execute: jest.fn(async () => ({ host: 'second' })),
+    };
+    const binding = createRendererIntegrationHostBinding({
+      ipcRenderer,
+      agentHost: firstAgentHost,
     });
+    const listener = ipcRenderer.listeners.get(COMMAND_REQUEST_CHANNEL);
+
+    const firstRequest = listener(null, {
+      requestId: 'req-in-flight',
+      command: 'build.start',
+    });
+    expect(firstSignal.aborted).toBe(false);
+
+    binding.updateAgentHost(secondAgentHost);
+    expect(firstSignal.aborted).toBe(false);
+
+    resolveFirst({ host: 'first' });
+    await firstRequest;
+    await listener(null, {
+      requestId: 'req-after-update',
+      command: 'project.status',
+    });
+
+    expect(firstAgentHost.execute).toHaveBeenCalledTimes(1);
+    expect(secondAgentHost.execute).toHaveBeenCalledTimes(1);
+    expect(ipcRenderer.send).toHaveBeenCalledWith(
+      COMMAND_RESPONSE_CHANNEL,
+      expect.objectContaining({
+        requestId: 'req-in-flight',
+        ok: true,
+        result: { host: 'first' },
+      })
+    );
+    expect(ipcRenderer.send).toHaveBeenCalledWith(
+      COMMAND_RESPONSE_CHANNEL,
+      expect.objectContaining({
+        requestId: 'req-after-update',
+        ok: true,
+        result: { host: 'second' },
+      })
+    );
+
+    binding.dispose();
   });
 
   it('attaches one command listener and removes the same listener on cleanup', async () => {

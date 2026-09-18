@@ -313,4 +313,72 @@ describe('AgentIntegration RuntimeTelemetry', () => {
     });
     telemetry.dispose();
   });
+
+  it('uses the bounded desktop snapshot provider without sending legacy refresh dumps', async () => {
+    const server = createDebuggerServer();
+    const snapshotProvider = jest.fn(async request => ({
+      snapshotSource: 'bounded-preview-runtime',
+      ...summarizeRuntimeDump(debuggerDump, request),
+    }));
+    const telemetry = createRuntimeTelemetry(server, { snapshotProvider });
+
+    const snapshot = await telemetry.getSnapshot({
+      maxInstances: 2,
+      objectNames: ['Player'],
+    });
+    expect(snapshot).toMatchObject({
+      debuggerId: 'preview-1',
+      snapshotSource: 'bounded-preview-runtime',
+      scene: { name: 'New scene' },
+      objects: { Player: { count: 1 } },
+    });
+    expect(snapshotProvider).toHaveBeenCalledWith({
+      maxInstances: 2,
+      objectNames: ['Player'],
+    });
+    expect(server.sendMessage).not.toHaveBeenCalled();
+
+    const assertion = await telemetry.assertRuntime({
+      condition: {
+        path: ['objects', 'Player', 'count'],
+        operator: 'equals',
+        value: 1,
+      },
+      maxInstances: 2,
+      objectNames: ['Player'],
+    });
+    expect(assertion.passed).toBe(true);
+    expect(server.sendMessage).not.toHaveBeenCalled();
+    telemetry.dispose();
+  });
+
+  it('falls back to the official debugger dump when the desktop snapshot provider fails', async () => {
+    const server = createDebuggerServer();
+    const providerError: any = new Error(
+      'preview runtime snapshot unavailable'
+    );
+    providerError.code = 'preview_runtime_snapshot_failed';
+    const snapshotProvider = jest.fn(async () => {
+      throw providerError;
+    });
+    const telemetry = createRuntimeTelemetry(server, { snapshotProvider });
+
+    const snapshot = await telemetry.getSnapshot({
+      maxInstances: 2,
+      objectNames: ['Player'],
+    });
+
+    expect(snapshot).toMatchObject({
+      debuggerId: 'preview-1',
+      snapshotSource: 'debugger-dump-fallback',
+      snapshotProviderErrorCode: 'preview_runtime_snapshot_failed',
+      scene: { name: 'New scene' },
+      objects: { Player: { count: 1 } },
+    });
+    expect(snapshotProvider).toHaveBeenCalledTimes(1);
+    expect(server.sendMessage).toHaveBeenCalledWith('preview-1', {
+      command: 'refresh',
+    });
+    telemetry.dispose();
+  });
 });

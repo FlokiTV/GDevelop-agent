@@ -3,6 +3,7 @@ const {
   createAgentPreviewRuntime,
   validateTouch,
   validateGamepad,
+  validateSnapshot,
 } = require('./AgentPreviewRuntime');
 
 const createPreviewInteractionService = ({
@@ -48,8 +49,20 @@ const createPreviewInteractionService = ({
   const resetRuntime = input =>
     previewRuntime.call(getWindowId(input), 'reset', {});
 
+  const getRuntimeSnapshot = input =>
+    previewRuntime
+      .call(getWindowId(input), 'snapshot', validateSnapshot(input || {}))
+      .then(response => ({
+        previewWindowId: response.windowId,
+        ...response.result,
+      }));
+
   const sendTouch = input =>
-    previewRuntime.call(getWindowId(input), 'touch', validateTouch(input || {}));
+    previewRuntime.call(
+      getWindowId(input),
+      'touch',
+      validateTouch(input || {})
+    );
 
   const sendGamepad = input =>
     previewRuntime.call(
@@ -63,6 +76,7 @@ const createPreviewInteractionService = ({
     sendSequence,
     resetInput,
     getRuntimeStatus,
+    getRuntimeSnapshot,
     resetRuntime,
     sendTouch,
     sendGamepad,

@@ -37,3 +37,30 @@ export const attachRendererIntegrationHost = ({
   ipcRenderer: IpcRenderer,
   agentHost: AgentHost,
 |}) => attachRendererAgentHostToIpc({ ipcRenderer, agentHost });
+
+export const createRendererIntegrationHostBinding = ({
+  ipcRenderer,
+  agentHost,
+}: {|
+  ipcRenderer: IpcRenderer,
+  agentHost: AgentHost,
+|}) => {
+  let currentAgentHost = agentHost;
+  const delegatingAgentHost: any = {
+    execute: (command, input, requestContext) => {
+      const hostAtRequestStart = currentAgentHost;
+      return hostAtRequestStart.execute(command, input, requestContext);
+    },
+  };
+  const dispose = attachRendererAgentHostToIpc({
+    ipcRenderer,
+    agentHost: delegatingAgentHost,
+  });
+
+  return {
+    updateAgentHost: (nextAgentHost: AgentHost) => {
+      currentAgentHost = nextAgentHost;
+    },
+    dispose,
+  };
+};

@@ -19,6 +19,13 @@ const makeWindow = id => ({
 
 test('owns desktop services and cleans IPC state exactly once', () => {
   const ipcMain = new EventEmitter();
+  const ipcHandlers = new Map();
+  ipcMain.handle = (channel, handler) => {
+    ipcHandlers.set(channel, handler);
+  };
+  ipcMain.removeHandler = channel => {
+    ipcHandlers.delete(channel);
+  };
   const editorWindow = makeWindow(1);
   const BrowserWindow = {
     fromWebContents: sender =>
@@ -43,17 +50,22 @@ test('owns desktop services and cleans IPC state exactly once', () => {
   assert.equal(host.windowRegistry.size, 1);
   assert.equal(typeof host.rendererBridge.executeCommand, 'function');
   assert.equal(typeof host.previewInteractionService.sendInput, 'function');
+  assert.equal(
+    ipcHandlers.has('gdevelop-agent-integration:preview-runtime-snapshot'),
+    true
+  );
   assert.equal(typeof host.windowCaptureService.capture, 'function');
 
   host.dispose();
   host.dispose();
   assert.equal(host.windowRegistry.size, 0);
-  assert.equal(
-    ipcMain.listenerCount('gdevelop-agent-integration:register'),
-    0
-  );
+  assert.equal(ipcMain.listenerCount('gdevelop-agent-integration:register'), 0);
   assert.equal(
     ipcMain.listenerCount('gdevelop-agent-integration:command-response'),
     0
+  );
+  assert.equal(
+    ipcHandlers.has('gdevelop-agent-integration:preview-runtime-snapshot'),
+    false
   );
 });

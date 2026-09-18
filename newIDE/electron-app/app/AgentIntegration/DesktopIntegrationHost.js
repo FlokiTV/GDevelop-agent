@@ -12,6 +12,9 @@ const {
   createPreviewNetworkDiagnosticsService,
 } = require('./PreviewNetworkDiagnosticsService');
 const { createDesktopCommandRegistry } = require('./DesktopCommandRegistry');
+const {
+  createPreviewRuntimeSnapshotIpc,
+} = require('./PreviewRuntimeSnapshotIpc');
 
 const createDesktopIntegrationHost = ({
   BrowserWindow,
@@ -30,6 +33,13 @@ const createDesktopIntegrationHost = ({
     BrowserWindow,
     windowRegistry,
     isRegisteredPreviewWindow,
+  });
+  const previewRuntimeSnapshotIpc = createPreviewRuntimeSnapshotIpc({
+    BrowserWindow,
+    ipcMain,
+    windowRegistry,
+    isRegisteredPreviewWindow,
+    previewInteractionService,
   });
   const windowCaptureService = createWindowCaptureService({
     BrowserWindow,
@@ -66,6 +76,7 @@ const createDesktopIntegrationHost = ({
     if (disposed) return;
     disposed = true;
     previewNetworkDiagnosticsService.dispose();
+    previewRuntimeSnapshotIpc.dispose();
     rendererBridge.dispose();
     removeWindowRegistrationHandlers();
     windowRegistry.clear();
@@ -75,6 +86,7 @@ const createDesktopIntegrationHost = ({
     windowRegistry,
     rendererBridge,
     previewInteractionService,
+    previewRuntimeSnapshotIpc,
     previewQaService,
     multiplayerPreviewService,
     previewNetworkDiagnosticsService,

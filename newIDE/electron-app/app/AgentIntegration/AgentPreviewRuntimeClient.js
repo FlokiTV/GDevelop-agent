@@ -1,6 +1,6 @@
 (() => {
   const name = '__GDevelopAgentPreviewRuntime';
-  if (window[name] && window[name].version === 1) return window[name].status();
+  if (window[name] && window[name].version === 2) return window[name].status();
 
   const touches = new Map();
   const gamepads = new Map();
@@ -176,8 +176,237 @@
     },
   });
 
+  const clampInteger = (value, fallback, minimum, maximum) => {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return fallback;
+    return Math.min(maximum, Math.max(minimum, Math.round(parsed)));
+  };
+
+  const transformVariable = (variable, depth = 0) => {
+    if (!variable || typeof variable !== 'object' || depth > 12) return null;
+    const type = variable._type;
+    if (type === 'string') return { type, value: variable._str || '' };
+    if (type === 'number') return { type, value: Number(variable._value) || 0 };
+    if (type === 'boolean') return { type, value: !!variable._bool };
+    if (type === 'structure') {
+      const children = variable._children || {};
+      const value = {};
+      Object.keys(children)
+        .slice(0, 200)
+        .forEach(name => {
+          value[name] = transformVariable(children[name], depth + 1);
+        });
+      return { type, value };
+    }
+    if (type === 'array') {
+      const children = Array.isArray(variable._childrenArray)
+        ? variable._childrenArray.slice(0, 200)
+        : [];
+      return {
+        type,
+        value: children.map(item => transformVariable(item, depth + 1)),
+      };
+    }
+    if (variable._isStructure) {
+      const children = variable._children || {};
+      const value = {};
+      Object.keys(children)
+        .slice(0, 200)
+        .forEach(name => {
+          value[name] = transformVariable(children[name], depth + 1);
+        });
+      return { type: 'structure', value };
+    }
+    if (variable._numberDirty && !variable._stringDirty) {
+      return { type: 'string', value: variable._str || '' };
+    }
+    return {
+      type: 'number',
+      value: Number.isFinite(Number(variable._value))
+        ? Number(variable._value)
+        : 0,
+    };
+  };
+
+  const transformVariablesContainer = container => {
+    const items =
+      container &&
+      container._variables &&
+      container._variables.items &&
+      typeof container._variables.items === 'object'
+        ? container._variables.items
+        : {};
+    const variables = {};
+    Object.keys(items)
+      .slice(0, 500)
+      .forEach(name => {
+        variables[name] = transformVariable(items[name]);
+      });
+    return variables;
+  };
+
+  const summarizeBehavior = behavior => {
+    if (!behavior || typeof behavior !== 'object') return null;
+    const state = {};
+    Object.keys(behavior)
+      .filter(
+        key =>
+          key !== 'owner' &&
+          key !== 'name' &&
+          key !== 'type' &&
+          key !== '_manager' &&
+          key !== '_runtimeScene'
+      )
+      .slice(0, 40)
+      .forEach(key => {
+        const value = behavior[key];
+        if (
+          value === null ||
+          typeof value === 'string' ||
+          typeof value === 'number' ||
+          typeof value === 'boolean'
+        ) {
+          state[key] = value;
+        }
+      });
+    return {
+      name: behavior.name || null,
+      type: behavior.type || null,
+      activated:
+        typeof behavior._activated === 'boolean' ? behavior._activated : null,
+      state,
+    };
+  };
+
+  const summarizeInstance = instance => {
+    const behaviors = Array.isArray(instance && instance._behaviors)
+      ? instance._behaviors.map(summarizeBehavior).filter(Boolean)
+      : [];
+    return {
+      id: instance && instance.id != null ? instance.id : null,
+      name: (instance && instance.name) || null,
+      type: (instance && instance.type) || null,
+      x: instance && typeof instance.x === 'number' ? instance.x : 0,
+      y: instance && typeof instance.y === 'number' ? instance.y : 0,
+      z:
+        instance && typeof instance.z === 'number'
+          ? instance.z
+          : instance && typeof instance._z === 'number'
+          ? instance._z
+          : 0,
+      angle:
+        instance && typeof instance.angle === 'number' ? instance.angle : 0,
+      zOrder:
+        instance && typeof instance.zOrder === 'number' ? instance.zOrder : 0,
+      layer:
+        instance && typeof instance.layer === 'string' ? instance.layer : '',
+      hidden: !!(instance && instance.hidden),
+      livingOnScene: !instance || instance.livingOnScene !== false,
+      variables: transformVariablesContainer(instance && instance._variables),
+      behaviors,
+    };
+  };
+
+  const snapshot = payload => {
+    const runtimeGame = window.game;
+    if (!runtimeGame || typeof runtimeGame !== 'object')
+      throw new Error('preview_runtime_game_not_found');
+    const sceneStack =
+      typeof runtimeGame.getSceneStack === 'function'
+        ? runtimeGame.getSceneStack()
+        : runtimeGame._sceneStack;
+    const currentScene =
+      sceneStack && typeof sceneStack.getCurrentScene === 'function'
+        ? sceneStack.getCurrentScene()
+        : sceneStack &&
+          Array.isArray(sceneStack._stack) &&
+          sceneStack._stack.length
+        ? sceneStack._stack[sceneStack._stack.length - 1]
+        : null;
+    const maxInstances = clampInteger(
+      payload && payload.maxInstances,
+      200,
+      1,
+      1000
+    );
+    const requestedObjectNames =
+      payload && Array.isArray(payload.objectNames)
+        ? new Set(
+            payload.objectNames
+              .filter(name => typeof name === 'string' && name.length <= 500)
+              .slice(0, 200)
+          )
+        : null;
+    const items =
+      currentScene &&
+      currentScene._instances &&
+      currentScene._instances.items &&
+      typeof currentScene._instances.items === 'object'
+        ? currentScene._instances.items
+        : {};
+    let includedInstances = 0;
+    let totalInstances = 0;
+    const objects = {};
+    Object.keys(items).forEach(objectName => {
+      const instances = Array.isArray(items[objectName])
+        ? items[objectName].filter(Boolean)
+        : [];
+      totalInstances += instances.length;
+      if (requestedObjectNames && !requestedObjectNames.has(objectName)) return;
+      const remaining = Math.max(0, maxInstances - includedInstances);
+      const selectedInstances = instances.slice(0, remaining);
+      includedInstances += selectedInstances.length;
+      objects[objectName] = {
+        count: instances.length,
+        instances: selectedInstances.map(summarizeInstance),
+        truncated: selectedInstances.length < instances.length,
+      };
+    });
+    const timeManager = currentScene && currentScene._timeManager;
+    const elapsedTimeMs =
+      timeManager && typeof timeManager._elapsedTime === 'number'
+        ? timeManager._elapsedTime
+        : null;
+    const timeScale =
+      timeManager && typeof timeManager._timeScale === 'number'
+        ? timeManager._timeScale
+        : null;
+    return {
+      snapshotSource: 'bounded-preview-runtime',
+      paused:
+        typeof runtimeGame.isPaused === 'function'
+          ? !!runtimeGame.isPaused()
+          : !!runtimeGame._paused,
+      scene: currentScene
+        ? {
+            name:
+              typeof currentScene.getName === 'function'
+                ? currentScene.getName()
+                : currentScene._name || null,
+            elapsedTimeMs,
+            timeFromStartMs:
+              timeManager && typeof timeManager._timeFromStart === 'number'
+                ? timeManager._timeFromStart
+                : null,
+            timeScale,
+            fpsApprox:
+              elapsedTimeMs && elapsedTimeMs > 0 && timeScale && timeScale > 0
+                ? (1000 * timeScale) / elapsedTimeMs
+                : null,
+            variables: transformVariablesContainer(currentScene._variables),
+          }
+        : null,
+      globalVariables: transformVariablesContainer(runtimeGame._variables),
+      objects,
+      totalInstances,
+      includedInstances,
+      truncatedInstances: Math.max(0, totalInstances - includedInstances),
+    };
+  };
+
   const runtime = {
-    version: 1,
+    version: 2,
+    snapshot,
     touch: sendTouch,
     gamepad: payload => {
       if (payload.action === 'connect') return connectGamepad(payload);
@@ -198,7 +427,7 @@
     },
     status: () => ({
       installed: true,
-      version: 1,
+      version: 2,
       activeTouchIds: Array.from(touches.keys()),
       virtualGamepads: Array.from(gamepads.values()).map(pad => ({
         id: pad.id,

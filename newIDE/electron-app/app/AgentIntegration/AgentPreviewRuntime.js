@@ -55,6 +55,33 @@ const validateTouch = body => {
   };
 };
 
+const validateSnapshot = body => {
+  const maxInstances =
+    body && body.maxInstances != null ? Number(body.maxInstances) : undefined;
+  if (
+    maxInstances != null &&
+    (!Number.isInteger(maxInstances) || maxInstances < 1 || maxInstances > 1000)
+  ) {
+    throw makeError('invalid_snapshot_max_instances');
+  }
+  const objectNames =
+    body && body.objectNames != null ? body.objectNames : undefined;
+  if (
+    objectNames != null &&
+    (!Array.isArray(objectNames) ||
+      objectNames.length > 200 ||
+      objectNames.some(
+        name => typeof name !== 'string' || !name || name.length > 500
+      ))
+  ) {
+    throw makeError('invalid_snapshot_object_names');
+  }
+  return {
+    ...(maxInstances != null ? { maxInstances } : {}),
+    ...(objectNames != null ? { objectNames: objectNames.slice() } : {}),
+  };
+};
+
 const validateGamepad = body => {
   if (!['connect', 'update', 'disconnect', 'reset'].includes(body.action))
     throw makeError('invalid_gamepad_action');
@@ -119,4 +146,5 @@ module.exports = {
   createAgentPreviewRuntime,
   validateTouch,
   validateGamepad,
+  validateSnapshot,
 };

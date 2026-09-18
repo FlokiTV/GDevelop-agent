@@ -336,8 +336,15 @@ type Waiter = {|
   timeout: TimeoutID,
 |};
 
-export const createRuntimeTelemetry = (previewDebuggerServer: any): any => {
+export const createRuntimeTelemetry = (
+  previewDebuggerServer: any,
+  options: any = {}
+): any => {
   if (!previewDebuggerServer) throw makeError('preview_debugger_unavailable');
+  const snapshotProvider =
+    options && typeof options.snapshotProvider === 'function'
+      ? options.snapshotProvider
+      : null;
   const logsByDebugger: Map<string, Array<any>> = new Map();
   const profilingByDebugger: Map<string, boolean> = new Map();
   const profilerOutputByDebugger: Map<string, any> = new Map();
@@ -532,6 +539,22 @@ export const createRuntimeTelemetry = (previewDebuggerServer: any): any => {
 
   const getSnapshot = async (request: any = {}): Promise<any> => {
     const debuggerId = selectDebuggerId(request.debuggerId);
+    let snapshotProviderError = null;
+    if (snapshotProvider) {
+      try {
+        const snapshot = await snapshotProvider(request);
+        if (!snapshot || typeof snapshot !== 'object') {
+          throw makeError('invalid_runtime_snapshot');
+        }
+        return {
+          debuggerId,
+          capturedAt: Date.now(),
+          ...snapshot,
+        };
+      } catch (error) {
+        snapshotProviderError = error;
+      }
+    }
     const dump = await requestMessageWithRetry(
       debuggerId,
       'refresh',
@@ -546,6 +569,16 @@ export const createRuntimeTelemetry = (previewDebuggerServer: any): any => {
     return {
       debuggerId,
       capturedAt: Date.now(),
+      ...(snapshotProviderError
+        ? {
+            snapshotSource: 'debugger-dump-fallback',
+            snapshotProviderErrorCode: String(
+              (snapshotProviderError && snapshotProviderError.code) ||
+                (snapshotProviderError && snapshotProviderError.message) ||
+                'preview_runtime_snapshot_failed'
+            ),
+          }
+        : {}),
       ...summarizeRuntimeDump(dump, request),
     };
   };
