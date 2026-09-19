@@ -19,6 +19,9 @@ const ALLOWED_DEPENDENCY_MANIFESTS = new Set([
 
 const ALLOWED_REPOSITORY_METADATA = new Set([
   '.github/workflows/agent-integration.yml',
+  '.github/workflows/build-storybook.yml',
+  '.github/workflows/extract-translations.yml',
+  '.github/workflows/update-translations.yml',
 ]);
 
 const normalizeRepositoryPath = filePath => String(filePath).replace(/\\/g, '/');

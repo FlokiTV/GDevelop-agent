@@ -44,6 +44,18 @@ test('allows agent-owned files, MCP manifests, repository metadata and the three
     isAllowedAgentChange('.github/workflows/agent-integration.yml'),
     true
   );
+  assert.equal(
+    isAllowedAgentChange('.github/workflows/build-storybook.yml'),
+    true
+  );
+  assert.equal(
+    isAllowedAgentChange('.github/workflows/extract-translations.yml'),
+    true
+  );
+  assert.equal(
+    isAllowedAgentChange('.github/workflows/update-translations.yml'),
+    true
+  );
 });
 
 test('rejects changes elsewhere in GDevelop upstream', () => {
