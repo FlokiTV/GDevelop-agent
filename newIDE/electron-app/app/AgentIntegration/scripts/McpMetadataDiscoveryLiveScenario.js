@@ -23,12 +23,14 @@ const wait = delayMs => new Promise(resolve => setTimeout(resolve, delayMs));
 const parseArgs = argv => {
   const options = {
     rollback: true,
+    eventNodesOnly: false,
     objectQuery: 'sprite',
     behaviorQuery: 'movement',
   };
   for (let index = 0; index < argv.length; index++) {
     const argument = argv[index];
     if (argument === '--allow-mutate') options.allowMutate = true;
+    else if (argument === '--event-nodes-only') options.eventNodesOnly = true;
     else if (argument === '--persist') options.rollback = false;
     else if (argument === '--output') options.outputDir = argv[++index];
     else if (argument === '--window-id') options.windowId = argv[++index];
@@ -61,6 +63,7 @@ const isSimpleBehaviorCondition = condition => {
 const runMetadataDiscoveryLiveScenario = async ({
   allowMutate,
   rollback = true,
+  eventNodesOnly = false,
   outputDir = path.resolve(
     process.cwd(),
     'artifacts',
@@ -72,7 +75,8 @@ const runMetadataDiscoveryLiveScenario = async ({
   behaviorQuery = 'movement',
   env = process.env,
 }) => {
-  if (!allowMutate) throw new Error('mutation_requires_--allow-mutate');
+  if (!allowMutate && !eventNodesOnly)
+    throw new Error('mutation_requires_--allow-mutate');
   fs.mkdirSync(outputDir, { recursive: true });
 
   const runtime = loadRuntimeConfig(getDefaultDiscoveryPath(env));
@@ -133,6 +137,8 @@ const runMetadataDiscoveryLiveScenario = async ({
     [
       'events.instructions.search',
       'events.instructions.describe',
+      'events.nodes.list',
+      'events.nodes.describe',
       'editor.types.objects.list',
       'editor.types.objects.describe',
       'editor.types.behaviors.list',
@@ -152,6 +158,137 @@ const runMetadataDiscoveryLiveScenario = async ({
       ? initial.data.sceneNames.slice()
       : [];
     const originalScene = originalSceneNames[0] || null;
+
+    const eventNodeSearch = await call('events.nodes.list', {
+      limit: 100,
+    });
+    const eventNodesByType = new Map(
+      (eventNodeSearch.data.items || []).map(item => [item.type, item])
+    );
+    const requiredEventNodeTypes = [
+      'BuiltinCommonInstructions::Standard',
+      'BuiltinCommonInstructions::Group',
+      'BuiltinCommonInstructions::Comment',
+      'BuiltinCommonInstructions::Repeat',
+    ];
+    requiredEventNodeTypes.forEach(type => {
+      if (!eventNodesByType.has(type)) {
+        throw new Error(`event_node_type_not_discovered:${type}`);
+      }
+    });
+
+    const describeEventNode = async type => {
+      const result = await call('events.nodes.describe', { type });
+      const item = result.data && result.data.item;
+      if (
+        !item ||
+        item.type !== type ||
+        item.schemaAvailable !== true ||
+        !item.canonicalExample ||
+        !item.schema
+      ) {
+        throw new Error(`event_node_schema_missing:${type}`);
+      }
+      return item;
+    };
+
+    const standardNode = await describeEventNode(
+      'BuiltinCommonInstructions::Standard'
+    );
+    const groupNode = await describeEventNode(
+      'BuiltinCommonInstructions::Group'
+    );
+    const commentNode = await describeEventNode(
+      'BuiltinCommonInstructions::Comment'
+    );
+    const repeatNode = await describeEventNode(
+      'BuiltinCommonInstructions::Repeat'
+    );
+
+    if (standardNode.canHaveSubEvents !== true) {
+      throw new Error('standard_event_child_support_missing');
+    }
+    if (groupNode.canHaveSubEvents !== true) {
+      throw new Error('group_event_child_support_missing');
+    }
+    if (repeatNode.canHaveSubEvents !== true) {
+      throw new Error('repeat_event_child_support_missing');
+    }
+    if (commentNode.canHaveSubEvents !== false) {
+      throw new Error('comment_event_child_support_incorrect');
+    }
+
+    ['colorR', 'colorG', 'colorB'].forEach(field => {
+      const schema = groupNode.schema.properties[field];
+      if (
+        typeof groupNode.canonicalExample[field] !== 'number' ||
+        !schema ||
+        schema.minimum !== 0 ||
+        schema.maximum !== 255
+      ) {
+        throw new Error(`group_color_schema_invalid:${field}`);
+      }
+    });
+    ['r', 'g', 'b', 'textR', 'textG', 'textB'].forEach(field => {
+      const color = commentNode.canonicalExample.color;
+      const schema =
+        commentNode.schema.properties.color &&
+        commentNode.schema.properties.color.properties[field];
+      if (
+        !color ||
+        typeof color[field] !== 'number' ||
+        !schema ||
+        schema.minimum !== 0 ||
+        schema.maximum !== 255
+      ) {
+        throw new Error(`comment_color_schema_invalid:${field}`);
+      }
+    });
+
+    if (eventNodesOnly) {
+      const finalStatus = await call('project.status');
+      if (finalStatus.data.projectRevision !== originalRevision) {
+        throw new Error('read_only_event_node_acceptance_mutated_project');
+      }
+      const result = {
+        ok: true,
+        mode: 'event-nodes-only',
+        rollback: true,
+        protocolVersion: client.getNegotiatedProtocolVersion(),
+        discovery: {
+          eventNodes: {
+            standard: {
+              type: standardNode.type,
+              canHaveSubEvents: standardNode.canHaveSubEvents,
+              canonicalExample: standardNode.canonicalExample,
+            },
+            group: {
+              type: groupNode.type,
+              canHaveSubEvents: groupNode.canHaveSubEvents,
+              canonicalExample: groupNode.canonicalExample,
+            },
+            comment: {
+              type: commentNode.type,
+              canHaveSubEvents: commentNode.canHaveSubEvents,
+              canonicalExample: commentNode.canonicalExample,
+            },
+            repeat: {
+              type: repeatNode.type,
+              canHaveSubEvents: repeatNode.canHaveSubEvents,
+              canonicalExample: repeatNode.canonicalExample,
+            },
+          },
+        },
+        originalRevision,
+        finalRevision: finalStatus.data.projectRevision,
+        replay,
+      };
+      fs.writeFileSync(
+        path.join(outputDir, 'replay.json'),
+        `${JSON.stringify(result, null, 2)}\n`
+      );
+      return result;
+    }
 
     const objectSearch = await call('editor.types.objects.list', {
       query: objectQuery,
@@ -308,7 +445,7 @@ const runMetadataDiscoveryLiveScenario = async ({
       expectedEventsRevision: events.data.eventsRevision,
       eventsJson: [
         {
-          type: 'BuiltinCommonInstructions::Standard',
+          type: standardNode.type,
           conditions: [
             {
               type: { value: condition.id },
@@ -434,6 +571,26 @@ const runMetadataDiscoveryLiveScenario = async ({
         conditionId: condition.id,
         conditionExtension: condition.extension && condition.extension.name,
         conditionParameters: conditionDescription.data.item.parameters,
+        eventNodes: {
+          standard: {
+            type: standardNode.type,
+            canHaveSubEvents: standardNode.canHaveSubEvents,
+          },
+          group: {
+            type: groupNode.type,
+            canHaveSubEvents: groupNode.canHaveSubEvents,
+            canonicalExample: groupNode.canonicalExample,
+          },
+          comment: {
+            type: commentNode.type,
+            canHaveSubEvents: commentNode.canHaveSubEvents,
+            canonicalExample: commentNode.canonicalExample,
+          },
+          repeat: {
+            type: repeatNode.type,
+            canHaveSubEvents: repeatNode.canHaveSubEvents,
+          },
+        },
         objectPropertySchemaAvailable:
           objectDescription.data.item.propertySchemaAvailable,
         behaviorProperties: behaviorDescription.data.item.properties,
@@ -483,12 +640,13 @@ const runMetadataDiscoveryLiveScenario = async ({
 const printHelp = () => {
   process.stdout.write(
     [
-      'Usage: node AgentIntegration/scripts/McpMetadataDiscoveryLiveScenario.js --allow-mutate [options]',
+      'Usage: node AgentIntegration/scripts/McpMetadataDiscoveryLiveScenario.js [--event-nodes-only | --allow-mutate] [options]',
       '',
-      'Discovers canonical object/behavior/condition identifiers from the connected GDevelop metadata catalog, uses them to author a temporary scene, starts preview, verifies the discovered behavior at runtime, then rolls back by default.',
+      'Discovers canonical event-node schemas plus object/behavior/condition identifiers from the connected GDevelop metadata catalog. --event-nodes-only is read-only; the full scenario authors a temporary scene, verifies runtime behavior, then rolls back by default.',
       '',
       'Options:',
-      '  --allow-mutate            Required explicit opt-in.',
+      '  --event-nodes-only        Read-only live acceptance for events.nodes.list/describe.',
+      '  --allow-mutate            Required explicit opt-in for the full mutation/runtime scenario.',
       '  --persist                 Commit instead of rolling back.',
       '  --output <dir>            Sanitized replay directory.',
       '  --window-id <id>          Optional editor targeting header.',
@@ -512,11 +670,15 @@ if (require.main === module) {
           ok: result.ok,
           rollback: result.rollback,
           protocolVersion: result.protocolVersion,
-          discovery: {
-            objectType: result.discovery.objectType,
-            behaviorType: result.discovery.behaviorType,
-            conditionId: result.discovery.conditionId,
-          },
+          mode: result.mode || 'full',
+          discovery:
+            result.mode === 'event-nodes-only'
+              ? { eventNodes: result.discovery.eventNodes }
+              : {
+                  objectType: result.discovery.objectType,
+                  behaviorType: result.discovery.behaviorType,
+                  conditionId: result.discovery.conditionId,
+                },
           mutation: result.mutation,
           runtimeEvidence: result.runtimeEvidence,
           originalRevision: result.originalRevision,

@@ -49,6 +49,25 @@ const descriptors = [
       behaviorType: { type: 'string' },
     },
   }),
+  descriptor('events.nodes.list', {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      query: { type: 'string' },
+      extension: { type: 'string' },
+      limit: { type: 'integer', minimum: 1, maximum: 100 },
+      offset: { type: 'integer', minimum: 0 },
+    },
+  }),
+  descriptor('events.nodes.describe', {
+    type: 'object',
+    additionalProperties: false,
+    required: ['type'],
+    properties: {
+      type: { type: 'string' },
+      extension: { type: 'string' },
+    },
+  }),
   ...['objects', 'behaviors', 'effects'].flatMap(kind => [
     descriptor(`editor.types.${kind}.list`, {
       type: 'object',
@@ -134,6 +153,52 @@ test('official MCP client discovers and calls the CAP-01/02 metadata surface', a
           meta: { projectRevision: 4, readOnly: true, modifiesProject: false },
         };
       }
+      if (options.command === 'events.nodes.list') {
+        return {
+          command: options.command,
+          data: {
+            total: 2,
+            items: [
+              {
+                kind: 'event-node',
+                type: 'BuiltinCommonInstructions::Standard',
+                fullName: 'Standard event',
+              },
+              {
+                kind: 'event-node',
+                type: 'BuiltinCommonInstructions::Group',
+                fullName: 'Group',
+              },
+            ],
+          },
+          meta: { projectRevision: 4, readOnly: true, modifiesProject: false },
+        };
+      }
+      if (options.command === 'events.nodes.describe') {
+        return {
+          command: options.command,
+          data: {
+            item: {
+              kind: 'event-node',
+              type: options.input.type,
+              schemaAvailable: true,
+              canHaveSubEvents: true,
+              canonicalExample: {
+                type: options.input.type,
+                colorR: 74,
+                colorG: 176,
+                colorB: 228,
+              },
+              schema: {
+                type: 'object',
+                additionalProperties: true,
+                required: ['type'],
+              },
+            },
+          },
+          meta: { projectRevision: 4, readOnly: true, modifiesProject: false },
+        };
+      }
       if (options.command === 'editor.types.objects.list') {
         return {
           command: options.command,
@@ -197,6 +262,13 @@ test('official MCP client discovers and calls the CAP-01/02 metadata surface', a
         .maximum,
       100
     );
+    assert.equal(
+      byName.get('events.nodes.list').inputSchema.additionalProperties,
+      false
+    );
+    assert.deepEqual(byName.get('events.nodes.describe').inputSchema.required, [
+      'type',
+    ]);
 
     const found = await client.callTool({
       name: 'events.instructions.search',
@@ -226,6 +298,32 @@ test('official MCP client discovers and calls the CAP-01/02 metadata surface', a
       true
     );
 
+    const eventNodes = await client.callTool({
+      name: 'events.nodes.list',
+      arguments: { query: 'group', limit: 5 },
+    });
+    const groupNode = eventNodes.structuredContent.data.items.find(
+      item => item.type === 'BuiltinCommonInstructions::Group'
+    );
+    assert.ok(groupNode);
+
+    const groupDescription = await client.callTool({
+      name: 'events.nodes.describe',
+      arguments: { type: groupNode.type },
+    });
+    assert.equal(
+      groupDescription.structuredContent.data.item.schemaAvailable,
+      true
+    );
+    assert.equal(
+      groupDescription.structuredContent.data.item.canonicalExample.type,
+      groupNode.type
+    );
+    assert.deepEqual(
+      groupDescription.structuredContent.data.item.schema.required,
+      ['type']
+    );
+
     const objectTypes = await client.callTool({
       name: 'editor.types.objects.list',
       arguments: { query: 'example', limit: 5 },
@@ -247,6 +345,8 @@ test('official MCP client discovers and calls the CAP-01/02 metadata surface', a
     assert.deepEqual(calls.map(call => call.command), [
       'events.instructions.search',
       'events.instructions.describe',
+      'events.nodes.list',
+      'events.nodes.describe',
       'editor.types.objects.list',
       'editor.types.objects.describe',
     ]);

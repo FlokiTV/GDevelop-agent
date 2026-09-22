@@ -164,7 +164,7 @@ The registry currently exposes command families for:
 
 ## Native Event Sheet authoring
 
-For native Event Sheet work, follow [`docs/MCP_NATIVE_EVENT_AUTHORING.md`](./docs/MCP_NATIVE_EVENT_AUTHORING.md). The key contract is that `events.read.data.eventsJson` is the authoritative canonical serialized payload, while `events.read.data.events` is a normalized handle/navigation tree used with `eventsRevision` for localized addressing. Discover unfamiliar conditions/actions through `events.instructions.search` + `events.instructions.describe`, and prefer generated typed `editor.functions.<function-name>` MCP tools over generic `editor.functions.call` for normal single-function calls.
+For native Event Sheet work, follow [`docs/MCP_NATIVE_EVENT_AUTHORING.md`](./docs/MCP_NATIVE_EVENT_AUTHORING.md). The key contract is that `events.read.data.eventsJson` is the authoritative canonical serialized payload, while `events.read.data.events` is a normalized handle/navigation tree used with `eventsRevision` for localized addressing. Discover unfamiliar event-node types/fields through `events.nodes.list` + `events.nodes.describe`, discover unfamiliar conditions/actions through `events.instructions.search` + `events.instructions.describe`, and prefer generated typed `editor.functions.<function-name>` MCP tools over generic `editor.functions.call` for normal single-function calls.
 
 ## Recommended live-editing loop
 

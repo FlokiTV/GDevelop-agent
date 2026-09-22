@@ -28,6 +28,116 @@ describe('AgentIntegration MetadataDiscoveryService', () => {
     project.delete();
   });
 
+  it('lists and describes canonical event node schemas from connected build defaults', () => {
+    const nodes = service.listEventNodeTypes({ limit: 100 });
+    expect(nodes.total).toBeGreaterThan(0);
+    expect(nodes.items.map(item => item.type)).toEqual(
+      expect.arrayContaining([
+        'BuiltinCommonInstructions::Standard',
+        'BuiltinCommonInstructions::Group',
+        'BuiltinCommonInstructions::Comment',
+        'BuiltinCommonInstructions::Repeat',
+      ])
+    );
+
+    const standard = service.describeEventNodeType({
+      type: 'BuiltinCommonInstructions::Standard',
+    }).item;
+    expect(standard).toMatchObject({
+      kind: 'event-node',
+      type: 'BuiltinCommonInstructions::Standard',
+      schemaAvailable: true,
+      schemaSource: 'connected-build-canonical-default',
+      schemaCompleteness: 'known-default-fields',
+      canHaveSubEvents: true,
+      canonicalExample: {
+        type: 'BuiltinCommonInstructions::Standard',
+      },
+      schema: {
+        type: 'object',
+        additionalProperties: true,
+        required: ['type'],
+      },
+    });
+
+    const repeat = service.describeEventNodeType({
+      type: 'BuiltinCommonInstructions::Repeat',
+    }).item;
+    expect(repeat.schemaAvailable).toBe(true);
+    expect(repeat.canHaveSubEvents).toBe(true);
+
+    const group = service.describeEventNodeType({
+      type: 'BuiltinCommonInstructions::Group',
+    }).item;
+    expect(group).toMatchObject({
+      schemaAvailable: true,
+      canHaveSubEvents: true,
+      canonicalExample: {
+        type: 'BuiltinCommonInstructions::Group',
+        colorR: expect.any(Number),
+        colorG: expect.any(Number),
+        colorB: expect.any(Number),
+      },
+    });
+    ['colorR', 'colorG', 'colorB'].forEach(path => {
+      expect(group.fields).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            path,
+            role: 'visual',
+            minimum: 0,
+            maximum: 255,
+          }),
+        ])
+      );
+      expect(group.schema.properties[path]).toMatchObject({
+        minimum: 0,
+        maximum: 255,
+      });
+    });
+
+    const comment = service.describeEventNodeType({
+      type: 'BuiltinCommonInstructions::Comment',
+    }).item;
+    expect(comment).toMatchObject({
+      schemaAvailable: true,
+      canHaveSubEvents: false,
+      canonicalExample: {
+        type: 'BuiltinCommonInstructions::Comment',
+        color: {
+          r: expect.any(Number),
+          g: expect.any(Number),
+          b: expect.any(Number),
+          textR: expect.any(Number),
+          textG: expect.any(Number),
+          textB: expect.any(Number),
+        },
+      },
+    });
+    [
+      'color.r',
+      'color.g',
+      'color.b',
+      'color.textR',
+      'color.textG',
+      'color.textB',
+    ].forEach(path => {
+      expect(comment.fields).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            path,
+            role: 'visual',
+            minimum: 0,
+            maximum: 255,
+          }),
+        ])
+      );
+    });
+
+    expect(JSON.parse(JSON.stringify(group))).toEqual(group);
+    expect(JSON.parse(JSON.stringify(comment))).toEqual(comment);
+  });
+
   it('lists and describes installed object types from live platform metadata', () => {
     const result = service.listObjectTypes({
       query: 'sprite',

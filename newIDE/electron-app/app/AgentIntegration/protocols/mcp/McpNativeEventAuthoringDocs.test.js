@@ -12,15 +12,23 @@ test('native Event Sheet authoring docs preserve canonical/discovery guidance', 
   const guide = read(path.join('docs', 'MCP_NATIVE_EVENT_AUTHORING.md'));
 
   assert.match(readme, /MCP_NATIVE_EVENT_AUTHORING\.md/);
+  assert.match(readme, /events\.nodes\.list/);
+  assert.match(readme, /events\.nodes\.describe/);
 
   assert.match(guide, /events\.read\.data\.eventsJson/);
   assert.match(guide, /data\.eventsJson/);
   assert.match(guide, /data\.events/);
   assert.match(guide, /eventsRevision/);
-  assert.match(guide, /Do not reconstruct or style event nodes from `data\.events`/);
+  assert.match(
+    guide,
+    /Do not reconstruct or style event nodes from `data\.events`/
+  );
 
   assert.match(guide, /events\.instructions\.search/);
   assert.match(guide, /events\.instructions\.describe/);
+  assert.match(guide, /events\.nodes\.list/);
+  assert.match(guide, /events\.nodes\.describe/);
+  assert.match(guide, /known-default-fields/);
   assert.match(guide, /ordered `parameters`/);
 
   assert.match(guide, /BuiltinCommonInstructions::Group/);

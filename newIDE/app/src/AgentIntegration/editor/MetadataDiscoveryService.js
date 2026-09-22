@@ -1,6 +1,7 @@
 // @flow
 import { AgentError } from '../core/AgentError';
 import { shouldHideExtension } from '../../Version';
+import { serializeToJSObject } from '../../Utils/Serializer';
 
 const gd: libGDevelop = global.gd;
 
@@ -59,6 +60,126 @@ const paginate = (items: Array<any>, input: any = {}) => {
     limit,
     nextOffset,
   };
+};
+
+const isRgbFieldPath = (path: Array<string>): boolean => {
+  if (!path.length) return false;
+  const field = path[path.length - 1];
+  if (
+    field === 'colorR' ||
+    field === 'colorG' ||
+    field === 'colorB' ||
+    field === 'textR' ||
+    field === 'textG' ||
+    field === 'textB'
+  ) {
+    return true;
+  }
+  return (
+    path.length >= 2 &&
+    path[path.length - 2] === 'color' &&
+    (field === 'r' || field === 'g' || field === 'b')
+  );
+};
+
+const getEventFieldRole = (
+  path: Array<string>
+): 'content' | 'visual' | 'editor-metadata' => {
+  if (isRgbFieldPath(path)) return 'visual';
+  const field = path[path.length - 1];
+  if (
+    field === 'creationTime' ||
+    field === 'source' ||
+    field === 'folded' ||
+    field === 'disabled'
+  ) {
+    return 'editor-metadata';
+  }
+  return 'content';
+};
+
+const inferJsonSchemaFromDefault = (
+  value: any,
+  path: Array<string> = []
+): any => {
+  if (value === null) return { type: 'null', default: null };
+  if (Array.isArray(value)) {
+    return {
+      type: 'array',
+      default: value,
+      items:
+        value.length > 0
+          ? inferJsonSchemaFromDefault(value[0], [...path, '*'])
+          : {},
+    };
+  }
+  if (typeof value === 'object') {
+    const properties = {};
+    Object.keys(value)
+      .sort((left, right) => left.localeCompare(right))
+      .forEach(key => {
+        properties[key] = inferJsonSchemaFromDefault(value[key], [
+          ...path,
+          key,
+        ]);
+      });
+    return {
+      type: 'object',
+      additionalProperties: true,
+      properties,
+      default: value,
+    };
+  }
+  if (typeof value === 'number') {
+    const schema = {
+      type: Number.isInteger(value) ? 'integer' : 'number',
+      default: value,
+    };
+    return isRgbFieldPath(path)
+      ? { ...schema, minimum: 0, maximum: 255 }
+      : schema;
+  }
+  return { type: typeof value, default: value };
+};
+
+const collectEventFields = (
+  value: any,
+  path: Array<string> = [],
+  fields: Array<any> = []
+): Array<any> => {
+  if (Array.isArray(value)) {
+    fields.push({
+      path: path.join('.'),
+      type: 'array',
+      defaultValue: value,
+      role: getEventFieldRole(path),
+    });
+    return fields;
+  }
+  if (value && typeof value === 'object') {
+    if (path.length) {
+      fields.push({
+        path: path.join('.'),
+        type: 'object',
+        defaultValue: value,
+        role: getEventFieldRole(path),
+      });
+    }
+    Object.keys(value)
+      .sort((left, right) => left.localeCompare(right))
+      .forEach(key => collectEventFields(value[key], [...path, key], fields));
+    return fields;
+  }
+  const inferred = inferJsonSchemaFromDefault(value, path);
+  fields.push({
+    path: path.join('.'),
+    type: inferred.type,
+    defaultValue: value,
+    role: getEventFieldRole(path),
+    ...(inferred.minimum !== undefined ? { minimum: inferred.minimum } : {}),
+    ...(inferred.maximum !== undefined ? { maximum: inferred.maximum } : {}),
+  });
+  return fields;
 };
 
 const normalizeDeprecatedFilter = (
@@ -529,6 +650,113 @@ const instructionSearchText = (record: any): string =>
     .filter(Boolean)
     .join(' ');
 
+const makeEventNodeRecord = (
+  extension: gdPlatformExtension,
+  type: string,
+  metadata: any
+): any => ({
+  kind: 'event-node',
+  type,
+  fullName: metadata.getFullName(),
+  description: metadata.getDescription(),
+  group: metadata.getGroup() || null,
+  extension: getExtensionSummary(extension),
+});
+
+const collectEventNodeTypes = (project: gdProject): Array<any> => {
+  const records = [];
+  const extensions = gd
+    .asPlatform(gd.JsPlatform.get())
+    .getAllPlatformExtensions();
+
+  for (
+    let extensionIndex = 0;
+    extensionIndex < extensions.size();
+    extensionIndex++
+  ) {
+    const extension = extensions.at(extensionIndex);
+    if (shouldHideExtension(project, extension)) continue;
+    const events = extension.getAllEvents();
+    events
+      .keys()
+      .toJSArray()
+      .filter(type => type !== 'BuiltinAsync::Async')
+      .forEach(type => {
+        records.push(makeEventNodeRecord(extension, type, events.get(type)));
+      });
+  }
+
+  return records.sort((left, right) => left.type.localeCompare(right.type));
+};
+
+const eventNodeSearchText = (record: any): string =>
+  [
+    record.type,
+    record.fullName,
+    record.description,
+    record.group,
+    record.extension.name,
+    record.extension.namespace,
+    record.extension.fullName,
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+const filterEventNodeTypes = (records: Array<any>, input: any): Array<any> =>
+  records.filter(record => {
+    if (!extensionMatches(record, input.extension)) return false;
+    return textMatches(eventNodeSearchText(record), input.query);
+  });
+
+const probeEventNodeType = (project: gdProject, type: string): any => {
+  let eventsList = null;
+  try {
+    eventsList = new gd.EventsList();
+    const event = eventsList.insertNewEvent(project, type, 0);
+    if (!event) {
+      return {
+        schemaAvailable: false,
+        schemaError: 'event_node_probe_failed',
+      };
+    }
+    const serialized = serializeToJSObject(eventsList, 'serializeTo', {
+      canonicalEventSerialization: true,
+    });
+    const canonicalExample =
+      Array.isArray(serialized) && serialized.length > 0 ? serialized[0] : null;
+    if (!canonicalExample || typeof canonicalExample !== 'object') {
+      return {
+        schemaAvailable: false,
+        schemaError: 'event_node_serialization_failed',
+      };
+    }
+
+    const schema = inferJsonSchemaFromDefault(canonicalExample);
+    schema.required = ['type'];
+
+    return {
+      schemaAvailable: true,
+      schemaSource: 'connected-build-canonical-default',
+      schemaCompleteness: 'known-default-fields',
+      canHaveSubEvents: event.canHaveSubEvents(),
+      canonicalExample,
+      fields: collectEventFields(canonicalExample),
+      schema,
+    };
+  } catch (error) {
+    return {
+      schemaAvailable: false,
+      schemaError: String(
+        (error && error.code) ||
+          (error && error.message) ||
+          'event_node_probe_failed'
+      ),
+    };
+  } finally {
+    if (eventsList) eventsList.delete();
+  }
+};
+
 const filterInstructionCatalog = (
   records: Array<any>,
   input: any
@@ -858,6 +1086,42 @@ const findTypeRecord = ({
   return matches[0];
 };
 
+const findEventNodeType = ({
+  project,
+  type,
+  extensionFilter,
+}: {|
+  project: gdProject,
+  type: string,
+  extensionFilter?: any,
+|}) => {
+  const matches = collectEventNodeTypes(project).filter(
+    record => record.type === type && extensionMatches(record, extensionFilter)
+  );
+  if (!matches.length) {
+    throw new AgentError({
+      code: 'metadata_event_node_not_found',
+      message: `Event node type not found: ${type}`,
+      details: { type },
+    });
+  }
+  if (matches.length > 1) {
+    throw new AgentError({
+      code: 'metadata_event_node_ambiguous',
+      message: `Event node type is ambiguous: ${type}`,
+      hint: 'Pass extension to select one candidate.',
+      details: {
+        type,
+        candidates: matches.map(record => ({
+          type: record.type,
+          extension: record.extension.name,
+        })),
+      },
+    });
+  }
+  return matches[0];
+};
+
 export const createMetadataDiscoveryService = ({
   project,
 }: {|
@@ -867,6 +1131,7 @@ export const createMetadataDiscoveryService = ({
   // installed extension metadata can change while the editor remains open.
   // Returning a stale process-local catalog would make live discovery unsafe.
   const getInstructionCatalog = () => collectInstructionCatalog(project);
+  const getEventNodeCatalog = () => collectEventNodeTypes(project);
 
   const searchInstructions = (input: any = {}) => {
     const filtered = filterInstructionCatalog(getInstructionCatalog(), input);
@@ -921,6 +1186,32 @@ export const createMetadataDiscoveryService = ({
       });
     }
     return { item: matches[0] };
+  };
+
+  const listEventNodeTypes = (input: any = {}) => ({
+    ...paginate(filterEventNodeTypes(getEventNodeCatalog(), input), input),
+    filters: {
+      query: input.query || '',
+      extension: input.extension || null,
+    },
+  });
+
+  const describeEventNodeType = (input: any = {}) => {
+    const type = typeof input.type === 'string' ? input.type : '';
+    if (!type) {
+      throw new AgentError({ code: 'missing_metadata_event_node_type' });
+    }
+    const summary = findEventNodeType({
+      project,
+      type,
+      extensionFilter: input.extension,
+    });
+    return {
+      item: {
+        ...summary,
+        ...probeEventNodeType(project, type),
+      },
+    };
   };
 
   const listTypes = (
@@ -990,6 +1281,8 @@ export const createMetadataDiscoveryService = ({
   return {
     searchInstructions,
     describeInstruction,
+    listEventNodeTypes,
+    describeEventNodeType,
     listObjectTypes: input => listTypes('object', input),
     describeObjectType: input => describeType('object', input),
     listBehaviorTypes: input => listTypes('behavior', input),
@@ -1005,5 +1298,9 @@ export const metadataDiscoveryInternals = {
   serializePropertyMap,
   collectInstructionCatalog,
   collectTypes,
+  collectEventNodeTypes,
+  filterEventNodeTypes,
+  inferJsonSchemaFromDefault,
+  probeEventNodeType,
   shouldHideExtension,
 };

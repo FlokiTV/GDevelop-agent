@@ -48,6 +48,14 @@ const INSTRUCTION_FILTER_PROPERTIES = {
   includeHidden: { type: 'boolean', default: false },
 };
 
+const EVENT_NODE_FILTER_PROPERTIES = {
+  query: { type: 'string' },
+  extension: {
+    type: 'string',
+    description: 'Exact extension name or namespace.',
+  },
+};
+
 const TYPE_FILTER_PROPERTIES = {
   query: { type: 'string' },
   extension: {
@@ -90,6 +98,23 @@ export const createMetadataDiscoveryCommandDescriptors = ({
 }: {|
   metadataDiscoveryService: any,
 |}): Array<CommandDescriptor> => [
+  {
+    name: 'events.nodes.list',
+    description:
+      'List canonical GDevelop event node types from the connected build. Results come from live platform extension metadata rather than a static catalog.',
+    inputSchema: makeListSchema(EVENT_NODE_FILTER_PROPERTIES),
+    metadata: DISCOVERY_METADATA,
+    execute: ({ input }) => metadataDiscoveryService.listEventNodeTypes(input),
+  },
+  {
+    name: 'events.nodes.describe',
+    description:
+      'Describe one canonical event node type by probing its default serialization in an isolated temporary EventsList. Returns child support, canonical default/example fields and a forward-compatible schema for known default fields.',
+    inputSchema: makeDescribeTypeSchema(),
+    metadata: DISCOVERY_METADATA,
+    execute: ({ input }) =>
+      metadataDiscoveryService.describeEventNodeType(input),
+  },
   {
     name: 'events.instructions.search',
     description:

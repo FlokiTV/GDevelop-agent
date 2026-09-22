@@ -64,7 +64,7 @@ Recommended native-event sequence:
 
 ## 3. Canonical Group and Comment examples
 
-Until event-node schema introspection is available, use `events.read.data.eventsJson` as the authority for event-node-specific fields.
+Use `events.nodes.list` to discover canonical event node types from the connected build and `events.nodes.describe` to inspect one type. `describe` probes an isolated temporary event, returns its canonical default/example, `canHaveSubEvents`, known fields and a forward-compatible schema derived from that build. The schema is intentionally marked `known-default-fields` and allows additional properties, because fields absent from the default serialization can still exist on authored nodes. For an existing event instance, `events.read.data.eventsJson` remains the authority for its complete current serialized state.
 
 ### Group
 

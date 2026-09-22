@@ -68,6 +68,8 @@ const EXPECTED_PUBLIC_COMMANDS = [
   'events.instructions.describe',
   'events.instructions.search',
   'events.move',
+  'events.nodes.describe',
+  'events.nodes.list',
   'events.read',
   'events.update',
   'export.html5',

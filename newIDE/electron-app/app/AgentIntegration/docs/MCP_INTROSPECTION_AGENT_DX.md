@@ -191,6 +191,7 @@ Example result:
 ### Requirements
 
 - derive from the connected build or the same authoritative serialization metadata used by the editor;
+- current implementation enumerates live `PlatformExtension.getAllEvents()` metadata and probes the canonical default serialization in an isolated temporary `EventsList`; returned schemas identify `schemaSource=connected-build-canonical-default` and `schemaCompleteness=known-default-fields`, remaining forward-compatible with additional fields;
 - include required/optional fields;
 - identify editor-only/visual fields;
 - include defaults and value ranges where known;
@@ -422,8 +423,9 @@ A robust default workflow should be documented as:
    - `events.instructions.describe`.
 
 5. **Discover unfamiliar event-node fields**
-   - future: `events.nodes.describe`;
-   - until implemented, document canonical examples for the built-in node types most commonly authored.
+   - `events.nodes.list` to discover node types from the connected build;
+   - `events.nodes.describe` to inspect canonical defaults, known fields, child support and schema metadata;
+   - for an existing authored node, keep `events.read.data.eventsJson` as the authority for its complete current serialized state.
 
 6. **Use the smallest mutation**
    - `events.update` for one node;

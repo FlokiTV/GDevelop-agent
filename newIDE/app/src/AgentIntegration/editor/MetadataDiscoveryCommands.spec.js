@@ -6,6 +6,14 @@ describe('AgentIntegration MetadataDiscoveryCommands', () => {
   it('registers the complete CAP-01/02 read-only command surface with strict schemas', async () => {
     const calls = [];
     const metadataDiscoveryService: any = {
+      listEventNodeTypes: input => {
+        calls.push(['listEventNodeTypes', input]);
+        return { items: [], total: 0 };
+      },
+      describeEventNodeType: input => {
+        calls.push(['describeEventNodeType', input]);
+        return { item: { type: input.type } };
+      },
       searchInstructions: input => {
         calls.push(['searchInstructions', input]);
         return { items: [], total: 0 };
@@ -53,6 +61,8 @@ describe('AgentIntegration MetadataDiscoveryCommands', () => {
       'editor.types.objects.list',
       'events.instructions.describe',
       'events.instructions.search',
+      'events.nodes.describe',
+      'events.nodes.list',
     ]);
 
     registry.list().forEach(descriptor => {
@@ -80,10 +90,22 @@ describe('AgentIntegration MetadataDiscoveryCommands', () => {
       registry.get('editor.types.behaviors.list').inputSchema.properties
         .objectType
     ).toBeTruthy();
+    expect(
+      registry.get('events.nodes.list').inputSchema.properties.query
+    ).toBeTruthy();
+    expect(registry.get('events.nodes.describe').inputSchema.required).toEqual([
+      'type',
+    ]);
 
     await registry.get('events.instructions.search').execute({
       environment: {},
       input: { query: 'platform', limit: 5 },
+      requestContext: {},
+      registry,
+    });
+    await registry.get('events.nodes.describe').execute({
+      environment: {},
+      input: { type: 'BuiltinCommonInstructions::Group' },
       requestContext: {},
       registry,
     });
@@ -96,6 +118,7 @@ describe('AgentIntegration MetadataDiscoveryCommands', () => {
 
     expect(calls).toEqual([
       ['searchInstructions', { query: 'platform', limit: 5 }],
+      ['describeEventNodeType', { type: 'BuiltinCommonInstructions::Group' }],
       ['describeEffectType', { type: 'SomeEffect' }],
     ]);
   });
