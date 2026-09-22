@@ -213,6 +213,8 @@ If an external host cannot connect, verify that the current GDevelop process cre
 
 See [`docs/GAME_CREATION_COVERAGE_ROADMAP.md`](./docs/GAME_CREATION_COVERAGE_ROADMAP.md) for the capability roadmap from the current live-editing MCP surface to near-complete autonomous game creation coverage, including discovery, custom extensions, External Events/Layouts, asset/docs integration, typed tools, build targets, debugging, deterministic QA, multiplayer and publication boundaries.
 
+For the post-roadmap developer-experience gaps exposed by real autonomous authoring — especially canonical `eventsJson` versus normalized handles, event-node schema introspection, instruction/expression discovery, visual Event Sheet styling and external-client connection ergonomics — see [`docs/MCP_INTROSPECTION_AGENT_DX.md`](./docs/MCP_INTROSPECTION_AGENT_DX.md).
+
 ## 3D workflows
 
 For material 3D work, use the dedicated quality guidance:
