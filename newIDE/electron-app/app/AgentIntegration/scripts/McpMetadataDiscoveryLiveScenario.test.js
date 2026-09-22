@@ -51,6 +51,7 @@ test('parseArgs keeps natural search terms separate from canonical ids', () => {
     {
       rollback: true,
       eventNodesOnly: false,
+      expressionsOnly: false,
       objectQuery: '2d sprite',
       behaviorQuery: 'movement',
       allowMutate: true,
@@ -65,9 +66,20 @@ test('parseArgs supports read-only event node acceptance without mutation opt-in
     {
       rollback: true,
       eventNodesOnly: true,
+      expressionsOnly: false,
       objectQuery: 'sprite',
       behaviorQuery: 'movement',
       projectPath: 'game.json',
     }
   );
+});
+
+test('parseArgs supports read-only expression acceptance without mutation opt-in', () => {
+  assert.deepEqual(parseArgs(['--expressions-only']), {
+    rollback: true,
+    eventNodesOnly: false,
+    expressionsOnly: true,
+    objectQuery: 'sprite',
+    behaviorQuery: 'movement',
+  });
 });

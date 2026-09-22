@@ -46,6 +46,7 @@ const descriptors = [
     properties: {
       id: { type: 'string' },
       kind: { type: 'string' },
+      extension: { type: 'string' },
       behaviorType: { type: 'string' },
     },
   }),
@@ -117,38 +118,68 @@ test('official MCP client discovers and calls the CAP-01/02 metadata surface', a
       }
       calls.push(options);
       if (options.command === 'events.instructions.search') {
+        const isExpression = options.input.kind === 'expression';
         return {
           command: options.command,
           data: {
             total: 1,
-            items: [
-              {
-                kind: 'condition',
-                id: 'ExampleBehavior::IsReady',
-                scope: {
-                  kind: 'behavior',
-                  behaviorType: 'ExampleBehavior::Behavior',
-                },
-                parameters: [
-                  { index: 0, type: 'object', optional: false },
-                  { index: 1, type: 'behavior', optional: false },
+            items: isExpression
+              ? [
+                  {
+                    kind: 'expression',
+                    id: 'RandomInRange',
+                    returnType: 'number',
+                    scope: { kind: 'free' },
+                    extension: { name: 'MathematicalTools' },
+                    parameters: [
+                      { index: 0, type: 'expression', optional: false },
+                      { index: 1, type: 'expression', optional: false },
+                    ],
+                    eventContexts: { scene: true },
+                  },
+                ]
+              : [
+                  {
+                    kind: 'condition',
+                    id: 'ExampleBehavior::IsReady',
+                    scope: {
+                      kind: 'behavior',
+                      behaviorType: 'ExampleBehavior::Behavior',
+                    },
+                    parameters: [
+                      { index: 0, type: 'object', optional: false },
+                      { index: 1, type: 'behavior', optional: false },
+                    ],
+                  },
                 ],
-              },
-            ],
           },
           meta: { projectRevision: 4, readOnly: true, modifiesProject: false },
         };
       }
       if (options.command === 'events.instructions.describe') {
+        const isExpression = options.input.kind === 'expression';
         return {
           command: options.command,
           data: {
-            item: {
-              kind: 'condition',
-              id: options.input.id,
-              parameters: [{ index: 0, type: 'object', optional: false }],
-              eventContexts: { scene: true },
-            },
+            item: isExpression
+              ? {
+                  kind: 'expression',
+                  id: options.input.id,
+                  returnType: 'number',
+                  scope: { kind: 'free' },
+                  extension: { name: 'MathematicalTools' },
+                  parameters: [
+                    { index: 0, type: 'expression', optional: false },
+                    { index: 1, type: 'expression', optional: false },
+                  ],
+                  eventContexts: { scene: true },
+                }
+              : {
+                  kind: 'condition',
+                  id: options.input.id,
+                  parameters: [{ index: 0, type: 'object', optional: false }],
+                  eventContexts: { scene: true },
+                },
           },
           meta: { projectRevision: 4, readOnly: true, modifiesProject: false },
         };
@@ -298,6 +329,41 @@ test('official MCP client discovers and calls the CAP-01/02 metadata surface', a
       true
     );
 
+    const expressions = await client.callTool({
+      name: 'events.instructions.search',
+      arguments: {
+        query: 'RandomInRange',
+        kind: 'expression',
+        limit: 5,
+      },
+    });
+    const discoveredExpression = expressions.structuredContent.data.items[0];
+    assert.equal(discoveredExpression.id, 'RandomInRange');
+    assert.equal(discoveredExpression.returnType, 'number');
+    assert.deepEqual(
+      discoveredExpression.parameters.map(parameter => parameter.index),
+      [0, 1]
+    );
+
+    const describedExpression = await client.callTool({
+      name: 'events.instructions.describe',
+      arguments: {
+        id: discoveredExpression.id,
+        kind: 'expression',
+        extension: discoveredExpression.extension.name,
+      },
+    });
+    assert.equal(
+      describedExpression.structuredContent.data.item.returnType,
+      'number'
+    );
+    assert.deepEqual(
+      describedExpression.structuredContent.data.item.parameters.map(
+        parameter => parameter.index
+      ),
+      [0, 1]
+    );
+
     const eventNodes = await client.callTool({
       name: 'events.nodes.list',
       arguments: { query: 'group', limit: 5 },
@@ -343,6 +409,8 @@ test('official MCP client discovers and calls the CAP-01/02 metadata surface', a
     );
 
     assert.deepEqual(calls.map(call => call.command), [
+      'events.instructions.search',
+      'events.instructions.describe',
       'events.instructions.search',
       'events.instructions.describe',
       'events.nodes.list',

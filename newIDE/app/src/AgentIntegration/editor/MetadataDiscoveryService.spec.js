@@ -172,6 +172,63 @@ describe('AgentIntegration MetadataDiscoveryService', () => {
     expect(JSON.parse(JSON.stringify(described))).toEqual(described);
   });
 
+  it('discovers free expressions with return types and ordered parameters', () => {
+    const findAndDescribe = (id: string) => {
+      const search = service.searchInstructions({
+        query: id,
+        kind: 'expression',
+        deprecated: 'include',
+        limit: 100,
+      });
+      const expression = search.items.find(
+        candidate =>
+          candidate.id === id &&
+          candidate.kind === 'expression' &&
+          candidate.scope.kind === 'free'
+      );
+      expect(expression).toBeTruthy();
+      return service.describeInstruction({
+        id,
+        kind: 'expression',
+        extension: expression.extension.name,
+      }).item;
+    };
+
+    const randomInRange = findAndDescribe('RandomInRange');
+    expect(randomInRange).toMatchObject({
+      kind: 'expression',
+      id: 'RandomInRange',
+      returnType: 'number',
+      scope: { kind: 'free' },
+      extension: expect.objectContaining({ name: expect.any(String) }),
+      parameters: expect.any(Array),
+      requirements: expect.objectContaining({
+        objectTypes: expect.any(Array),
+        behaviorTypes: expect.any(Array),
+        resourceTypes: expect.any(Array),
+      }),
+      eventContexts: expect.objectContaining({ scene: expect.any(Boolean) }),
+    });
+    expect(randomInRange.parameters.length).toBeGreaterThan(0);
+    randomInRange.parameters.forEach((parameter, index) => {
+      expect(parameter.index).toBe(index);
+      expect(parameter.type).toEqual(expect.any(String));
+    });
+
+    const toString = findAndDescribe('ToString');
+    expect(toString).toMatchObject({
+      kind: 'expression',
+      id: 'ToString',
+      returnType: 'string',
+      scope: { kind: 'free' },
+      parameters: expect.any(Array),
+    });
+    expect(toString.parameters.length).toBeGreaterThan(0);
+    toString.parameters.forEach((parameter, index) =>
+      expect(parameter.index).toBe(index)
+    );
+  });
+
   it('discovers a behavior condition without hard-coding its instruction id', () => {
     const behaviors = service.listBehaviorTypes({
       deprecated: 'include',

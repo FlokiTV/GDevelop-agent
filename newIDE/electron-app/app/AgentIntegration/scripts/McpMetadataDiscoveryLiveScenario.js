@@ -24,6 +24,7 @@ const parseArgs = argv => {
   const options = {
     rollback: true,
     eventNodesOnly: false,
+    expressionsOnly: false,
     objectQuery: 'sprite',
     behaviorQuery: 'movement',
   };
@@ -31,6 +32,7 @@ const parseArgs = argv => {
     const argument = argv[index];
     if (argument === '--allow-mutate') options.allowMutate = true;
     else if (argument === '--event-nodes-only') options.eventNodesOnly = true;
+    else if (argument === '--expressions-only') options.expressionsOnly = true;
     else if (argument === '--persist') options.rollback = false;
     else if (argument === '--output') options.outputDir = argv[++index];
     else if (argument === '--window-id') options.windowId = argv[++index];
@@ -64,6 +66,7 @@ const runMetadataDiscoveryLiveScenario = async ({
   allowMutate,
   rollback = true,
   eventNodesOnly = false,
+  expressionsOnly = false,
   outputDir = path.resolve(
     process.cwd(),
     'artifacts',
@@ -75,7 +78,7 @@ const runMetadataDiscoveryLiveScenario = async ({
   behaviorQuery = 'movement',
   env = process.env,
 }) => {
-  if (!allowMutate && !eventNodesOnly)
+  if (!allowMutate && !eventNodesOnly && !expressionsOnly)
     throw new Error('mutation_requires_--allow-mutate');
   fs.mkdirSync(outputDir, { recursive: true });
 
@@ -158,6 +161,100 @@ const runMetadataDiscoveryLiveScenario = async ({
       ? initial.data.sceneNames.slice()
       : [];
     const originalScene = originalSceneNames[0] || null;
+
+    if (expressionsOnly) {
+      const discoverExpression = async ({ id, returnType }) => {
+        const search = await call('events.instructions.search', {
+          query: id,
+          kind: 'expression',
+          deprecated: 'include',
+          limit: 100,
+        });
+        const item = (search.data.items || []).find(
+          candidate =>
+            candidate &&
+            candidate.kind === 'expression' &&
+            candidate.id === id &&
+            candidate.scope &&
+            candidate.scope.kind === 'free'
+        );
+        if (!item) throw new Error(`expression_not_discovered:${id}`);
+        if (item.returnType !== returnType) {
+          throw new Error(
+            `expression_return_type_mismatch:${id}:${item.returnType}`
+          );
+        }
+
+        const described = await call('events.instructions.describe', {
+          id: item.id,
+          kind: 'expression',
+          extension: item.extension && item.extension.name,
+        });
+        const detailed = described.data && described.data.item;
+        if (
+          !detailed ||
+          detailed.kind !== 'expression' ||
+          detailed.id !== id ||
+          detailed.returnType !== returnType ||
+          !detailed.scope ||
+          detailed.scope.kind !== 'free' ||
+          !detailed.extension ||
+          !detailed.extension.name ||
+          !detailed.eventContexts ||
+          !Array.isArray(detailed.parameters)
+        ) {
+          throw new Error(`expression_description_incomplete:${id}`);
+        }
+        detailed.parameters.forEach((parameter, index) => {
+          if (!parameter || parameter.index !== index || !parameter.type) {
+            throw new Error(`expression_parameter_order_invalid:${id}`);
+          }
+        });
+        return {
+          id: detailed.id,
+          returnType: detailed.returnType,
+          scope: detailed.scope,
+          extension: detailed.extension,
+          parameters: detailed.parameters,
+          requirements: detailed.requirements,
+          eventContexts: detailed.eventContexts,
+        };
+      };
+
+      const randomInRange = await discoverExpression({
+        id: 'RandomInRange',
+        returnType: 'number',
+      });
+      const toString = await discoverExpression({
+        id: 'ToString',
+        returnType: 'string',
+      });
+
+      const finalStatus = await call('project.status');
+      if (finalStatus.data.projectRevision !== originalRevision) {
+        throw new Error('read_only_expression_acceptance_mutated_project');
+      }
+      const result = {
+        ok: true,
+        mode: 'expressions-only',
+        rollback: true,
+        protocolVersion: client.getNegotiatedProtocolVersion(),
+        discovery: {
+          expressions: {
+            randomInRange,
+            toString,
+          },
+        },
+        originalRevision,
+        finalRevision: finalStatus.data.projectRevision,
+        replay,
+      };
+      fs.writeFileSync(
+        path.join(outputDir, 'replay.json'),
+        `${JSON.stringify(result, null, 2)}\n`
+      );
+      return result;
+    }
 
     const eventNodeSearch = await call('events.nodes.list', {
       limit: 100,
@@ -640,12 +737,13 @@ const runMetadataDiscoveryLiveScenario = async ({
 const printHelp = () => {
   process.stdout.write(
     [
-      'Usage: node AgentIntegration/scripts/McpMetadataDiscoveryLiveScenario.js [--event-nodes-only | --allow-mutate] [options]',
+      'Usage: node AgentIntegration/scripts/McpMetadataDiscoveryLiveScenario.js [--event-nodes-only | --expressions-only | --allow-mutate] [options]',
       '',
-      'Discovers canonical event-node schemas plus object/behavior/condition identifiers from the connected GDevelop metadata catalog. --event-nodes-only is read-only; the full scenario authors a temporary scene, verifies runtime behavior, then rolls back by default.',
+      'Discovers canonical event-node schemas, expressions and object/behavior/condition identifiers from the connected GDevelop metadata catalog. --event-nodes-only and --expressions-only are read-only; the full scenario authors a temporary scene, verifies runtime behavior, then rolls back by default.',
       '',
       'Options:',
       '  --event-nodes-only        Read-only live acceptance for events.nodes.list/describe.',
+      '  --expressions-only        Read-only live acceptance for expression search/describe via events.instructions.*.',
       '  --allow-mutate            Required explicit opt-in for the full mutation/runtime scenario.',
       '  --persist                 Commit instead of rolling back.',
       '  --output <dir>            Sanitized replay directory.',
@@ -674,6 +772,8 @@ if (require.main === module) {
           discovery:
             result.mode === 'event-nodes-only'
               ? { eventNodes: result.discovery.eventNodes }
+              : result.mode === 'expressions-only'
+              ? { expressions: result.discovery.expressions }
               : {
                   objectType: result.discovery.objectType,
                   behaviorType: result.discovery.behaviorType,

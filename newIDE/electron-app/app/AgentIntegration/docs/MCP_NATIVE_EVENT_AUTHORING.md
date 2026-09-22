@@ -18,9 +18,9 @@ The normalized `data.events` tree is intentionally not a complete editable seria
 
 When `events.read` is paginated, both `eventsJson` and `events` contain the requested root slice while `eventsRevision` still identifies the complete current target event tree.
 
-## 2. Discover unfamiliar conditions/actions before authoring
+## 2. Discover unfamiliar conditions/actions/expressions before authoring
 
-Do not guess native instruction identifiers or ordered parameters from model memory. Use the live metadata exposed by the connected build.
+Do not guess native instruction or expression identifiers, return types or ordered parameters from model memory. Use the live metadata exposed by the connected build.
 
 Typical discovery flow:
 
@@ -49,14 +49,14 @@ Select the returned instruction id, then describe it:
 
 For behavior-owned instructions, preserve the returned `behaviorType` when describing the instruction.
 
-`events.instructions.describe` is the contract to consult before constructing the canonical instruction's ordered `parameters`. Search/describe can also expose applicability/context metadata from the live build.
+`events.instructions.describe` is the contract to consult before constructing the canonical instruction's ordered `parameters`. Search/describe can also expose applicability/context metadata from the live build. Expressions use the same authoritative surface: search with `kind: "expression"`, then describe the selected result to obtain `returnType`, ordered parameter metadata, free/object/behavior ownership, extension ownership, requirements and supported event contexts. Dedicated `events.expressions.*` aliases are intentionally unnecessary while this live contract remains complete. For example, searching for `RandomInRange` discovers the numeric helper from the connected build, while `ToString` is returned as a string expression with its ordered input contract.
 
 Recommended native-event sequence:
 
 1. `events.read`.
 2. Locate the canonical target node in `data.eventsJson` and its corresponding handle in `data.events`.
-3. For each unfamiliar condition/action, call `events.instructions.search`.
-4. Call `events.instructions.describe` for the selected identifier.
+3. For each unfamiliar condition/action/expression, call `events.instructions.search` with the appropriate `kind`.
+4. Call `events.instructions.describe` for the selected identifier; for expressions, preserve the returned scope/extension disambiguators and `returnType`.
 5. Construct canonical event JSON using the discovered ordered parameter contract.
 6. Use the smallest suitable mutation: `events.insert/update/move/delete`; reserve `events.apply` for deliberate bulk replacement/append.
 7. Pass the current `eventsRevision` where the localized mutation requires `expectedEventsRevision`.

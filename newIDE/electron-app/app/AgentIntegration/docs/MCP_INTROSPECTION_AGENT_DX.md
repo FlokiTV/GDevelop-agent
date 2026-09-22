@@ -237,25 +237,27 @@ A Comment with an invalid RGB value or wrong field type is rejected with a struc
 
 ---
 
-## B3 — Add expression discovery if still absent from the live surface
+## B3 — Expression discovery is already live through the instruction metadata surface
 
-Instruction discovery covers conditions/actions. Native event expressions remain another place where agents may rely on model memory, especially for:
+The connected-build metadata catalog already includes numeric and string expressions alongside conditions/actions. Clients should use:
 
-- math helpers;
-- conversion functions;
-- object expressions;
-- behavior expressions;
-- extension expressions;
-- return types and parameter types.
+- `events.instructions.search({ kind: "expression", ... })`;
+- `events.instructions.describe({ id, kind: "expression", ... })`.
 
-### Proposed API
+Expression records are collected live from extension, object and behavior metadata (`getAllExpressions()` plus `getAllStrExpressions()`) and expose:
 
-- `events.expressions.search`
-- `events.expressions.describe`
+- `returnType`;
+- ordered parameter metadata and value types;
+- free/object/behavior ownership through `scope`;
+- extension ownership;
+- object/behavior/resource requirements;
+- scene/function/asynchronous-function/custom-object applicability.
+
+A separate `events.expressions.search/describe` alias would duplicate the same catalog and schema, so DX-4 keeps the single authoritative search/describe surface instead of adding redundant tools.
 
 ### Acceptance
 
-A client can discover `RandomInRange`, `ToString`, or an unfamiliar extension expression, including return type and ordered parameters, without repository inspection.
+A clean client can discover and describe `RandomInRange` and `ToString`, including return type and ordered parameters, through MCP without repository inspection. The read-only live gate must leave the project revision unchanged.
 
 ---
 
@@ -459,7 +461,7 @@ A robust default workflow should be documented as:
 | P0 | Clarify typed EditorFunction preferred path | Docs | Avoids unnecessary generic calls |
 | P1 | `events.nodes.list/describe` | API | Authoritative node-level schema introspection |
 | P1 | Improve event mutation schemas / schema references | API | Earlier validation and clearer contracts |
-| P1 | `events.expressions.search/describe` if not already live | API | Removes expression-name/parameter guesswork |
+| P1 | Expression discovery via `events.instructions.search/describe` with `kind=expression` | API/docs/tests | Already live; DX-4 verifies return type, ordered parameters, ownership and applicability without duplicating the catalog |
 | P1 | `events.style.update` | API | Safe, intent-specific visual mutations |
 | P2 | Reusable `connectLiveGDevelopMcp` helper | Client DX | Removes repeated transport/auth boilerplate |
 | P2 | Safe one-off MCP CLI | Client DX | Avoids temporary scripts for inspection/tool calls |

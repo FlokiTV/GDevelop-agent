@@ -26,6 +26,9 @@ test('native Event Sheet authoring docs preserve canonical/discovery guidance', 
 
   assert.match(guide, /events\.instructions\.search/);
   assert.match(guide, /events\.instructions\.describe/);
+  assert.match(guide, /kind: \"expression\"/);
+  assert.match(guide, /RandomInRange/);
+  assert.match(guide, /returnType/);
   assert.match(guide, /events\.nodes\.list/);
   assert.match(guide, /events\.nodes\.describe/);
   assert.match(guide, /known-default-fields/);
