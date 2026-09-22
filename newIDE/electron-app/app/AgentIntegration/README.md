@@ -162,6 +162,10 @@ The registry currently exposes command families for:
 
 `preview.network.capture.*` uses Electron's `webContents.debugger`/CDP `Network` domain only for an explicitly aliased preview. Capture is bounded (maximum 2000 recent events), redacts credential-bearing URL query fields and sensitive headers by default, records HTTP request/response/failure metadata and WebSocket lifecycle/handshake metadata, and intentionally omits response bodies and WebSocket frame payloads. It refuses to attach when another debugger client already owns that `webContents`. Network shaping/latency/loss simulation is reported as unsupported rather than emulated through an unreliable hidden mechanism.
 
+## Native Event Sheet authoring
+
+For native Event Sheet work, follow [`docs/MCP_NATIVE_EVENT_AUTHORING.md`](./docs/MCP_NATIVE_EVENT_AUTHORING.md). The key contract is that `events.read.data.eventsJson` is the authoritative canonical serialized payload, while `events.read.data.events` is a normalized handle/navigation tree used with `eventsRevision` for localized addressing. Discover unfamiliar conditions/actions through `events.instructions.search` + `events.instructions.describe`, and prefer generated typed `editor.functions.<function-name>` MCP tools over generic `editor.functions.call` for normal single-function calls.
+
 ## Recommended live-editing loop
 
 A safe agent workflow is:

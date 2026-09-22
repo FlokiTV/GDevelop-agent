@@ -1,0 +1,154 @@
+# Native Event Sheet authoring through MCP
+
+This guide is the default repository-side workflow for authoring GDevelop Event Sheets through the live MCP. It focuses on choosing the correct event representation, discovering instruction contracts before writing JSON, and preferring typed EditorFunction tools when they exist.
+
+## 1. Read the event tree before editing
+
+Call `events.read` for the target scene, External Events sheet, or extension function.
+
+The structured command result contains three different pieces of information with different purposes:
+
+- `data.eventsJson` — the **authoritative canonical serialized GDevelop event payload**. Use this representation when you need complete event-type-specific fields or when constructing canonical `eventJson` / `eventsJson` for mutations.
+- `data.events` — a normalized navigation/index tree. It provides stable event/instruction handles, paths, fingerprints, type names, basic flags and child relationships for localized addressing.
+- `data.eventsRevision` — the optimistic-concurrency token for localized event mutations such as `events.insert`, `events.update`, `events.move` and `events.delete`.
+
+The normalized `data.events` tree is intentionally not a complete editable serialization. For example, it does not carry every event-type-specific visual field.
+
+> Do not reconstruct or style event nodes from `data.events`. Read the canonical node from `data.eventsJson`, and use handles plus `eventsRevision` only for addressing and concurrency.
+
+When `events.read` is paginated, both `eventsJson` and `events` contain the requested root slice while `eventsRevision` still identifies the complete current target event tree.
+
+## 2. Discover unfamiliar conditions/actions before authoring
+
+Do not guess native instruction identifiers or ordered parameters from model memory. Use the live metadata exposed by the connected build.
+
+Typical discovery flow:
+
+```json
+{
+  "tool": "events.instructions.search",
+  "arguments": {
+    "query": "cursor",
+    "kind": "condition",
+    "limit": 10
+  }
+}
+```
+
+Select the returned instruction id, then describe it:
+
+```json
+{
+  "tool": "events.instructions.describe",
+  "arguments": {
+    "id": "<id returned by search>",
+    "kind": "condition"
+  }
+}
+```
+
+For behavior-owned instructions, preserve the returned `behaviorType` when describing the instruction.
+
+`events.instructions.describe` is the contract to consult before constructing the canonical instruction's ordered `parameters`. Search/describe can also expose applicability/context metadata from the live build.
+
+Recommended native-event sequence:
+
+1. `events.read`.
+2. Locate the canonical target node in `data.eventsJson` and its corresponding handle in `data.events`.
+3. For each unfamiliar condition/action, call `events.instructions.search`.
+4. Call `events.instructions.describe` for the selected identifier.
+5. Construct canonical event JSON using the discovered ordered parameter contract.
+6. Use the smallest suitable mutation: `events.insert/update/move/delete`; reserve `events.apply` for deliberate bulk replacement/append.
+7. Pass the current `eventsRevision` where the localized mutation requires `expectedEventsRevision`.
+8. Run `diagnostics.inspect` / `validation.run`, then preview and inspect runtime behavior before explicitly saving.
+
+## 3. Canonical Group and Comment examples
+
+Until event-node schema introspection is available, use `events.read.data.eventsJson` as the authority for event-node-specific fields.
+
+### Group
+
+A serialized Group uses top-level RGB fields:
+
+```json
+{
+  "type": "BuiltinCommonInstructions::Group",
+  "name": "Player input",
+  "source": "",
+  "creationTime": 0,
+  "colorR": 74,
+  "colorG": 176,
+  "colorB": 228,
+  "events": []
+}
+```
+
+The presentation fields are `colorR`, `colorG` and `colorB`. Preserve existing subevents when performing a localized update unless replacing them is explicitly intended.
+
+### Comment
+
+A serialized Comment keeps background and text RGB fields inside `color`:
+
+```json
+{
+  "type": "BuiltinCommonInstructions::Comment",
+  "color": {
+    "r": 255,
+    "g": 230,
+    "b": 109,
+    "textR": 0,
+    "textG": 0,
+    "textB": 0
+  },
+  "comment": "Explain why this block exists."
+}
+```
+
+Do not infer these fields from the normalized handle tree. They are canonical serialization details and should be read from `eventsJson`.
+
+## 4. Prefer typed EditorFunction MCP tools
+
+`editor.functions.list` and `editor.functions.describe` expose the live FunctionMetadata catalog. Executable EditorFunctions are also projected as function-specific MCP tools with their own input schema and mutation metadata.
+
+The typed MCP name is deterministic:
+
+```text
+EditorFunction: inspect_variables
+Typed MCP tool: editor.functions.inspect-variables
+```
+
+The rule is `editor.functions.<function-name-with-underscores-replaced-by-hyphens>`.
+
+For normal single-function work:
+
+1. Discover the function with `editor.functions.list`.
+2. Inspect its schema with `editor.functions.describe` when needed.
+3. Confirm the corresponding typed tool is present in `tools/list`.
+4. Call the typed `editor.functions.<name>` tool directly.
+
+Prefer the typed tool because the MCP client receives the function-specific JSON schema and accurate read-only/mutation metadata before dispatch.
+
+Use `editor.functions.call` only for compatibility or genuinely dynamic dispatch. Use `editor.functions.call-batch` when an ordered dynamic batch is the actual intent. Do not default to the generic call for an ordinary single known function.
+
+## 5. Canonical data, handles and replay evidence are different contracts
+
+Authoring decisions should come from the live structured MCP response:
+
+- canonical authoring payload: `events.read.data.eventsJson`;
+- stable addressing/navigation: `events.read.data.events` plus `eventsRevision`;
+- persisted replay/evidence: sanitized output intended for logs and audit.
+
+Sanitized replay data is evidence, not the source of truth for reconstructing authoring payloads.
+
+## 6. Completion checklist for one event edit
+
+Before considering an Event Sheet mutation accepted:
+
+- the target and current `eventsRevision` were re-read;
+- unfamiliar instruction identifiers/parameters were discovered rather than guessed;
+- canonical event-type-specific fields came from `eventsJson`;
+- the smallest mutation tool was used;
+- stale revision errors were reconciled by re-reading instead of overwriting;
+- diagnostics/validation are clean for the intended change;
+- preview/runtime behavior was checked when the change affects gameplay;
+- `project.save` is called only after acceptance when persistence is intended.
