@@ -442,6 +442,204 @@ describe('AgentIntegration EventTools', () => {
     expect(result.eventsRevision).not.toBe(before.eventsRevision);
   });
 
+  it('updates Group and Comment style without replacing identity, logic or subevents', () => {
+    const tools = makeTools();
+    tools.applySceneEventsJson({
+      sceneName: 'Source',
+      mode: 'replace',
+      eventsJson: [
+        {
+          type: 'BuiltinCommonInstructions::Group',
+          aiGeneratedEventId: 'style-group',
+          name: 'Gameplay group',
+          source: '',
+          creationTime: 1,
+          colorR: 10,
+          colorG: 20,
+          colorB: 30,
+          events: [
+            {
+              type: 'BuiltinCommonInstructions::Standard',
+              conditions: [],
+              actions: [
+                {
+                  type: { value: 'NewAction' },
+                  parameters: ['Player', '42'],
+                  subInstructions: [],
+                },
+              ],
+            },
+          ],
+        },
+        {
+          type: 'BuiltinCommonInstructions::Comment',
+          aiGeneratedEventId: 'style-comment',
+          color: {
+            r: 200,
+            g: 210,
+            b: 220,
+            textR: 1,
+            textG: 2,
+            textB: 3,
+          },
+          comment: 'Keep this explanation intact.',
+        },
+      ],
+    });
+    triggerUnsavedChanges.mockClear();
+    onSceneEventsModifiedOutsideEditor.mockClear();
+
+    const before = tools.readSceneEventsJson({ sceneName: 'Source' });
+    const groupBeforeJson = before.eventsJson[0];
+    const groupResult = tools.updateSceneEventStyle({
+      sceneName: 'Source',
+      expectedEventsRevision: before.eventsRevision,
+      handle: before.events[0].handle,
+      style: { background: { r: 45, g: 100, b: 180 } },
+    });
+
+    expect(groupResult).toMatchObject({
+      updated: true,
+      changed: true,
+      beforeStyle: { background: { r: 10, g: 20, b: 30 } },
+      afterStyle: { background: { r: 45, g: 100, b: 180 } },
+      event: { handle: 'event:id:style-group', path: [0] },
+      diff: {
+        operation: 'style-update',
+        changed: true,
+        beforeStyle: { background: { r: 10, g: 20, b: 30 } },
+        afterStyle: { background: { r: 45, g: 100, b: 180 } },
+      },
+    });
+    const afterGroup = tools.readSceneEventsJson({ sceneName: 'Source' });
+    expect(afterGroup.eventsJson[0]).toMatchObject({
+      aiGeneratedEventId: 'style-group',
+      name: groupBeforeJson.name,
+      source: groupBeforeJson.source,
+      creationTime: groupBeforeJson.creationTime,
+      colorR: 45,
+      colorG: 100,
+      colorB: 180,
+    });
+    expect(afterGroup.eventsJson[0].events).toEqual(groupBeforeJson.events);
+    expect(afterGroup.eventsJson[0].actions).toEqual(groupBeforeJson.actions);
+    expect(afterGroup.eventsJson[0].conditions).toEqual(
+      groupBeforeJson.conditions
+    );
+
+    const commentBeforeJson = afterGroup.eventsJson[1];
+    const commentResult = tools.updateSceneEventStyle({
+      sceneName: 'Source',
+      expectedEventsRevision: afterGroup.eventsRevision,
+      handle: afterGroup.events[1].handle,
+      style: {
+        background: { r: 70, g: 80, b: 90 },
+        text: { r: 240, g: 246, b: 252 },
+      },
+    });
+    expect(commentResult).toMatchObject({
+      updated: true,
+      changed: true,
+      beforeStyle: {
+        background: { r: 200, g: 210, b: 220 },
+        text: { r: 1, g: 2, b: 3 },
+      },
+      afterStyle: {
+        background: { r: 70, g: 80, b: 90 },
+        text: { r: 240, g: 246, b: 252 },
+      },
+      event: { handle: 'event:id:style-comment', path: [1] },
+    });
+    const afterComment = tools.readSceneEventsJson({ sceneName: 'Source' });
+    expect(afterComment.eventsJson[1]).toMatchObject({
+      aiGeneratedEventId: 'style-comment',
+      comment: commentBeforeJson.comment,
+      color: {
+        r: 70,
+        g: 80,
+        b: 90,
+        textR: 240,
+        textG: 246,
+        textB: 252,
+      },
+    });
+
+    triggerUnsavedChanges.mockClear();
+    onSceneEventsModifiedOutsideEditor.mockClear();
+    const noOp = tools.updateSceneEventStyle({
+      sceneName: 'Source',
+      expectedEventsRevision: afterComment.eventsRevision,
+      handle: afterComment.events[1].handle,
+      style: {
+        background: { r: 70, g: 80, b: 90 },
+        text: { r: 240, g: 246, b: 252 },
+      },
+    });
+    expect(noOp).toMatchObject({
+      updated: false,
+      changed: false,
+      beforeEventsRevision: afterComment.eventsRevision,
+      eventsRevision: afterComment.eventsRevision,
+    });
+    expect(triggerUnsavedChanges).not.toHaveBeenCalled();
+    expect(onSceneEventsModifiedOutsideEditor).not.toHaveBeenCalled();
+  });
+
+  it('rejects unsupported event style targets and fields without mutation', () => {
+    const tools = makeTools();
+    const standard = tools.readSceneEventsJson({ sceneName: 'Source' });
+    expect(() =>
+      tools.updateSceneEventStyle({
+        sceneName: 'Source',
+        expectedEventsRevision: standard.eventsRevision,
+        handle: standard.events[0].handle,
+        style: { background: { r: 1, g: 2, b: 3 } },
+      })
+    ).toThrow(
+      expect.objectContaining({
+        code: 'event_style_unsupported_event_type',
+      })
+    );
+
+    tools.applySceneEventsJson({
+      sceneName: 'Source',
+      mode: 'replace',
+      eventsJson: [
+        {
+          type: 'BuiltinCommonInstructions::Group',
+          name: 'Group',
+          source: '',
+          creationTime: 1,
+          colorR: 10,
+          colorG: 20,
+          colorB: 30,
+          events: [],
+        },
+      ],
+    });
+    triggerUnsavedChanges.mockClear();
+    onSceneEventsModifiedOutsideEditor.mockClear();
+    const group = tools.readSceneEventsJson({ sceneName: 'Source' });
+    expect(() =>
+      tools.updateSceneEventStyle({
+        sceneName: 'Source',
+        expectedEventsRevision: group.eventsRevision,
+        handle: group.events[0].handle,
+        style: { text: { r: 1, g: 2, b: 3 } },
+      })
+    ).toThrow(
+      expect.objectContaining({
+        code: 'event_style_field_unsupported',
+        details: expect.objectContaining({
+          field: 'text',
+          supportedFields: ['background'],
+        }),
+      })
+    );
+    expect(triggerUnsavedChanges).not.toHaveBeenCalled();
+    expect(onSceneEventsModifiedOutsideEditor).not.toHaveBeenCalled();
+  });
+
   it('rejects localized edits when the scene event revision is stale', () => {
     const tools = makeTools();
     const read = tools.readSceneEventsJson({ sceneName: 'Target' });
@@ -454,6 +652,21 @@ describe('AgentIntegration EventTools', () => {
         sceneName: 'Target',
         expectedEventsRevision: read.eventsRevision,
         handle: read.events[0].handle,
+      })
+    ).toThrow(
+      expect.objectContaining({
+        code: 'events_revision_conflict',
+        details: expect.objectContaining({
+          expectedEventsRevision: read.eventsRevision,
+        }),
+      })
+    );
+    expect(() =>
+      tools.updateSceneEventStyle({
+        sceneName: 'Target',
+        expectedEventsRevision: read.eventsRevision,
+        handle: read.events[0].handle,
+        style: { background: { r: 1, g: 2, b: 3 } },
       })
     ).toThrow(
       expect.objectContaining({

@@ -87,6 +87,70 @@ describe('AgentIntegration event live round trip', () => {
     expect(onSceneEventsModifiedOutsideEditor).toHaveBeenCalledTimes(2);
   });
 
+  it('patches Group presentation only and notifies the live Events Sheet refresh path', async () => {
+    const scene = project.getLayout('Scene');
+    const group = scene
+      .getEvents()
+      .insertNewEvent(project, 'BuiltinCommonInstructions::Group', 0);
+    group.setAiGeneratedEventId('live-style-group');
+    group
+      .getSubEvents()
+      .insertNewEvent(project, 'BuiltinCommonInstructions::Comment', 0);
+
+    const onSceneEventsModifiedOutsideEditor = jest.fn();
+    const triggerUnsavedChanges = jest.fn();
+    const eventTools = createEventTools({
+      project,
+      diagnosticsTools: {
+        inspect: jest.fn(() => ({ issues: [] })),
+      },
+      triggerUnsavedChanges,
+      onSceneEventsModifiedOutsideEditor,
+    });
+    const host = new AgentHost({
+      environment: { project },
+      descriptors: createEventCommandDescriptors({ eventTools }),
+    });
+
+    const before = await host.execute('events.read', { sceneName: 'Scene' });
+    const groupJson = before.data.eventsJson[0];
+    const result = await host.execute('events.style.update', {
+      sceneName: 'Scene',
+      expectedEventsRevision: before.data.eventsRevision,
+      handle: before.data.events[0].handle,
+      style: { background: { r: 45, g: 100, b: 180 } },
+    });
+
+    expect(result.data).toMatchObject({
+      updated: true,
+      changed: true,
+      event: { handle: 'event:id:live-style-group', path: [0] },
+      beforeStyle: {
+        background: expect.objectContaining({
+          r: expect.any(Number),
+          g: expect.any(Number),
+          b: expect.any(Number),
+        }),
+      },
+      afterStyle: { background: { r: 45, g: 100, b: 180 } },
+      diff: { operation: 'style-update', changed: true },
+    });
+    const after = await host.execute('events.read', { sceneName: 'Scene' });
+    expect(after.data.eventsJson[0]).toMatchObject({
+      ...groupJson,
+      colorR: 45,
+      colorG: 100,
+      colorB: 180,
+    });
+    expect(after.data.eventsJson[0].events).toEqual(groupJson.events);
+    expect(triggerUnsavedChanges).toHaveBeenCalledTimes(1);
+    expect(onSceneEventsModifiedOutsideEditor).toHaveBeenCalledTimes(1);
+    expect(onSceneEventsModifiedOutsideEditor).toHaveBeenCalledWith({
+      scene,
+      newOrChangedAiGeneratedEventIds: new Set(['live-style-group']),
+    });
+  });
+
   it('reads, patches live UI state and hot reloads preview without reopening the scene', async () => {
     const onSceneEventsModifiedOutsideEditor = jest.fn();
     const triggerUnsavedChanges = jest.fn();
@@ -137,9 +201,13 @@ describe('AgentIntegration event live round trip', () => {
       beforeEventCount: 1,
       afterEventCount: 1,
     });
-    expect(project.getLayout('Scene').getEvents().getEventAt(0).isDisabled()).toBe(
-      true
-    );
+    expect(
+      project
+        .getLayout('Scene')
+        .getEvents()
+        .getEventAt(0)
+        .isDisabled()
+    ).toBe(true);
     expect(triggerUnsavedChanges).toHaveBeenCalledTimes(1);
     expect(onSceneEventsModifiedOutsideEditor).toHaveBeenCalledTimes(1);
 

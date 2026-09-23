@@ -71,6 +71,7 @@ const EXPECTED_PUBLIC_COMMANDS = [
   'events.nodes.describe',
   'events.nodes.list',
   'events.read',
+  'events.style.update',
   'events.update',
   'export.html5',
   'extensions.behaviors.create',

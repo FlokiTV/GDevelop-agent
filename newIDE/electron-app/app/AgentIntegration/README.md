@@ -137,7 +137,7 @@ The registry currently exposes command families for:
 - project lifecycle: `project.*`;
 - native GDevelop EditorFunctions: `editor.functions.*`;
 - scene/editor visual context: `scene.open`, `editor.visual.status`, `editor.instances.select`, `editor.selection.focus`;
-- deterministic events: `events.read`, `events.apply`;
+- deterministic events: `events.read`, localized `events.insert/update/style.update/move/delete`, and bulk `events.apply`;
 - resources/assets: `resources.*`, including bounded remote URL import/replace with persisted provenance plus deterministic local image/WAV processing (`resources.processing.capabilities`, `resources.image.transform`, `resources.image.slice-spritesheet`, `resources.audio.transform`);
 - checkpoints and transactions: `safety.*`;
 - diagnostics and aggregate validation: `diagnostics.inspect`, `validation.run`;
@@ -164,7 +164,7 @@ The registry currently exposes command families for:
 
 ## Native Event Sheet authoring
 
-For native Event Sheet work, follow [`docs/MCP_NATIVE_EVENT_AUTHORING.md`](./docs/MCP_NATIVE_EVENT_AUTHORING.md). The key contract is that `events.read.data.eventsJson` is the authoritative canonical serialized payload, while `events.read.data.events` is a normalized handle/navigation tree used with `eventsRevision` for localized addressing. Discover unfamiliar event-node types/fields through `events.nodes.list` + `events.nodes.describe`; discover conditions, actions and expressions through `events.instructions.search` + `events.instructions.describe` (`kind: "expression"` returns expression return types, ordered parameters, ownership and event-context applicability); and prefer generated typed `editor.functions.<function-name>` MCP tools over generic `editor.functions.call` for normal single-function calls.
+For native Event Sheet work, follow [`docs/MCP_NATIVE_EVENT_AUTHORING.md`](./docs/MCP_NATIVE_EVENT_AUTHORING.md). The key contract is that `events.read.data.eventsJson` is the authoritative canonical serialized payload, while `events.read.data.events` is a normalized handle/navigation tree used with `eventsRevision` for localized addressing. Discover unfamiliar event-node types/fields through `events.nodes.list` + `events.nodes.describe`; discover conditions, actions and expressions through `events.instructions.search` + `events.instructions.describe` (`kind: "expression"` returns expression return types, ordered parameters, ownership and event-context applicability). For visual-only Group/Comment color changes, prefer `events.style.update` so clients send only an abstract `background`/`text` RGB patch rather than resending event logic or subevents. Prefer generated typed `editor.functions.<function-name>` MCP tools over generic `editor.functions.call` for normal single-function calls.
 
 ## Recommended live-editing loop
 

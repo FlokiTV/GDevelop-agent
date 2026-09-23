@@ -230,6 +230,155 @@ const makeError = (code: string, message?: string, details?: any): Error => {
   return error;
 };
 
+const getSerializedEventType = (eventJson: any): ?string => {
+  if (!eventJson || typeof eventJson !== 'object') return null;
+  if (typeof eventJson.type === 'string') return eventJson.type;
+  if (
+    eventJson.type &&
+    typeof eventJson.type === 'object' &&
+    typeof eventJson.type.value === 'string'
+  ) {
+    return eventJson.type.value;
+  }
+  return null;
+};
+
+const assertRgbStyle = (value: any, field: string) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw makeError('invalid_event_style', undefined, {
+      field,
+      expected: 'rgb',
+    });
+  }
+  const keys = Object.keys(value);
+  const unsupportedKey = keys.find(key => !['r', 'g', 'b'].includes(key));
+  if (unsupportedKey) {
+    throw makeError('invalid_event_style', undefined, {
+      field: `${field}.${unsupportedKey}`,
+      expected: 'r|g|b',
+    });
+  }
+  ['r', 'g', 'b'].forEach(channel => {
+    const channelValue = value[channel];
+    if (
+      !Number.isInteger(channelValue) ||
+      channelValue < 0 ||
+      channelValue > 255
+    ) {
+      throw makeError('invalid_event_style', undefined, {
+        field: `${field}.${channel}`,
+        expected: 'integer 0..255',
+        value: channelValue,
+      });
+    }
+  });
+};
+
+const assertStylePatch = (style: any) => {
+  if (!style || typeof style !== 'object' || Array.isArray(style)) {
+    throw makeError('invalid_event_style');
+  }
+  const keys = Object.keys(style);
+  if (keys.length === 0) throw makeError('invalid_event_style');
+  const unsupportedKey = keys.find(
+    key => !['background', 'text'].includes(key)
+  );
+  if (unsupportedKey) {
+    throw makeError('invalid_event_style', undefined, {
+      field: unsupportedKey,
+      expected: 'background|text',
+    });
+  }
+  keys.forEach(key => assertRgbStyle(style[key], key));
+};
+
+const getEventStyle = (eventJson: any): any => {
+  const eventType = getSerializedEventType(eventJson);
+  if (eventType === 'BuiltinCommonInstructions::Group') {
+    return {
+      background: {
+        r: eventJson.colorR,
+        g: eventJson.colorG,
+        b: eventJson.colorB,
+      },
+    };
+  }
+  if (eventType === 'BuiltinCommonInstructions::Comment') {
+    const color =
+      eventJson.color && typeof eventJson.color === 'object'
+        ? eventJson.color
+        : {};
+    return {
+      background: { r: color.r, g: color.g, b: color.b },
+      text: { r: color.textR, g: color.textG, b: color.textB },
+    };
+  }
+  throw makeError('event_style_unsupported_event_type', undefined, {
+    eventType,
+    supportedEventTypes: [
+      'BuiltinCommonInstructions::Group',
+      'BuiltinCommonInstructions::Comment',
+    ],
+  });
+};
+
+const applyEventStylePatch = (eventJson: any, style: any): any => {
+  assertStylePatch(style);
+  const eventType = getSerializedEventType(eventJson);
+  if (eventType === 'BuiltinCommonInstructions::Group') {
+    if (style.text) {
+      throw makeError('event_style_field_unsupported', undefined, {
+        eventType,
+        field: 'text',
+        supportedFields: ['background'],
+      });
+    }
+    return {
+      ...eventJson,
+      ...(style.background
+        ? {
+            colorR: style.background.r,
+            colorG: style.background.g,
+            colorB: style.background.b,
+          }
+        : {}),
+    };
+  }
+  if (eventType === 'BuiltinCommonInstructions::Comment') {
+    const currentColor =
+      eventJson.color && typeof eventJson.color === 'object'
+        ? eventJson.color
+        : {};
+    return {
+      ...eventJson,
+      color: {
+        ...currentColor,
+        ...(style.background
+          ? {
+              r: style.background.r,
+              g: style.background.g,
+              b: style.background.b,
+            }
+          : {}),
+        ...(style.text
+          ? {
+              textR: style.text.r,
+              textG: style.text.g,
+              textB: style.text.b,
+            }
+          : {}),
+      },
+    };
+  }
+  throw makeError('event_style_unsupported_event_type', undefined, {
+    eventType,
+    supportedEventTypes: [
+      'BuiltinCommonInstructions::Group',
+      'BuiltinCommonInstructions::Comment',
+    ],
+  });
+};
+
 const getCanonicalEventsState = (eventsList: gdEventsList) => {
   const eventsJson = serializeToJSObject(eventsList, 'serializeTo', {
     canonicalEventSerialization: true,
@@ -1024,6 +1173,119 @@ export const createEventTools = ({
     };
   };
 
+  const updateEventStyle = (request: any): any => {
+    const target = resolveEventsTarget(project, request);
+    const beforeState = getCanonicalEventsState(target.rootEvents);
+    assertExpectedEventsRevision(
+      request.expectedEventsRevision,
+      beforeState.eventsRevision
+    );
+    const path = resolveEventHandle(beforeState, request.handle);
+    const targetEventJson = getSerializedEventByPath(
+      beforeState.eventsJson,
+      path
+    );
+    const beforeStyle = getEventStyle(targetEventJson);
+    const replacementJson = applyEventStylePatch(
+      targetEventJson,
+      request.style
+    );
+    const changed =
+      JSON.stringify(replacementJson) !== JSON.stringify(targetEventJson);
+
+    if (!changed) {
+      const currentNode = findCanonicalNodeByPath(beforeState, path);
+      const currentEvent = currentNode
+        ? {
+            handle: currentNode.handle,
+            path: currentNode.path,
+            fingerprint: currentNode.fingerprint,
+          }
+        : { handle: request.handle, path, fingerprint: null };
+      return {
+        updated: false,
+        changed: false,
+        ...targetResponseFields(target),
+        beforeEventsRevision: beforeState.eventsRevision,
+        eventsRevision: beforeState.eventsRevision,
+        event: currentEvent,
+        beforeStyle,
+        afterStyle: beforeStyle,
+        validation: getPostPatchValidation(target),
+        diff: makePatchDiff({
+          operation: 'style-update',
+          beforeState,
+          afterState: beforeState,
+          details: {
+            handle: request.handle,
+            path,
+            changed: false,
+            beforeStyle,
+            afterStyle: beforeStyle,
+          },
+        }),
+      };
+    }
+
+    const replacementEvents = deserializeEvents(project, [replacementJson]);
+    if (replacementEvents.getEventsCount() !== 1) {
+      replacementEvents.delete();
+      throw makeError('invalid_event_json');
+    }
+    const targetLocation = getParentListAndIndex(target.rootEvents, path);
+    const aiGeneratedEventIds = collectAiGeneratedEventIds(replacementEvents);
+    try {
+      targetLocation.parentList.removeEventAt(targetLocation.index);
+      targetLocation.parentList.insertEvents(
+        replacementEvents,
+        0,
+        1,
+        targetLocation.index
+      );
+    } finally {
+      replacementEvents.delete();
+    }
+
+    notifyTargetEventsModified(target, aiGeneratedEventIds);
+    const afterState = getCanonicalEventsState(target.rootEvents);
+    const updatedNode = findCanonicalNodeByPath(afterState, path);
+    const updatedEvent = updatedNode
+      ? {
+          handle: updatedNode.handle,
+          path: updatedNode.path,
+          fingerprint: updatedNode.fingerprint,
+        }
+      : { handle: null, path, fingerprint: null };
+    const afterEventJson = getSerializedEventByPath(
+      afterState.eventsJson,
+      path
+    );
+    const afterStyle = getEventStyle(afterEventJson);
+    return {
+      updated: true,
+      changed: true,
+      ...targetResponseFields(target),
+      beforeEventsRevision: beforeState.eventsRevision,
+      eventsRevision: afterState.eventsRevision,
+      event: updatedEvent,
+      beforeStyle,
+      afterStyle,
+      validation: getPostPatchValidation(target),
+      diff: makePatchDiff({
+        operation: 'style-update',
+        beforeState,
+        afterState,
+        details: {
+          handle: request.handle,
+          path: updatedEvent.path,
+          changed: true,
+          beforeStyle,
+          afterStyle,
+        },
+      }),
+    };
+  };
+
   const applyEventsJson = (request: any): any => {
     const target = resolveEventsTarget(project, request);
     const mode = request.mode === 'append' ? 'append' : 'replace';
@@ -1070,6 +1332,7 @@ export const createEventTools = ({
     deleteEvent,
     moveEvent,
     updateEvent,
+    updateEventStyle,
     applyEventsJson,
     // Compatibility aliases for renderer callers/tests written before event
     // targets were generalized beyond scenes.
@@ -1078,6 +1341,7 @@ export const createEventTools = ({
     deleteSceneEvent: deleteEvent,
     moveSceneEvent: moveEvent,
     updateSceneEvent: updateEvent,
+    updateSceneEventStyle: updateEventStyle,
     applySceneEventsJson: applyEventsJson,
   };
 };

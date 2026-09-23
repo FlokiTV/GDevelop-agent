@@ -43,6 +43,15 @@ test('native Event Sheet authoring docs preserve canonical/discovery guidance', 
   assert.match(guide, /"textR"/);
   assert.match(guide, /"textG"/);
   assert.match(guide, /"textB"/);
+  assert.match(readme, /events\.style\.update/);
+  assert.match(guide, /events\.style\.update/);
+  assert.match(guide, /"background"/);
+  assert.match(guide, /"text"/);
+  assert.match(guide, /0 through 255/);
+  assert.match(guide, /preserves the complete canonical node/);
+  assert.match(guide, /beforeStyle/);
+  assert.match(guide, /afterStyle/);
+  assert.match(guide, /idempotencyKey/);
 
   assert.match(guide, /editor\.functions\.inspect-variables/);
   assert.match(guide, /Prefer the typed tool/);

@@ -103,6 +103,38 @@ const UPDATE_SCHEMA = {
   },
 };
 
+const RGB_STYLE_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['r', 'g', 'b'],
+  properties: {
+    r: { type: 'integer', minimum: 0, maximum: 255 },
+    g: { type: 'integer', minimum: 0, maximum: 255 },
+    b: { type: 'integer', minimum: 0, maximum: 255 },
+  },
+};
+
+const STYLE_UPDATE_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['expectedEventsRevision', 'handle', 'style'],
+  anyOf: TARGET_ANY_OF,
+  properties: {
+    ...EVENT_TARGET_PROPERTIES,
+    expectedEventsRevision: { type: 'string', minLength: 1 },
+    handle: { type: 'string', minLength: 1 },
+    style: {
+      type: 'object',
+      additionalProperties: false,
+      minProperties: 1,
+      properties: {
+        background: RGB_STYLE_SCHEMA,
+        text: RGB_STYLE_SCHEMA,
+      },
+    },
+  },
+};
+
 const APPLY_SCHEMA = {
   type: 'object',
   additionalProperties: false,
@@ -196,6 +228,58 @@ const assertEventPlacement = (input: any) => {
   if (placements.length > 1) {
     throw new AgentError({ code: 'invalid_event_placement' });
   }
+};
+
+const assertRgbStyle = (value: any, field: string) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new AgentError({
+      code: 'invalid_event_style',
+      details: { field, expected: 'rgb' },
+    });
+  }
+  const keys = Object.keys(value);
+  const unsupportedKey = keys.find(key => !['r', 'g', 'b'].includes(key));
+  if (unsupportedKey) {
+    throw new AgentError({
+      code: 'invalid_event_style',
+      details: { field: `${field}.${unsupportedKey}`, expected: 'r|g|b' },
+    });
+  }
+  ['r', 'g', 'b'].forEach(channel => {
+    const channelValue = value[channel];
+    if (
+      !Number.isInteger(channelValue) ||
+      channelValue < 0 ||
+      channelValue > 255
+    ) {
+      throw new AgentError({
+        code: 'invalid_event_style',
+        details: {
+          field: `${field}.${channel}`,
+          expected: 'integer 0..255',
+          value: channelValue,
+        },
+      });
+    }
+  });
+};
+
+const assertEventStyle = (style: any) => {
+  if (!style || typeof style !== 'object' || Array.isArray(style)) {
+    throw new AgentError({ code: 'invalid_event_style' });
+  }
+  const keys = Object.keys(style);
+  if (keys.length === 0) throw new AgentError({ code: 'invalid_event_style' });
+  const unsupportedKey = keys.find(
+    key => !['background', 'text'].includes(key)
+  );
+  if (unsupportedKey) {
+    throw new AgentError({
+      code: 'invalid_event_style',
+      details: { field: unsupportedKey, expected: 'background|text' },
+    });
+  }
+  keys.forEach(key => assertRgbStyle(style[key], key));
 };
 
 export const createEventCommandDescriptors = ({
@@ -297,6 +381,25 @@ export const createEventCommandDescriptors = ({
       }
     },
     execute: ({ input }) => eventTools.updateEvent(input),
+  },
+  {
+    name: 'events.style.update',
+    description:
+      'Patch only the presentation style of a supported event node (currently Group and Comment) without resending its logic or subevents.',
+    inputSchema: STYLE_UPDATE_SCHEMA,
+    metadata: makeCommandMetadata({
+      readOnly: false,
+      idempotent: true,
+      requiresProject: true,
+      modifiesProject: true,
+    }),
+    validateInput: input => {
+      assertEventsTarget(input);
+      assertEventsRevision(input.expectedEventsRevision);
+      assertEventHandle(input.handle);
+      assertEventStyle(input.style);
+    },
+    execute: ({ input }) => eventTools.updateEventStyle(input),
   },
   {
     name: 'events.apply',

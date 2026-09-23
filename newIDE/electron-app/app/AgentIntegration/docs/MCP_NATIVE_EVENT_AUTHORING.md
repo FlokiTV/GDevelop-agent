@@ -58,7 +58,7 @@ Recommended native-event sequence:
 3. For each unfamiliar condition/action/expression, call `events.instructions.search` with the appropriate `kind`.
 4. Call `events.instructions.describe` for the selected identifier; for expressions, preserve the returned scope/extension disambiguators and `returnType`.
 5. Construct canonical event JSON using the discovered ordered parameter contract.
-6. Use the smallest suitable mutation: `events.insert/update/move/delete`; reserve `events.apply` for deliberate bulk replacement/append.
+6. Use the smallest suitable mutation: `events.style.update` for visual-only Group/Comment colors, otherwise `events.insert/update/move/delete`; reserve `events.apply` for deliberate bulk replacement/append.
 7. Pass the current `eventsRevision` where the localized mutation requires `expectedEventsRevision`.
 8. Run `diagnostics.inspect` / `validation.run`, then preview and inspect runtime behavior before explicitly saving.
 
@@ -106,6 +106,32 @@ A serialized Comment keeps background and text RGB fields inside `color`:
 
 Do not infer these fields from the normalized handle tree. They are canonical serialization details and should be read from `eventsJson`.
 
+### Localized visual-only style updates
+
+Use `events.style.update` when the intent is only to change Group/Comment colors. The command accepts the same event target forms and stable `handle` used by other localized event mutations, and requires the current `expectedEventsRevision`.
+
+The abstract style contract deliberately hides the canonical representation difference between Group and Comment:
+
+```json
+{
+  "sceneName": "CoinIdle",
+  "handle": "event:...",
+  "expectedEventsRevision": "events:...",
+  "style": {
+    "background": { "r": 45, "g": 100, "b": 180 },
+    "text": { "r": 240, "g": 246, "b": 252 }
+  }
+}
+```
+
+- RGB channels are integers from 0 through 255.
+- Group supports `background` only and maps it to `colorR/colorG/colorB`.
+- Comment supports `background` and `text`, mapped to the nested `color` object.
+- Unsupported style fields/event types fail before mutation.
+- The operation preserves the complete canonical node, including `aiGeneratedEventId`, comment/group content, conditions/actions and subevents; callers do not resend them.
+- The result returns `beforeStyle`, `afterStyle`, the new `eventsRevision`, and a `style-update` diff.
+- Reapplying an already-current style with a fresh event revision is a no-op; at MCP level, the normal mutation `idempotencyKey` can also deduplicate retry replay.
+
 ## 4. Prefer typed EditorFunction MCP tools
 
 `editor.functions.list` and `editor.functions.describe` expose the live FunctionMetadata catalog. Executable EditorFunctions are also projected as function-specific MCP tools with their own input schema and mutation metadata.
@@ -147,7 +173,7 @@ Before considering an Event Sheet mutation accepted:
 - the target and current `eventsRevision` were re-read;
 - unfamiliar instruction identifiers/parameters were discovered rather than guessed;
 - canonical event-type-specific fields came from `eventsJson`;
-- the smallest mutation tool was used;
+- the smallest mutation tool was used, including `events.style.update` for visual-only Group/Comment RGB changes;
 - stale revision errors were reconciled by re-reading instead of overwriting;
 - diagnostics/validation are clean for the intended change;
 - preview/runtime behavior was checked when the change affects gameplay;

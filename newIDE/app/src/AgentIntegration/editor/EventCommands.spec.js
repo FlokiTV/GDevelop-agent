@@ -11,6 +11,7 @@ const makeHost = (project: any = {}) => {
     deleteEvent: jest.fn(input => ({ deleted: true, ...input })),
     moveEvent: jest.fn(input => ({ moved: true, ...input })),
     updateEvent: jest.fn(input => ({ updated: true, ...input })),
+    updateEventStyle: jest.fn(input => ({ updated: true, ...input })),
     applyEventsJson: jest.fn(input => ({ applied: true, ...input })),
   };
   return {
@@ -52,10 +53,44 @@ describe('EventCommands', () => {
       requiresProject: true,
       modifiesProject: true,
     });
+    expect(host.describeCommand('events.style.update').metadata).toMatchObject({
+      readOnly: false,
+      destructive: false,
+      idempotent: true,
+      requiresProject: true,
+      modifiesProject: true,
+    });
     expect(host.describeCommand('events.apply').metadata).toMatchObject({
       readOnly: false,
       requiresProject: true,
       modifiesProject: true,
+    });
+  });
+
+  test('publishes an abstract bounded RGB schema for localized style updates', () => {
+    const { host } = makeHost();
+    const command = host.describeCommand('events.style.update');
+    expect(command.inputSchema).toMatchObject({
+      required: ['expectedEventsRevision', 'handle', 'style'],
+      properties: {
+        style: {
+          additionalProperties: false,
+          minProperties: 1,
+          properties: {
+            background: {
+              required: ['r', 'g', 'b'],
+              properties: {
+                r: { type: 'integer', minimum: 0, maximum: 255 },
+                g: { type: 'integer', minimum: 0, maximum: 255 },
+                b: { type: 'integer', minimum: 0, maximum: 255 },
+              },
+            },
+            text: {
+              required: ['r', 'g', 'b'],
+            },
+          },
+        },
+      },
     });
   });
 
@@ -85,6 +120,12 @@ describe('EventCommands', () => {
       handle: 'event:fp:mno',
       eventJson: { type: 'BuiltinCommonInstructions::Standard' },
     });
+    await host.execute('events.style.update', {
+      sceneName: 'Scene',
+      expectedEventsRevision: 'events:style',
+      handle: 'event:fp:style',
+      style: { background: { r: 45, g: 100, b: 180 } },
+    });
     await host.execute('events.apply', {
       sceneName: 'Scene',
       eventsJson: [],
@@ -110,6 +151,13 @@ describe('EventCommands', () => {
     );
     expect(eventTools.updateEvent).toHaveBeenCalledWith(
       expect.objectContaining({ sceneName: 'Scene', handle: 'event:fp:mno' })
+    );
+    expect(eventTools.updateEventStyle).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sceneName: 'Scene',
+        handle: 'event:fp:style',
+        style: { background: { r: 45, g: 100, b: 180 } },
+      })
     );
     expect(eventTools.applyEventsJson).toHaveBeenCalledWith({
       sceneName: 'Scene',
@@ -201,7 +249,30 @@ describe('EventCommands', () => {
         },
       })
     ).rejects.toMatchObject({ code: 'events_function_owner_name_required' });
+    await expect(
+      host.execute('events.style.update', {
+        sceneName: 'Scene',
+        expectedEventsRevision: 'events:style',
+        handle: 'event:fp:style',
+        style: { background: { r: 256, g: 100, b: 180 } },
+      })
+    ).rejects.toMatchObject({
+      code: 'invalid_event_style',
+      details: expect.objectContaining({
+        field: 'background.r',
+        expected: 'integer 0..255',
+      }),
+    });
+    await expect(
+      host.execute('events.style.update', {
+        sceneName: 'Scene',
+        expectedEventsRevision: 'events:style',
+        handle: 'event:fp:style',
+        style: { background: { r: 45, g: 100 } },
+      })
+    ).rejects.toMatchObject({ code: 'invalid_event_style' });
     expect(eventTools.applyEventsJson).not.toHaveBeenCalled();
+    expect(eventTools.updateEventStyle).not.toHaveBeenCalled();
   });
 
   test('requires an open project through AgentHost', async () => {

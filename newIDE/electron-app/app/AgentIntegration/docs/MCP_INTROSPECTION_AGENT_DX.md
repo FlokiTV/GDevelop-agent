@@ -267,7 +267,7 @@ Full canonical event replacement works, but visual-only operations should not re
 
 ## C1 — Add a localized style patch operation
 
-### Proposed API
+### Implemented API
 
 `events.style.update`
 
@@ -305,7 +305,7 @@ The command should translate the abstract style into the canonical fields suppor
 
 ### Acceptance
 
-An agent can color a Group and Comment without sending their conditions, actions, or subevents back to the server.
+An agent can color a Group and Comment without sending their conditions, actions, or subevents back to the server. DX-5 implements this with integer RGB validation (0..255), target-specific field validation, event revision preconditions, MCP retry idempotency, before/after style reporting, structural preservation and no-op detection for an already-current style.
 
 ---
 
@@ -433,7 +433,7 @@ A robust default workflow should be documented as:
    - `events.update` for one node;
    - `events.insert/delete/move` for localized structural changes;
    - `events.apply` only for deliberate bulk replacement;
-   - future: `events.style.update` for visual-only changes.
+   - `events.style.update` for visual-only Group/Comment RGB changes without resending logic/subevents.
 
 7. **Protect multi-step work**
    - transaction/checkpoint;
@@ -462,7 +462,7 @@ A robust default workflow should be documented as:
 | P1 | `events.nodes.list/describe` | API | Authoritative node-level schema introspection |
 | P1 | Improve event mutation schemas / schema references | API | Earlier validation and clearer contracts |
 | P1 | Expression discovery via `events.instructions.search/describe` with `kind=expression` | API/docs/tests | Already live; DX-4 verifies return type, ordered parameters, ownership and applicability without duplicating the catalog |
-| P1 | `events.style.update` | API | Safe, intent-specific visual mutations |
+| P1 | `events.style.update` | API — implemented DX-5 | Safe, intent-specific visual mutations |
 | P2 | Reusable `connectLiveGDevelopMcp` helper | Client DX | Removes repeated transport/auth boilerplate |
 | P2 | Safe one-off MCP CLI | Client DX | Avoids temporary scripts for inspection/tool calls |
 | P2 | MCP prompt/resource: native Event Sheet authoring guide | Docs/DX | Makes recommended workflow discoverable to agents |
