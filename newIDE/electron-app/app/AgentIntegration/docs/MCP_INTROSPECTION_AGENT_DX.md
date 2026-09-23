@@ -465,7 +465,7 @@ A robust default workflow should be documented as:
 | P1 | `events.style.update` | API — implemented DX-5 | Safe, intent-specific visual mutations |
 | P2 | Reusable `connectLiveGDevelopMcp` helper | Client DX — implemented DX-6 | Removes repeated transport/auth boilerplate |
 | P2 | Safe one-off MCP CLI | Client DX — implemented DX-6 | Avoids temporary scripts for inspection/tool calls |
-| P2 | MCP prompt/resource: native Event Sheet authoring guide | Docs/DX | Makes recommended workflow discoverable to agents |
+| P2 | MCP prompt/resource: native Event Sheet authoring guide | Docs/DX — implemented DX-8 | `gdevelop.events-authoring` + `gdevelop://guides/native-event-authoring` make the authoritative workflow discoverable through MCP only |
 
 ---
 

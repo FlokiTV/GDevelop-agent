@@ -1,4 +1,18 @@
+const { NATIVE_EVENT_AUTHORING_GUIDE } = require('./McpPrompts');
+
 const RESOURCE_DEFINITIONS = [
+  {
+    name: 'gdevelop-native-event-authoring-guide',
+    uri: 'gdevelop://guides/native-event-authoring',
+    title: 'Native Event Sheet authoring guide',
+    description:
+      'Versioned MCP-native workflow for canonical Event Sheet authoring, discovery, localized mutation, validation and explicit persistence.',
+    mimeType: 'text/markdown',
+    text: NATIVE_EVENT_AUTHORING_GUIDE,
+    cacheScope: 'process',
+    live: false,
+    guideVersion: 1,
+  },
   {
     name: 'gdevelop-project-status',
     uri: 'gdevelop://project/status',
@@ -72,8 +86,11 @@ const toResourceContents = (definition, result) => ({
   contents: [
     {
       uri: definition.uri,
-      mimeType: 'application/json',
-      text: JSON.stringify(result),
+      mimeType: definition.mimeType || 'application/json',
+      text:
+        typeof definition.text === 'string'
+          ? definition.text
+          : JSON.stringify(result),
     },
   ],
 });
@@ -86,13 +103,19 @@ const registerGDevelopResources = ({ server, rendererBridge, targeting }) => {
       {
         title: definition.title,
         description: definition.description,
-        mimeType: 'application/json',
+        mimeType: definition.mimeType || 'application/json',
         _meta: {
-          'gdevelop/cacheScope': 'request',
-          'gdevelop/live': true,
+          'gdevelop/cacheScope': definition.cacheScope || 'request',
+          'gdevelop/live': definition.live !== false,
+          ...(Number.isInteger(definition.guideVersion)
+            ? { 'gdevelop/guideVersion': definition.guideVersion }
+            : {}),
         },
       },
       async () => {
+        if (typeof definition.text === 'string') {
+          return toResourceContents(definition, null);
+        }
         const result = await rendererBridge.executeCommand({
           command: definition.command,
           input: definition.input || {},

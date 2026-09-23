@@ -1,7 +1,7 @@
 const PROMPT_META = {
   'gdevelop/cacheScope': 'process',
   'gdevelop/ttlMs': 60000,
-  'gdevelop/promptVersion': 1,
+  'gdevelop/promptVersion': 2,
 };
 
 const prompt = (name, title, description, text) => ({
@@ -11,6 +11,22 @@ const prompt = (name, title, description, text) => ({
   text,
   _meta: { ...PROMPT_META },
 });
+
+const NATIVE_EVENT_AUTHORING_GUIDE = [
+  '# Native Event Sheet authoring',
+  '',
+  '1. Discover the live build with tools/list or agent.capabilities; do not hard-code the command catalog.',
+  '2. Read project.status, then events.read. Treat events.read.data.eventsJson as the authoritative canonical serialized event payload. data.events is only the stable handle/navigation tree; do not reconstruct event fields from it.',
+  '3. Keep eventsRevision from events.read and projectRevision from project.status as write preconditions. Use expectedEventsRevision plus MCP expectedRevision/idempotencyKey when offered; use a checkpoint/transaction for risky multi-step work.',
+  '4. Discover unfamiliar actions and conditions with events.instructions.search/describe. Discover numeric/string expressions through the same surface with kind="expression"; there is no separate events.expressions catalog.',
+  '5. Discover canonical event-node types with events.nodes.list and inspect exact connected-build defaults/known fields with events.nodes.describe. Mutation schemas may project those contracts and carry x-gdevelop-schema-reference back to this discovery surface.',
+  '6. Prefer the smallest mutation: events.style.update for Group/Comment RGB-only edits; otherwise events.insert/update/move/delete. Use events.apply only as an explicit bulk replace/append fallback.',
+  '7. Group/Comment style updates use abstract background/text RGB objects. Do not resend conditions, actions or subevents for visual-only changes.',
+  '8. After mutation, re-read or inspect the returned diff/revisions. On stale revision conflicts, read current state and re-target stable handles instead of overwriting.',
+  '9. Run diagnostics.inspect and validation.run. Start preview only when missing; otherwise use preview.hot-reload and runtime snapshot/log/assert tools for acceptance.',
+  '10. Saving is explicit: call project.save/project.save-as only when the user intends persistence. Never close/reopen the project merely to synchronize state.',
+  '11. Authoring decisions must use the live structured MCP response. Raw events.read.data.eventsJson is authoritative; sanitized replay/evidence output is for persistence/audit only and must not replace live authoring data.',
+].join('\n');
 
 const PROMPTS = [
   prompt(
@@ -53,16 +69,9 @@ const PROMPTS = [
   ),
   prompt(
     'gdevelop.events-authoring',
-    'Surgical event authoring',
-    'Edit event trees with stable handles, revisions and localized patches.',
-    [
-      'Call events.read and keep its eventsRevision and canonical handles.',
-      'Prefer events.insert/update/delete/move for localized changes.',
-      'Pass expectedEventsRevision and project expectedRevision when required.',
-      'Use events.apply replace/append only as an explicit bulk fallback.',
-      'Review returned event diff and validation issues before continuing.',
-      'If revisions are stale, read again and re-target the current canonical handles.',
-    ].join('\n')
+    'Native Event Sheet authoring',
+    'Author native Event Sheets from live canonical data, connected-build metadata and localized safe mutations.',
+    NATIVE_EVENT_AUTHORING_GUIDE
   ),
   prompt(
     'gdevelop.preview-playtest',
@@ -121,6 +130,7 @@ const registerGDevelopPrompts = server => {
 
 module.exports = {
   PROMPT_META,
+  NATIVE_EVENT_AUTHORING_GUIDE,
   PROMPTS,
   toPromptResult,
   registerGDevelopPrompts,

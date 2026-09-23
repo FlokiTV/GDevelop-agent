@@ -31,6 +31,7 @@ const connectClient = async ({ url, token, windowId }) => {
 
 test('resource catalog is deterministic and serializes command envelopes as JSON', () => {
   assert.deepEqual(RESOURCE_DEFINITIONS.map(resource => resource.uri), [
+    'gdevelop://guides/native-event-authoring',
     'gdevelop://project/status',
     'gdevelop://editor/visual',
     'gdevelop://project/resources',
@@ -40,7 +41,17 @@ test('resource catalog is deterministic and serializes command envelopes as JSON
     'gdevelop://runtime/status',
     'gdevelop://project/concurrency',
   ]);
-  const result = toResourceContents(RESOURCE_DEFINITIONS[0], {
+  const guide = toResourceContents(RESOURCE_DEFINITIONS[0], null);
+  assert.equal(guide.contents.length, 1);
+  assert.equal(guide.contents[0].mimeType, 'text/markdown');
+  assert.equal(
+    guide.contents[0].uri,
+    'gdevelop://guides/native-event-authoring'
+  );
+  assert.match(guide.contents[0].text, /events\.read/);
+  assert.match(guide.contents[0].text, /events\.nodes\.describe/);
+
+  const result = toResourceContents(RESOURCE_DEFINITIONS[1], {
     command: 'project.status',
     data: { projectOpen: true },
     meta: { projectRevision: 4 },
@@ -131,11 +142,36 @@ test('official MCP client lists and reads fresh targeted GDevelop resources', as
       'gdevelop://mcp/debug',
       'gdevelop://mcp/operations',
     ]);
-    listed.resources.forEach(resource => {
-      assert.equal(resource.mimeType, 'application/json');
-      assert.equal(resource._meta['gdevelop/cacheScope'], 'request');
-      assert.equal(resource._meta['gdevelop/live'], true);
+    const guideDefinition = listed.resources.find(
+      resource => resource.uri === 'gdevelop://guides/native-event-authoring'
+    );
+    assert.equal(guideDefinition.mimeType, 'text/markdown');
+    assert.equal(guideDefinition._meta['gdevelop/cacheScope'], 'process');
+    assert.equal(guideDefinition._meta['gdevelop/live'], false);
+    assert.equal(guideDefinition._meta['gdevelop/guideVersion'], 1);
+
+    listed.resources
+      .filter(
+        resource =>
+          resource.uri !== 'gdevelop://guides/native-event-authoring' &&
+          resource.uri !== 'gdevelop://mcp/debug' &&
+          resource.uri !== 'gdevelop://mcp/operations'
+      )
+      .forEach(resource => {
+        assert.equal(resource.mimeType, 'application/json');
+        assert.equal(resource._meta['gdevelop/cacheScope'], 'request');
+        assert.equal(resource._meta['gdevelop/live'], true);
+      });
+
+    const guide = await client.readResource({
+      uri: 'gdevelop://guides/native-event-authoring',
     });
+    assert.equal(guide.contents[0].mimeType, 'text/markdown');
+    assert.match(guide.contents[0].text, /events\.read\.data\.eventsJson/);
+    assert.match(guide.contents[0].text, /events\.instructions\.search/);
+    assert.match(guide.contents[0].text, /events\.nodes\.describe/);
+    assert.match(guide.contents[0].text, /events\.style\.update/);
+    assert.match(guide.contents[0].text, /sanitized replay\/evidence/);
 
     const status = await client.readResource({
       uri: 'gdevelop://project/status',

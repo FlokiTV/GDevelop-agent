@@ -12,6 +12,9 @@ test('native Event Sheet authoring docs preserve canonical/discovery guidance', 
   const guide = read(path.join('docs', 'MCP_NATIVE_EVENT_AUTHORING.md'));
 
   assert.match(readme, /MCP_NATIVE_EVENT_AUTHORING\.md/);
+  assert.match(readme, /gdevelop\.events-authoring/);
+  assert.match(readme, /gdevelop:\/\/guides\/native-event-authoring/);
+  assert.match(readme, /sanitized replay evidence/);
   assert.match(readme, /events\.nodes\.list/);
   assert.match(readme, /events\.nodes\.describe/);
 
