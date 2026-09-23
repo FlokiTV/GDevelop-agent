@@ -205,7 +205,7 @@ A clean client can discover and construct Group and Comment nodes, including vis
 
 ---
 
-## B2 — Make `events.insert/update/apply` schemas more informative
+## B2 — Informative `events.insert/update/apply` schemas — implemented DX-7
 
 Current mutation tools necessarily accept flexible serialized event objects, but a plain `object` schema pushes validation too late.
 
@@ -233,7 +233,7 @@ If the union is too large or unstable for `tools/list`, return an explicit schem
 
 ### Acceptance
 
-A Comment with an invalid RGB value or wrong field type is rejected with a structured error that names the field and expected contract.
+DX-7 projects a connected-build discriminated union into `events.insert`, `events.update` and `events.apply`. Each known event type branch is derived from the same canonical probe used by `events.nodes.describe`; an explicit unknown-type fallback keeps new upstream/extension types forward-compatible. This lets the MCP input validator reject malformed known fields before renderer dispatch when the schema is available, while renderer-side validation repeats the known-field check before mutation. A Comment with an invalid RGB value or wrong field type is rejected with `invalid_event_node_field` details naming the event type, field path and expected contract. The projected schema also carries an `x-gdevelop-schema-reference` pointing clients to `events.nodes.list/describe`.
 
 ---
 

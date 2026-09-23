@@ -11,6 +11,7 @@ const {
   sendProgress,
 } = require('./McpLongRunning');
 const { requireDestructiveConfirmation } = require('./McpHumanInput');
+const { preflightEventMutationInput } = require('./McpEventMutationValidation');
 const {
   getTraceContextFromRequest,
   makeToolResultMeta,
@@ -261,6 +262,12 @@ const createMcpServerFactory = ({
               };
             }
           } else {
+            await preflightEventMutationInput({
+              command: registration.name,
+              input: commandInput,
+              rendererBridge,
+              targeting,
+            });
             result = await rendererBridge.executeCommand({
               command: registration.name,
               input: commandInput,

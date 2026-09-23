@@ -83,7 +83,10 @@ export const createRendererAgentHost = ({
       ...createCoreCommandDescriptors(),
       ...createProjectLifecycleCommandDescriptors({ projectLifecycleService }),
       ...createSafetyCommandDescriptors({ safetyService }),
-      ...createEventCommandDescriptors({ eventTools }),
+      ...createEventCommandDescriptors({
+        eventTools,
+        metadataDiscoveryService,
+      }),
       ...createExternalProjectItemsCommandDescriptors({
         externalProjectItemsService,
       }),

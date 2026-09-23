@@ -32,6 +32,10 @@ test('native Event Sheet authoring docs preserve canonical/discovery guidance', 
   assert.match(guide, /events\.nodes\.list/);
   assert.match(guide, /events\.nodes\.describe/);
   assert.match(guide, /known-default-fields/);
+  assert.match(guide, /discriminated union/);
+  assert.match(guide, /unknown-type fallback/);
+  assert.match(guide, /x-gdevelop-schema-reference/);
+  assert.match(guide, /MCP input boundary/);
   assert.match(guide, /ordered `parameters`/);
 
   assert.match(guide, /BuiltinCommonInstructions::Group/);

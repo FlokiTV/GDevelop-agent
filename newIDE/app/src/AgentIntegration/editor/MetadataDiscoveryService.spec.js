@@ -138,6 +138,133 @@ describe('AgentIntegration MetadataDiscoveryService', () => {
     expect(JSON.parse(JSON.stringify(comment))).toEqual(comment);
   });
 
+  it('projects a connected-build discriminated union with an unknown-type fallback', () => {
+    const schema = service.getEventNodeMutationSchema();
+    expect(schema['x-gdevelop-schema-reference']).toMatchObject({
+      listTool: 'events.nodes.list',
+      describeTool: 'events.nodes.describe',
+      typeField: 'type',
+      strategy: 'connected-build-discriminated-union-with-unknown-fallback',
+      knownTypeCount: expect.any(Number),
+    });
+    expect(
+      schema['x-gdevelop-schema-reference'].knownTypeCount
+    ).toBeGreaterThan(0);
+    expect(schema.oneOf).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          properties: expect.objectContaining({
+            type: expect.objectContaining({
+              type: 'string',
+              const: 'BuiltinCommonInstructions::Comment',
+            }),
+            color: expect.objectContaining({
+              type: 'object',
+            }),
+          }),
+        }),
+        expect.objectContaining({
+          properties: {
+            type: expect.objectContaining({
+              type: 'string',
+              not: expect.objectContaining({
+                enum: expect.arrayContaining([
+                  'BuiltinCommonInstructions::Comment',
+                  'BuiltinCommonInstructions::Group',
+                ]),
+              }),
+            }),
+          },
+        }),
+      ])
+    );
+  });
+
+  it('validates known event-node fields while preserving forward compatibility', () => {
+    expect(
+      service.validateEventNodeJson({
+        type: 'BuiltinCommonInstructions::Comment',
+        color: {
+          r: 255,
+          g: 230,
+          b: 109,
+          textR: 0,
+          textG: 0,
+          textB: 0,
+        },
+        comment: 'Valid comment',
+        futureField: { nested: true },
+      })
+    ).toMatchObject({
+      knownType: true,
+      eventType: 'BuiltinCommonInstructions::Comment',
+      schemaAvailable: true,
+      schemaCompleteness: 'known-default-fields',
+      schemaReference: {
+        describeTool: 'events.nodes.describe',
+        typeArgument: 'BuiltinCommonInstructions::Comment',
+      },
+    });
+
+    expect(() =>
+      service.validateEventNodeJson({
+        type: 'BuiltinCommonInstructions::Comment',
+        color: {
+          r: 256,
+          g: 230,
+          b: 109,
+          textR: 0,
+          textG: 0,
+          textB: 0,
+        },
+        comment: 'Bad RGB',
+      })
+    ).toThrow(
+      expect.objectContaining({
+        code: 'invalid_event_node_field',
+        details: expect.objectContaining({
+          eventType: 'BuiltinCommonInstructions::Comment',
+          path: 'color.r',
+          maximum: 255,
+          actual: 256,
+        }),
+      })
+    );
+
+    expect(() =>
+      service.validateEventNodeJson({
+        type: 'BuiltinCommonInstructions::Comment',
+        color: 'not-an-object',
+        comment: 'Bad type',
+      })
+    ).toThrow(
+      expect.objectContaining({
+        code: 'invalid_event_node_field',
+        details: expect.objectContaining({
+          eventType: 'BuiltinCommonInstructions::Comment',
+          path: 'color',
+          expected: 'object',
+          actual: 'string',
+        }),
+      })
+    );
+
+    expect(
+      service.validateEventNodeJson({
+        type: 'FutureExtension::FutureEvent',
+        futureField: { nested: true },
+      })
+    ).toEqual({
+      knownType: false,
+      eventType: 'FutureExtension::FutureEvent',
+      schemaReference: {
+        listTool: 'events.nodes.list',
+        describeTool: 'events.nodes.describe',
+        typeArgument: 'FutureExtension::FutureEvent',
+      },
+    });
+  });
+
   it('lists and describes installed object types from live platform metadata', () => {
     const result = service.listObjectTypes({
       query: 'sprite',

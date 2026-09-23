@@ -64,7 +64,7 @@ Recommended native-event sequence:
 
 ## 3. Canonical Group and Comment examples
 
-Use `events.nodes.list` to discover canonical event node types from the connected build and `events.nodes.describe` to inspect one type. `describe` probes an isolated temporary event, returns its canonical default/example, `canHaveSubEvents`, known fields and a forward-compatible schema derived from that build. The schema is intentionally marked `known-default-fields` and allows additional properties, because fields absent from the default serialization can still exist on authored nodes. For an existing event instance, `events.read.data.eventsJson` remains the authority for its complete current serialized state.
+Use `events.nodes.list` to discover canonical event node types from the connected build and `events.nodes.describe` to inspect one type. `describe` probes an isolated temporary event, returns its canonical default/example, `canHaveSubEvents`, known fields and a forward-compatible schema derived from that build. The schema is intentionally marked `known-default-fields` and allows additional properties, because fields absent from the default serialization can still exist on authored nodes. `events.insert`, `events.update` and `events.apply` project these same connected-build schemas as a discriminated union with an unknown-type fallback; malformed known fields can therefore fail at the MCP input boundary, while new event types remain admissible for the connected renderer to interpret. Their input schemas include `x-gdevelop-schema-reference` pointing back to `events.nodes.list/describe`. For an existing event instance, `events.read.data.eventsJson` remains the authority for its complete current serialized state.
 
 ### Group
 

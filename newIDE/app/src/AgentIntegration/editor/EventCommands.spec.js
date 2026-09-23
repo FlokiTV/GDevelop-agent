@@ -14,11 +14,52 @@ const makeHost = (project: any = {}) => {
     updateEventStyle: jest.fn(input => ({ updated: true, ...input })),
     applyEventsJson: jest.fn(input => ({ applied: true, ...input })),
   };
+  const metadataDiscoveryService = {
+    validateEventNodeJson: jest.fn(() => ({ knownType: true })),
+    getEventNodeMutationSchema: jest.fn(() => ({
+      oneOf: [
+        {
+          type: 'object',
+          additionalProperties: true,
+          required: ['type'],
+          properties: {
+            type: {
+              type: 'string',
+              const: 'BuiltinCommonInstructions::Comment',
+            },
+            comment: { type: 'string' },
+          },
+        },
+        {
+          type: 'object',
+          additionalProperties: true,
+          required: ['type'],
+          properties: {
+            type: {
+              type: 'string',
+              not: { enum: ['BuiltinCommonInstructions::Comment'] },
+            },
+          },
+        },
+      ],
+      'x-gdevelop-schema-reference': {
+        listTool: 'events.nodes.list',
+        describeTool: 'events.nodes.describe',
+        typeField: 'type',
+        strategy: 'connected-build-discriminated-union-with-unknown-fallback',
+        knownTypeCount: 1,
+      },
+    })),
+  };
   return {
     eventTools,
+    metadataDiscoveryService,
     host: new AgentHost({
       environment: { project },
-      descriptors: createEventCommandDescriptors({ eventTools }),
+      descriptors: createEventCommandDescriptors({
+        eventTools,
+        metadataDiscoveryService,
+      }),
     }),
   };
 };
@@ -92,6 +133,101 @@ describe('EventCommands', () => {
         },
       },
     });
+  });
+
+  test('projects connected-build event-node schema references into mutation inputs', () => {
+    const { host } = makeHost();
+    const insert = host.describeCommand('events.insert').inputSchema;
+    const update = host.describeCommand('events.update').inputSchema;
+    const apply = host.describeCommand('events.apply').inputSchema;
+
+    [
+      insert.properties.eventsJson.items,
+      update.properties.eventJson,
+      apply.properties.eventsJson.items,
+    ].forEach(schema => {
+      expect(schema).toMatchObject({
+        oneOf: expect.arrayContaining([
+          expect.objectContaining({
+            properties: expect.objectContaining({
+              type: {
+                type: 'string',
+                const: 'BuiltinCommonInstructions::Comment',
+              },
+            }),
+          }),
+          expect.objectContaining({
+            properties: expect.objectContaining({
+              type: {
+                type: 'string',
+                not: {
+                  enum: ['BuiltinCommonInstructions::Comment'],
+                },
+              },
+            }),
+          }),
+        ]),
+        'x-gdevelop-schema-reference': {
+          listTool: 'events.nodes.list',
+          describeTool: 'events.nodes.describe',
+          typeField: 'type',
+          strategy: 'connected-build-discriminated-union-with-unknown-fallback',
+          knownTypeCount: 1,
+        },
+      });
+    });
+  });
+
+  test('validates inserted, updated and nested event nodes through connected-build metadata', async () => {
+    const { host, metadataDiscoveryService } = makeHost();
+
+    await host.execute('events.insert', {
+      sceneName: 'Scene',
+      expectedEventsRevision: 'events:insert',
+      eventsJson: [
+        {
+          type: 'BuiltinCommonInstructions::Group',
+          events: [
+            {
+              type: 'BuiltinCommonInstructions::Comment',
+              comment: 'Nested',
+            },
+          ],
+        },
+      ],
+    });
+    await host.execute('events.update', {
+      sceneName: 'Scene',
+      expectedEventsRevision: 'events:update',
+      handle: 'event:1',
+      eventJson: {
+        type: 'BuiltinCommonInstructions::Comment',
+        comment: 'Updated',
+      },
+    });
+    await host.execute('events.apply', {
+      sceneName: 'Scene',
+      eventsJson: [
+        {
+          type: 'FutureExtension::FutureEvent',
+          futureField: { value: true },
+        },
+      ],
+      mode: 'append',
+    });
+
+    expect(metadataDiscoveryService.validateEventNodeJson).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'BuiltinCommonInstructions::Group' })
+    );
+    expect(metadataDiscoveryService.validateEventNodeJson).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'BuiltinCommonInstructions::Comment' })
+    );
+    expect(metadataDiscoveryService.validateEventNodeJson).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'FutureExtension::FutureEvent' })
+    );
+    expect(
+      metadataDiscoveryService.validateEventNodeJson
+    ).toHaveBeenCalledTimes(4);
   });
 
   test('keeps legacy sceneName routing while using generic EventTools methods', async () => {

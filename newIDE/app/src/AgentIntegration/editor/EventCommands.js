@@ -36,6 +36,19 @@ const EVENT_TARGET_PROPERTIES = {
 
 const TARGET_ANY_OF = [{ required: ['sceneName'] }, { required: ['target'] }];
 
+const EVENT_NODE_JSON_SCHEMA = {
+  type: 'object',
+  additionalProperties: true,
+  description:
+    'Canonical serialized GDevelop event node. Discover the connected-build contract with events.nodes.describe using this node type before authoring unfamiliar fields.',
+  'x-gdevelop-schema-reference': {
+    listTool: 'events.nodes.list',
+    describeTool: 'events.nodes.describe',
+    typeField: 'type',
+    strategy: 'connected-build-known-fields-forward-compatible',
+  },
+};
+
 const READ_SCHEMA = {
   type: 'object',
   additionalProperties: false,
@@ -55,7 +68,7 @@ const INSERT_SCHEMA = {
   properties: {
     ...EVENT_TARGET_PROPERTIES,
     expectedEventsRevision: { type: 'string', minLength: 1 },
-    eventsJson: { type: 'array', minItems: 1 },
+    eventsJson: { type: 'array', minItems: 1, items: EVENT_NODE_JSON_SCHEMA },
     parentHandle: { type: 'string', minLength: 1 },
     beforeHandle: { type: 'string', minLength: 1 },
     afterHandle: { type: 'string', minLength: 1 },
@@ -98,7 +111,7 @@ const UPDATE_SCHEMA = {
     ...EVENT_TARGET_PROPERTIES,
     expectedEventsRevision: { type: 'string', minLength: 1 },
     handle: { type: 'string', minLength: 1 },
-    eventJson: { type: 'object' },
+    eventJson: EVENT_NODE_JSON_SCHEMA,
     preserveSubevents: { type: 'boolean' },
   },
 };
@@ -142,10 +155,50 @@ const APPLY_SCHEMA = {
   anyOf: TARGET_ANY_OF,
   properties: {
     ...EVENT_TARGET_PROPERTIES,
-    eventsJson: { type: 'array' },
+    eventsJson: { type: 'array', items: EVENT_NODE_JSON_SCHEMA },
     mode: { type: 'string', enum: ['replace', 'append'] },
   },
 };
+
+const getProjectedEventNodeSchema = (metadataDiscoveryService: any): any => {
+  if (
+    metadataDiscoveryService &&
+    typeof metadataDiscoveryService.getEventNodeMutationSchema === 'function'
+  ) {
+    return metadataDiscoveryService.getEventNodeMutationSchema();
+  }
+  return EVENT_NODE_JSON_SCHEMA;
+};
+
+const makeInsertSchema = (metadataDiscoveryService: any): any => ({
+  ...INSERT_SCHEMA,
+  properties: {
+    ...INSERT_SCHEMA.properties,
+    eventsJson: {
+      ...INSERT_SCHEMA.properties.eventsJson,
+      items: getProjectedEventNodeSchema(metadataDiscoveryService),
+    },
+  },
+});
+
+const makeUpdateSchema = (metadataDiscoveryService: any): any => ({
+  ...UPDATE_SCHEMA,
+  properties: {
+    ...UPDATE_SCHEMA.properties,
+    eventJson: getProjectedEventNodeSchema(metadataDiscoveryService),
+  },
+});
+
+const makeApplySchema = (metadataDiscoveryService: any): any => ({
+  ...APPLY_SCHEMA,
+  properties: {
+    ...APPLY_SCHEMA.properties,
+    eventsJson: {
+      ...APPLY_SCHEMA.properties.eventsJson,
+      items: getProjectedEventNodeSchema(metadataDiscoveryService),
+    },
+  },
+});
 
 const assertEventsTarget = (input: any) => {
   const hasLegacyScene =
@@ -230,6 +283,36 @@ const assertEventPlacement = (input: any) => {
   }
 };
 
+const assertEventJsonTree = (eventJson: any, metadataDiscoveryService: any) => {
+  if (!eventJson || typeof eventJson !== 'object' || Array.isArray(eventJson)) {
+    throw new AgentError({ code: 'invalid_event_json' });
+  }
+  if (
+    metadataDiscoveryService &&
+    typeof metadataDiscoveryService.validateEventNodeJson === 'function'
+  ) {
+    metadataDiscoveryService.validateEventNodeJson(eventJson);
+  }
+  if (Array.isArray(eventJson.events)) {
+    eventJson.events.forEach(child =>
+      assertEventJsonTree(child, metadataDiscoveryService)
+    );
+  }
+};
+
+const assertEventsJson = (
+  eventsJson: any,
+  metadataDiscoveryService: any,
+  { allowEmpty = true }: {| allowEmpty?: boolean |} = {}
+) => {
+  if (!Array.isArray(eventsJson) || (!allowEmpty && eventsJson.length === 0)) {
+    throw new AgentError({ code: 'invalid_events_json' });
+  }
+  eventsJson.forEach(eventJson =>
+    assertEventJsonTree(eventJson, metadataDiscoveryService)
+  );
+};
+
 const assertRgbStyle = (value: any, field: string) => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new AgentError({
@@ -284,8 +367,10 @@ const assertEventStyle = (style: any) => {
 
 export const createEventCommandDescriptors = ({
   eventTools,
+  metadataDiscoveryService,
 }: {|
   eventTools: any,
+  metadataDiscoveryService?: any,
 |}): Array<CommandDescriptor> => [
   {
     name: 'events.read',
@@ -300,7 +385,7 @@ export const createEventCommandDescriptors = ({
     name: 'events.insert',
     description:
       'Insert canonical serialized events into the targeted live event tree at root, as subevents, or before/after a stable event handle.',
-    inputSchema: INSERT_SCHEMA,
+    inputSchema: makeInsertSchema(metadataDiscoveryService),
     metadata: makeCommandMetadata({
       readOnly: false,
       idempotent: false,
@@ -310,9 +395,9 @@ export const createEventCommandDescriptors = ({
     validateInput: input => {
       assertEventsTarget(input);
       assertEventsRevision(input.expectedEventsRevision);
-      if (!Array.isArray(input.eventsJson) || input.eventsJson.length === 0) {
-        throw new AgentError({ code: 'invalid_events_json' });
-      }
+      assertEventsJson(input.eventsJson, metadataDiscoveryService, {
+        allowEmpty: false,
+      });
       assertEventPlacement(input);
     },
     execute: ({ input }) => eventTools.insertEvents(input),
@@ -359,7 +444,7 @@ export const createEventCommandDescriptors = ({
     name: 'events.update',
     description:
       'Replace one targeted event node from canonical JSON, preserving its persistent id and subevents by default in scene, External Events, or extension-function scope.',
-    inputSchema: UPDATE_SCHEMA,
+    inputSchema: makeUpdateSchema(metadataDiscoveryService),
     metadata: makeCommandMetadata({
       readOnly: false,
       idempotent: false,
@@ -370,9 +455,7 @@ export const createEventCommandDescriptors = ({
       assertEventsTarget(input);
       assertEventsRevision(input.expectedEventsRevision);
       assertEventHandle(input.handle);
-      if (!input.eventJson || typeof input.eventJson !== 'object') {
-        throw new AgentError({ code: 'invalid_event_json' });
-      }
+      assertEventJsonTree(input.eventJson, metadataDiscoveryService);
       if (
         input.preserveSubevents !== undefined &&
         typeof input.preserveSubevents !== 'boolean'
@@ -405,7 +488,7 @@ export const createEventCommandDescriptors = ({
     name: 'events.apply',
     description:
       'Explicit bulk fallback: replace or append canonical serialized events in a scene, External Events sheet, or extension-function event sheet when localized operations are not suitable.',
-    inputSchema: APPLY_SCHEMA,
+    inputSchema: makeApplySchema(metadataDiscoveryService),
     metadata: makeCommandMetadata({
       readOnly: false,
       idempotent: false,
@@ -414,9 +497,7 @@ export const createEventCommandDescriptors = ({
     }),
     validateInput: input => {
       assertEventsTarget(input);
-      if (!Array.isArray(input.eventsJson)) {
-        throw new AgentError({ code: 'invalid_events_json' });
-      }
+      assertEventsJson(input.eventsJson, metadataDiscoveryService);
       if (
         input.mode !== undefined &&
         input.mode !== 'replace' &&

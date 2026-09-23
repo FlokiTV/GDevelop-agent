@@ -142,6 +142,114 @@ const inferJsonSchemaFromDefault = (
   return { type: typeof value, default: value };
 };
 
+const getJsonType = (value: any): string => {
+  if (value === null) return 'null';
+  if (Array.isArray(value)) return 'array';
+  if (Number.isInteger(value)) return 'integer';
+  return typeof value;
+};
+
+const validateKnownJsonValue = ({
+  value,
+  schema,
+  path,
+  eventType,
+}: {|
+  value: any,
+  schema: any,
+  path: Array<string>,
+  eventType: string,
+|}) => {
+  if (!schema || typeof schema !== 'object') return;
+  const expectedType = schema.type;
+  const actualType = getJsonType(value);
+  const numericCompatible =
+    expectedType === 'number' &&
+    (actualType === 'integer' || actualType === 'number');
+  if (
+    typeof expectedType === 'string' &&
+    expectedType !== actualType &&
+    !numericCompatible
+  ) {
+    throw new AgentError({
+      code: 'invalid_event_node_field',
+      message: `Invalid event field ${path.join('.')} for ${eventType}.`,
+      details: {
+        eventType,
+        path: path.join('.'),
+        expected: expectedType,
+        actual: actualType,
+      },
+    });
+  }
+
+  if (
+    typeof value === 'number' &&
+    Number.isFinite(schema.minimum) &&
+    value < schema.minimum
+  ) {
+    throw new AgentError({
+      code: 'invalid_event_node_field',
+      details: {
+        eventType,
+        path: path.join('.'),
+        expected: `>= ${schema.minimum}`,
+        actual: value,
+        minimum: schema.minimum,
+      },
+    });
+  }
+  if (
+    typeof value === 'number' &&
+    Number.isFinite(schema.maximum) &&
+    value > schema.maximum
+  ) {
+    throw new AgentError({
+      code: 'invalid_event_node_field',
+      details: {
+        eventType,
+        path: path.join('.'),
+        expected: `<= ${schema.maximum}`,
+        actual: value,
+        maximum: schema.maximum,
+      },
+    });
+  }
+
+  if (
+    value &&
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    schema.properties &&
+    typeof schema.properties === 'object'
+  ) {
+    Object.keys(value).forEach(key => {
+      if (!Object.prototype.hasOwnProperty.call(schema.properties, key)) return;
+      validateKnownJsonValue({
+        value: value[key],
+        schema: schema.properties[key],
+        path: [...path, key],
+        eventType,
+      });
+    });
+  }
+};
+
+const getSerializedEventNodeType = (eventJson: any): ?string => {
+  if (!eventJson || typeof eventJson !== 'object' || Array.isArray(eventJson)) {
+    return null;
+  }
+  if (typeof eventJson.type === 'string') return eventJson.type;
+  if (
+    eventJson.type &&
+    typeof eventJson.type === 'object' &&
+    typeof eventJson.type.value === 'string'
+  ) {
+    return eventJson.type.value;
+  }
+  return null;
+};
+
 const collectEventFields = (
   value: any,
   path: Array<string> = [],
@@ -1214,6 +1322,125 @@ export const createMetadataDiscoveryService = ({
     };
   };
 
+  const validateEventNodeJson = (eventJson: any): any => {
+    if (
+      !eventJson ||
+      typeof eventJson !== 'object' ||
+      Array.isArray(eventJson)
+    ) {
+      throw new AgentError({
+        code: 'invalid_event_json',
+        details: { expected: 'event object' },
+      });
+    }
+    const eventType = getSerializedEventNodeType(eventJson);
+    if (!eventType) {
+      throw new AgentError({
+        code: 'invalid_event_node_field',
+        details: {
+          eventType: null,
+          path: 'type',
+          expected: 'canonical event type string',
+          actual: getJsonType(eventJson.type),
+        },
+      });
+    }
+
+    const matches = getEventNodeCatalog().filter(
+      record => record.type === eventType
+    );
+    if (!matches.length) {
+      return {
+        knownType: false,
+        eventType,
+        schemaReference: {
+          listTool: 'events.nodes.list',
+          describeTool: 'events.nodes.describe',
+          typeArgument: eventType,
+        },
+      };
+    }
+
+    const probed = probeEventNodeType(project, eventType);
+    if (!probed.schemaAvailable || !probed.schema) {
+      return {
+        knownType: true,
+        eventType,
+        schemaAvailable: false,
+        schemaReference: {
+          describeTool: 'events.nodes.describe',
+          typeArgument: eventType,
+        },
+      };
+    }
+    validateKnownJsonValue({
+      value: eventJson,
+      schema: probed.schema,
+      path: [],
+      eventType,
+    });
+    return {
+      knownType: true,
+      eventType,
+      schemaAvailable: true,
+      schemaCompleteness: probed.schemaCompleteness,
+      schemaReference: {
+        describeTool: 'events.nodes.describe',
+        typeArgument: eventType,
+      },
+    };
+  };
+
+  const getEventNodeMutationSchema = (): any => {
+    const knownBranches = [];
+    const knownTypes = [];
+    getEventNodeCatalog().forEach(record => {
+      const probed = probeEventNodeType(project, record.type);
+      if (!probed.schemaAvailable || !probed.schema) return;
+      knownTypes.push(record.type);
+      knownBranches.push({
+        ...probed.schema,
+        required: Array.from(
+          new Set([...(probed.schema.required || []), 'type'])
+        ),
+        properties: {
+          ...(probed.schema.properties || {}),
+          type: {
+            type: 'string',
+            const: record.type,
+            default: record.type,
+          },
+        },
+      });
+    });
+
+    return {
+      oneOf: [
+        ...knownBranches,
+        {
+          type: 'object',
+          additionalProperties: true,
+          required: ['type'],
+          properties: {
+            type: {
+              type: 'string',
+              not: { enum: knownTypes },
+            },
+          },
+          description:
+            'Forward-compatible fallback for event types not present in the connected-build metadata catalog.',
+        },
+      ],
+      'x-gdevelop-schema-reference': {
+        listTool: 'events.nodes.list',
+        describeTool: 'events.nodes.describe',
+        typeField: 'type',
+        strategy: 'connected-build-discriminated-union-with-unknown-fallback',
+        knownTypeCount: knownTypes.length,
+      },
+    };
+  };
+
   const listTypes = (
     kind: 'object' | 'behavior' | 'effect',
     input: any = {}
@@ -1283,6 +1510,8 @@ export const createMetadataDiscoveryService = ({
     describeInstruction,
     listEventNodeTypes,
     describeEventNodeType,
+    validateEventNodeJson,
+    getEventNodeMutationSchema,
     listObjectTypes: input => listTypes('object', input),
     describeObjectType: input => describeType('object', input),
     listBehaviorTypes: input => listTypes('behavior', input),
@@ -1301,6 +1530,8 @@ export const metadataDiscoveryInternals = {
   collectEventNodeTypes,
   filterEventNodeTypes,
   inferJsonSchemaFromDefault,
+  validateKnownJsonValue,
+  getSerializedEventNodeType,
   probeEventNodeType,
   shouldHideExtension,
 };
