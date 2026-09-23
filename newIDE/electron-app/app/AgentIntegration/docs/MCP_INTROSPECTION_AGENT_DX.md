@@ -324,7 +324,7 @@ The current external-client contract is sound:
 
 However, hosts that do not register the local GDevelop MCP directly may need a small local client program. During Coin Idle work, short `node -e` clients were used; one large workflow temporarily required a script file because Windows command-line length was exceeded.
 
-## D1 — Provide a reusable external-client helper
+## D1 — Reusable external-client helper — implemented DX-6
 
 Instead of each scenario repeating transport/bootstrap code, provide a small supported helper such as:
 
@@ -351,11 +351,11 @@ await session.close();
 
 ### Acceptance
 
-A new external Node client can perform a read-only `project.status` in fewer than ~20 lines without duplicating authentication/transport boilerplate.
+DX-6 provides `scripts/McpClient.js` with `connectLiveGDevelopMcp`. A new external Node client can perform a read-only `project.status` in fewer than ~20 lines without duplicating authentication/transport boilerplate. The helper dynamically reloads discovery on connection, pins the advertised protocol, supports window/project targeting, exposes `listTools`, `call` and idempotent `close`, returns no bearer credential in the session, and performs no hidden call retry.
 
 ---
 
-## D2 — Optional safe CLI for one-off tool calls
+## D2 — Safe CLI for one-off tool calls — implemented DX-6
 
 A small CLI could remove the need for ad hoc `node -e` programs:
 
@@ -376,7 +376,7 @@ This should be considered convenience tooling, not a replacement for MCP.
 
 ### Acceptance
 
-A developer can inspect raw `events.read.data.eventsJson` from a terminal without writing a temporary client script.
+DX-6 provides `scripts/McpToolCall.js`. A developer can inspect raw `events.read.data.eventsJson` from a terminal without writing a temporary client script, use `--json-file` for large inputs, or request `--sanitized` replay evidence. Tools that are not explicitly read-only, are destructive, or modify the project require `--allow-mutate`; this local guard never bypasses server-side destructive elicitation.
 
 ---
 
@@ -463,8 +463,8 @@ A robust default workflow should be documented as:
 | P1 | Improve event mutation schemas / schema references | API | Earlier validation and clearer contracts |
 | P1 | Expression discovery via `events.instructions.search/describe` with `kind=expression` | API/docs/tests | Already live; DX-4 verifies return type, ordered parameters, ownership and applicability without duplicating the catalog |
 | P1 | `events.style.update` | API — implemented DX-5 | Safe, intent-specific visual mutations |
-| P2 | Reusable `connectLiveGDevelopMcp` helper | Client DX | Removes repeated transport/auth boilerplate |
-| P2 | Safe one-off MCP CLI | Client DX | Avoids temporary scripts for inspection/tool calls |
+| P2 | Reusable `connectLiveGDevelopMcp` helper | Client DX — implemented DX-6 | Removes repeated transport/auth boilerplate |
+| P2 | Safe one-off MCP CLI | Client DX — implemented DX-6 | Avoids temporary scripts for inspection/tool calls |
 | P2 | MCP prompt/resource: native Event Sheet authoring guide | Docs/DX | Makes recommended workflow discoverable to agents |
 
 ---

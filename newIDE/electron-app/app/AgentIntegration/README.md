@@ -226,9 +226,36 @@ For material 3D work, use the dedicated quality guidance:
 - [`docs/MAP_BUILDER.md`](./docs/MAP_BUILDER.md) — mechanics-first level construction;
 - [`docs/3D_QUALITY_GATE.md`](./docs/3D_QUALITY_GATE.md) — structural, visual and gameplay acceptance evidence.
 
+## External MCP client helper and one-off CLI
+
+External Node clients should use `scripts/McpClient.js` instead of duplicating discovery/auth/transport bootstrap. `connectLiveGDevelopMcp` re-reads `gdevelop-mcp.json` on each connection, reads the bearer credential only for the transport, pins the advertised protocol version, supports optional window/project targeting and returns a session with `listTools()`, `call(name, args)` and `close()`. The session result never exposes the bearer token and does not retry failed calls implicitly.
+
+```js
+const { connectLiveGDevelopMcp } = require('./app/AgentIntegration/scripts/McpClient');
+
+const session = await connectLiveGDevelopMcp({ clientId: 'my-agent' });
+try {
+  const status = await session.call('project.status', {});
+  console.log(status.data);
+} finally {
+  await session.close();
+}
+```
+
+For one-off inspection, `McpToolCall.js` provides the same targeting/discovery contract without writing an ad hoc client:
+
+```text
+cd newIDE/electron-app
+node app/AgentIntegration/scripts/McpToolCall.js project.status
+node app/AgentIntegration/scripts/McpToolCall.js events.read --json "{\"sceneName\":\"CoinIdle\"}"
+node app/AgentIntegration/scripts/McpToolCall.js events.read --json-file args.json --sanitized
+```
+
+The CLI defaults to **raw structured output**: this is the live authoritative MCP result to use for authoring decisions, including complete `events.read.data.eventsJson`. `--sanitized` instead emits replay/evidence JSON with credential-like keys removed; sanitized evidence is not an authoring contract. `--json-file` avoids command-line-length problems for larger inputs. Any tool that is not explicitly read-only, is destructive, or modifies the project is blocked unless `--allow-mutate` is supplied. This local opt-in does not bypass MCP elicitation/confirmation for destructive operations. Discovery credentials and Authorization headers are never printed.
+
 ## Live read-only gate
 
-With the desktop editor already running, the repository includes a read-only client that connects through the same discovery/token files used by external MCP hosts and generates a sanitized replay without printing credentials:
+With the desktop editor already running, the repository includes a read-only gate built on `connectLiveGDevelopMcp` that generates a sanitized replay without printing credentials:
 
 ```text
 cd newIDE/electron-app
