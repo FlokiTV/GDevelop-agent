@@ -148,7 +148,7 @@ test('official MCP client lists and reads fresh targeted GDevelop resources', as
     assert.equal(guideDefinition.mimeType, 'text/markdown');
     assert.equal(guideDefinition._meta['gdevelop/cacheScope'], 'process');
     assert.equal(guideDefinition._meta['gdevelop/live'], false);
-    assert.equal(guideDefinition._meta['gdevelop/guideVersion'], 1);
+    assert.equal(guideDefinition._meta['gdevelop/guideVersion'], 2);
 
     listed.resources
       .filter(
@@ -169,6 +169,8 @@ test('official MCP client lists and reads fresh targeted GDevelop resources', as
     assert.equal(guide.contents[0].mimeType, 'text/markdown');
     assert.match(guide.contents[0].text, /events\.read\.data\.eventsJson/);
     assert.match(guide.contents[0].text, /events\.instructions\.search/);
+    assert.match(guide.contents[0].text, /subInstructions/);
+    assert.match(guide.contents[0].text, /ordered visible parameters/);
     assert.match(guide.contents[0].text, /events\.nodes\.describe/);
     assert.match(guide.contents[0].text, /events\.style\.update/);
     assert.match(guide.contents[0].text, /sanitized replay\/evidence/);

@@ -1,0 +1,117 @@
+{
+  "kind": "dx9-clean-room-event-authoring-acceptance",
+  "generatedAt": "2026-09-24T03:09:14.352Z",
+  "cleanRoom": {
+    "repositoryImplementationOrTestsReadDuringScenario": false,
+    "repositoryReadGuard": true,
+    "connectionSource": "gdevelop-mcp.json + tokenFile",
+    "authoringInputSource": "live raw MCP responses",
+    "sanitizedEvidenceUsedAsAuthoringInput": false
+  },
+  "protocolVersion": "2026-07-28",
+  "discovery": {
+    "toolCount": 214,
+    "prompt": "gdevelop.events-authoring",
+    "resource": "gdevelop://guides/native-event-authoring",
+    "promptVersion": 3,
+    "guideVersion": 2,
+    "dynamicEventSchemaKnownTypeCount": 10
+  },
+  "discoveredAuthoringContracts": {
+    "condition": {
+      "id": "SceneJustBegins",
+      "extension": "BuiltinScene",
+      "visibleParameterCount": 0
+    },
+    "action": {
+      "id": "Wait",
+      "extension": "BuiltinTime",
+      "visibleParameters": [
+        {
+          "index": 0,
+          "type": "expression"
+        }
+      ]
+    },
+    "expression": {
+      "id": "RandomFloatInRange",
+      "returnType": "number",
+      "visibleParameters": [
+        {
+          "index": 0,
+          "type": "expression"
+        },
+        {
+          "index": 1,
+          "type": "expression"
+        }
+      ]
+    },
+    "eventNodes": {
+      "group": "BuiltinCommonInstructions::Group",
+      "comment": "BuiltinCommonInstructions::Comment",
+      "standard": "BuiltinCommonInstructions::Standard"
+    }
+  },
+  "authored": {
+    "sceneName": "DX9CleanRoom",
+    "topLevelEventCount": 3,
+    "conditionId": "SceneJustBegins",
+    "actionId": "Wait",
+    "expressionSource": "RandomFloatInRange(0, 0)",
+    "groupStyle": {
+      "background": {
+        "r": 24,
+        "g": 68,
+        "b": 108
+      }
+    },
+    "commentStyle": {
+      "background": {
+        "r": 248,
+        "g": 222,
+        "b": 126
+      },
+      "text": {
+        "r": 20,
+        "g": 30,
+        "b": 40
+      }
+    }
+  },
+  "validation": {
+    "errors": 0,
+    "summary": {
+      "diagnosticErrors": 0,
+      "diagnosticWarnings": 0,
+      "checksRun": 0,
+      "checksFailed": 0
+    }
+  },
+  "preview": {
+    "running": true,
+    "status": {
+      "available": true,
+      "serverState": "started",
+      "debuggerIds": [
+        "preview-ws-0"
+      ],
+      "previewDebuggerIds": [
+        "preview-ws-0"
+      ],
+      "running": true
+    }
+  },
+  "runtime": {
+    "logsReadable": true,
+    "debuggerId": "preview-ws-0",
+    "errorCount": null
+  },
+  "save": {
+    "explicit": true,
+    "operation": "project.save-as",
+    "cleanAfterSave": true,
+    "saved": true,
+    "fileIdentifierReturned": true
+  }
+}

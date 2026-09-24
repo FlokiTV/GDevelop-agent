@@ -1,7 +1,7 @@
 const PROMPT_META = {
   'gdevelop/cacheScope': 'process',
   'gdevelop/ttlMs': 60000,
-  'gdevelop/promptVersion': 2,
+  'gdevelop/promptVersion': 3,
 };
 
 const prompt = (name, title, description, text) => ({
@@ -18,7 +18,7 @@ const NATIVE_EVENT_AUTHORING_GUIDE = [
   '1. Discover the live build with tools/list or agent.capabilities; do not hard-code the command catalog.',
   '2. Read project.status, then events.read. Treat events.read.data.eventsJson as the authoritative canonical serialized event payload. data.events is only the stable handle/navigation tree; do not reconstruct event fields from it.',
   '3. Keep eventsRevision from events.read and projectRevision from project.status as write preconditions. Use expectedEventsRevision plus MCP expectedRevision/idempotencyKey when offered; use a checkpoint/transaction for risky multi-step work.',
-  '4. Discover unfamiliar actions and conditions with events.instructions.search/describe. Discover numeric/string expressions through the same surface with kind="expression"; there is no separate events.expressions catalog.',
+  '4. Discover unfamiliar actions and conditions with events.instructions.search/describe. Discover numeric/string expressions through the same surface with kind="expression"; there is no separate events.expressions catalog. Author discovered instructions in canonical serialized form as {"type":{"value":"<discovered-id>"},"parameters":["<ordered visible parameters>"],"subInstructions":[]}; derive parameter order/types from the described metadata instead of model memory.',
   '5. Discover canonical event-node types with events.nodes.list and inspect exact connected-build defaults/known fields with events.nodes.describe. Mutation schemas may project those contracts and carry x-gdevelop-schema-reference back to this discovery surface.',
   '6. Prefer the smallest mutation: events.style.update for Group/Comment RGB-only edits; otherwise events.insert/update/move/delete. Use events.apply only as an explicit bulk replace/append fallback.',
   '7. Group/Comment style updates use abstract background/text RGB objects. Do not resend conditions, actions or subevents for visual-only changes.',

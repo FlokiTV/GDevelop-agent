@@ -34,7 +34,7 @@ test('prompt catalog is deterministic, versioned and schema-free', () => {
   assert.deepEqual(PROMPT_META, {
     'gdevelop/cacheScope': 'process',
     'gdevelop/ttlMs': 60000,
-    'gdevelop/promptVersion': 2,
+    'gdevelop/promptVersion': 3,
   });
   PROMPTS.forEach(prompt => {
     assert.ok(prompt.description.length > 0);
@@ -113,6 +113,8 @@ test('official MCP client lists and gets GDevelop workflow prompts', async () =>
       /events\.instructions\.search/
     );
     assert.match(events.messages[0].content.text, /kind="expression"/);
+    assert.match(events.messages[0].content.text, /subInstructions/);
+    assert.match(events.messages[0].content.text, /ordered visible parameters/);
     assert.match(events.messages[0].content.text, /events\.nodes\.describe/);
     assert.match(events.messages[0].content.text, /events\.style\.update/);
     assert.match(events.messages[0].content.text, /expectedEventsRevision/);

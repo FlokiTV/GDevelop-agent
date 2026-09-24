@@ -116,6 +116,29 @@ const connectLiveGDevelopMcp = async ({
       const response = await client.listTools();
       return Array.isArray(response.tools) ? response.tools : [];
     },
+    async listPrompts() {
+      const response = await client.listPrompts();
+      return Array.isArray(response.prompts) ? response.prompts : [];
+    },
+    async getPrompt(name, args = {}) {
+      if (!name || typeof name !== 'string') {
+        throw new Error('missing_mcp_prompt_name');
+      }
+      if (!args || typeof args !== 'object' || Array.isArray(args)) {
+        throw new Error('invalid_mcp_prompt_arguments');
+      }
+      return client.getPrompt({ name, arguments: args });
+    },
+    async listResources() {
+      const response = await client.listResources();
+      return Array.isArray(response.resources) ? response.resources : [];
+    },
+    async readResource(uri) {
+      if (!uri || typeof uri !== 'string') {
+        throw new Error('missing_mcp_resource_uri');
+      }
+      return client.readResource({ uri });
+    },
     async call(name, args = {}) {
       if (!name || typeof name !== 'string') {
         throw new Error('missing_mcp_tool_name');

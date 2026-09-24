@@ -460,7 +460,7 @@ A robust default workflow should be documented as:
 | P0 | Add canonical Group/Comment examples including visual fields | Docs | Immediate low-cost fix |
 | P0 | Clarify typed EditorFunction preferred path | Docs | Avoids unnecessary generic calls |
 | P1 | `events.nodes.list/describe` | API | Authoritative node-level schema introspection |
-| P1 | Improve event mutation schemas / schema references | API | Earlier validation and clearer contracts |
+| P1 | Improve event mutation schemas / schema references | API — implemented DX-7 | Connected-build schema projection, MCP preflight and structured known-field validation |
 | P1 | Expression discovery via `events.instructions.search/describe` with `kind=expression` | API/docs/tests | Already live; DX-4 verifies return type, ordered parameters, ownership and applicability without duplicating the catalog |
 | P1 | `events.style.update` | API — implemented DX-5 | Safe, intent-specific visual mutations |
 | P2 | Reusable `connectLiveGDevelopMcp` helper | Client DX — implemented DX-6 | Removes repeated transport/auth boilerplate |
@@ -498,5 +498,7 @@ The introspection/DX work can be considered complete when a clean external MCP c
 8. validate and preview the result;
 9. save explicitly;
 10. produce sanitized evidence without confusing replay data with authoritative live authoring state.
+
+DX-9 proves this definition of done with `scripts/McpCleanRoomEventAuthoringLiveScenario.js`. Once the scenario starts, a repository-read guard prevents source/test lookup; the client connects from discovery + token-file only, discovers the versioned MCP authoring guide, instruction/expression metadata and Group/Comment/Standard node schemas, authors and styles native events from live raw MCP responses, validates, previews, reads runtime output and saves explicitly. Sanitized evidence is written only after authoring and is never fed back as authoring input. The same scenario passes against both the live development host and the portable Windows `win-unpacked` package; the persisted result is `docs/evidence/DX9_CLEAN_ROOM_ACCEPTANCE.json`.
 
 At that point, consulting GDevelop source should be a debugging/implementation activity for MCP developers, not a normal requirement for MCP consumers.

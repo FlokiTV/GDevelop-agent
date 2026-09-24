@@ -106,6 +106,32 @@ test('connectLiveGDevelopMcp discovers, pins, calls once and closes without expo
     const tools = await session.listTools();
     assert.deepEqual(tools.map(tool => tool.name), ['project.status']);
 
+    const prompts = await session.listPrompts();
+    assert.ok(
+      prompts.some(prompt => prompt.name === 'gdevelop.events-authoring')
+    );
+    const authoringPrompt = await session.getPrompt(
+      'gdevelop.events-authoring'
+    );
+    assert.match(
+      authoringPrompt.messages[0].content.text,
+      /events\.read\.data\.eventsJson/
+    );
+
+    const resources = await session.listResources();
+    assert.ok(
+      resources.some(
+        resource => resource.uri === 'gdevelop://guides/native-event-authoring'
+      )
+    );
+    const authoringGuide = await session.readResource(
+      'gdevelop://guides/native-event-authoring'
+    );
+    assert.match(
+      authoringGuide.contents[0].text,
+      /events\.instructions\.search/
+    );
+
     const beforeCallCount = calls.filter(
       call => call.command === 'project.status'
     ).length;
