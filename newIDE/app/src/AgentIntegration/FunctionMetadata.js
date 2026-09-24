@@ -4,7 +4,67 @@ import {
   editorFunctionsWithoutProject,
 } from '../EditorFunctions';
 import { generatedFunctionMetadata } from './FunctionMetadata.generated';
-import { getNonScriptableFunctionReason } from '../EditorFunctions/ScriptExecution/NonScriptableFunctionNames';
+import { NON_SCRIPTABLE_FUNCTION_NAMES } from '../EditorFunctions/ScriptExecution/NonScriptableFunctionNames';
+import { FUNCTION_TYPES } from '../EditorFunctions/Extensions/CustomFunctionFunctions';
+import { PARAMETER_TYPES } from '../EditorFunctions/Extensions/ParameterChanges';
+
+const EXPRESSION_TYPES = ['number', 'string'];
+
+const FUNCTION_SETTING_NAMES = [
+  'fullName',
+  'description',
+  'sentence',
+  'group',
+  'getterName',
+  'isPrivate',
+  'isAsync',
+  'functionType',
+  'expressionType',
+  'helpUrl',
+  'isDeprecated',
+  'deprecationMessage',
+];
+
+const EXTENSION_PROPERTY_NAMES = [
+  'fullName',
+  'shortDescription',
+  'description',
+  'category',
+  'tags',
+  'version',
+  'author',
+  'helpPath',
+  'previewIconUrl',
+  'iconUrl',
+  'dimension',
+];
+
+const DEPENDENCY_TYPES = ['npm', 'cordova'];
+
+const nonScriptableFunctionReasons = new Map([
+  ['run_script', 'recursive-script-execution-disabled'],
+  ['initialize_project', 'project-bootstrap-outside-script'],
+  ['read_full_docs', 'generation-service-only'],
+  ['search_docs', 'generation-service-only'],
+  ['search_object_asset_store', 'generation-service-only'],
+  ['search_resource_store', 'generation-service-only'],
+  ['create_or_update_plan', 'generation-service-only'],
+  ['report_fulfilment_problem', 'generation-service-only'],
+  ['run_edit_agent', 'generation-service-only'],
+  ['run_explorer_agent', 'generation-service-only'],
+  ['get_game_starter_summary', 'project-bootstrap-outside-script'],
+  ['generate_events', 'orchestrator-event-generation-outside-script'],
+  ['add_scene_events', 'orchestrator-event-generation-outside-script'],
+  ['run_tests', 'long-running-preview-lifecycle-outside-script'],
+  ['run_gameplay_test', 'long-running-preview-lifecycle-outside-script'],
+]);
+
+export const getNonScriptableFunctionReason = (name: string): string | null => {
+  if (!NON_SCRIPTABLE_FUNCTION_NAMES.has(name)) return null;
+  return (
+    nonScriptableFunctionReasons.get(name) || 'non-scriptable-editor-function'
+  );
+};
 
 export type AgentFunctionArgumentMetadata = {|
   name: string,
@@ -13,6 +73,7 @@ export type AgentFunctionArgumentMetadata = {|
   provenance: string,
   enum?: Array<any>,
   description?: string,
+  schema?: Object,
 |};
 
 export type AgentFunctionExposure = {|
@@ -51,6 +112,16 @@ export type AgentFunctionMetadata = {|
 |};
 
 const descriptionOverrides = {
+  create_extension:
+    'Create a project-owned events extension, optionally duplicating an existing extension.',
+  change_extension_properties:
+    'Change, rename or delete a project-owned events extension and its dependency metadata.',
+  create_custom_function:
+    'Create an Action, Condition or expression function in a project-owned extension scope with typed parameters and return metadata.',
+  change_custom_function:
+    'Change, rename or delete a custom extension function, including settings and typed parameters.',
+  inspect_extension:
+    'Inspect project-owned extension declarations, functions, call forms and editable metadata.',
   add_or_edit_variable:
     'Create, update or delete project, scene, object or instance variables.',
   change_project_properties_resources:
@@ -91,9 +162,218 @@ const descriptionOverrides = {
     'Search the GDevelop resource store. This function is handled by the generation service.',
 };
 
+const extensionFunctionScopeSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['type', 'extension_name'],
+  properties: {
+    type: {
+      type: 'string',
+      enum: ['extension', 'custom_behavior', 'custom_object'],
+    },
+    extension_name: { type: 'string', minLength: 1 },
+    custom_behavior_name: { type: 'string', minLength: 1 },
+    custom_object_name: { type: 'string', minLength: 1 },
+  },
+};
+
+const functionParameterSpecSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['name', 'type'],
+  properties: {
+    name: { type: 'string', minLength: 1 },
+    type: { type: 'string', enum: PARAMETER_TYPES },
+    label: { type: 'string' },
+    long_description: { type: 'string' },
+    extra_info: {
+      anyOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }],
+    },
+    optional: {
+      anyOf: [{ type: 'boolean' }, { type: 'string' }],
+    },
+    default_value: { type: 'string' },
+  },
+};
+
+const functionParameterChangeSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['parameter_name'],
+  properties: {
+    parameter_name: { type: 'string', minLength: 1 },
+    new_name: { type: 'string', minLength: 1 },
+    delete_this_parameter: { type: 'boolean' },
+    type: { type: 'string', enum: PARAMETER_TYPES },
+    label: { type: 'string' },
+    long_description: { type: 'string' },
+    extra_info: {
+      anyOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }],
+    },
+    optional: {
+      anyOf: [{ type: 'boolean' }, { type: 'string' }],
+    },
+    default_value: { type: 'string' },
+    new_index: {
+      anyOf: [{ type: 'integer', minimum: 0 }, { type: 'string' }],
+    },
+  },
+};
+
+const functionSettingChangeSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['setting_name', 'new_value'],
+  properties: {
+    setting_name: { type: 'string', enum: FUNCTION_SETTING_NAMES },
+    new_value: {
+      anyOf: [{ type: 'string' }, { type: 'boolean' }],
+    },
+  },
+};
+
+const extensionPropertyChangeSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['property_name', 'new_value'],
+  properties: {
+    property_name: { type: 'string', enum: EXTENSION_PROPERTY_NAMES },
+    new_value: { type: 'string' },
+  },
+};
+
+const extensionDependencyChangeSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['dependency_name'],
+  properties: {
+    dependency_name: { type: 'string', minLength: 1 },
+    delete_this_dependency: { type: 'boolean' },
+    new_name: { type: 'string', minLength: 1 },
+    type: { type: 'string', enum: DEPENDENCY_TYPES },
+    export_name: { type: 'string' },
+    version: { type: 'string' },
+    extra_settings: {
+      type: 'object',
+      additionalProperties: { type: 'string' },
+    },
+  },
+};
+
 const argumentOverrides: {
   [string]: { [string]: $Shape<AgentFunctionArgumentMetadata> },
 } = {
+  create_extension: {
+    full_name: {
+      type: 'string',
+      description: 'Human-readable extension name.',
+    },
+    short_description: {
+      type: 'string',
+      description: 'Short extension description.',
+    },
+    description: {
+      type: 'string',
+      description: 'Long extension description.',
+    },
+    category: { type: 'string' },
+    tags: {
+      type: 'string',
+      description: 'Comma-separated extension tags.',
+    },
+    author: { type: 'string' },
+  },
+  change_extension_properties: {
+    new_name: {
+      type: 'string',
+      description:
+        'Optional new canonical extension name; project references are refactored.',
+    },
+    changed_properties: {
+      type: 'array',
+      schema: {
+        type: 'array',
+        items: extensionPropertyChangeSchema,
+      },
+      description: 'Extension metadata property patches.',
+    },
+    changed_dependencies: {
+      type: 'array',
+      schema: {
+        type: 'array',
+        items: extensionDependencyChangeSchema,
+      },
+      description: 'Create, update, rename or delete extension dependencies.',
+    },
+  },
+  create_custom_function: {
+    scope: {
+      type: 'object',
+      required: true,
+      schema: extensionFunctionScopeSchema,
+      description:
+        'Project extension function owner. Use type=extension for free functions.',
+    },
+    function_type: {
+      type: 'string',
+      enum: FUNCTION_TYPES,
+      description: 'GDevelop function kind.',
+    },
+    expression_type: {
+      type: 'string',
+      enum: EXPRESSION_TYPES,
+      description:
+        'Return type for Expression or ExpressionAndCondition functions.',
+    },
+    is_private: {
+      type: 'boolean',
+      description: 'Whether the function is private to its extension.',
+    },
+    is_async: {
+      type: 'boolean',
+      description: 'Whether the function is asynchronous.',
+    },
+    parameters: {
+      type: 'array',
+      schema: {
+        type: 'array',
+        items: functionParameterSpecSchema,
+      },
+      description: 'Ordered typed user parameters.',
+    },
+  },
+  change_custom_function: {
+    scope: {
+      type: 'object',
+      required: true,
+      schema: extensionFunctionScopeSchema,
+      description:
+        'Project extension function owner. Use type=extension for free functions.',
+    },
+    new_name: {
+      type: 'string',
+      description:
+        'Optional new canonical function name; project calls are refactored.',
+    },
+    changed_settings: {
+      type: 'array',
+      schema: {
+        type: 'array',
+        items: functionSettingChangeSchema,
+      },
+      description:
+        'Function declaration settings including functionType, expressionType, privacy and async state.',
+    },
+    changed_parameters: {
+      type: 'array',
+      schema: {
+        type: 'array',
+        items: functionParameterChangeSchema,
+      },
+      description:
+        'Create, update, rename, move or delete ordered typed parameters.',
+    },
+  },
   run_gameplay_test: {
     scope: {
       type: 'object',
@@ -305,7 +585,7 @@ const makeInputSchema = (
   const properties = {};
   const required = [];
   argumentsMetadata.forEach(argument => {
-    const property = {};
+    const property = argument.schema ? { ...argument.schema } : {};
     if (argument.type && !['unknown', 'mixed', 'any'].includes(argument.type)) {
       if (argument.type.includes('|') || argument.type.endsWith('[]')) {
         if (argument.type.endsWith('[]')) {
@@ -346,8 +626,8 @@ generatedFunctionMetadata.forEach(generated => {
     generated.arguments || []
   );
   const description =
-    generated.description ||
     descriptionOverrides[generated.name] ||
+    generated.description ||
     `Editor function ${generated.name}.`;
   const executableInEmbeddedApi = !generationServiceOnlyFunctions.has(
     generated.name

@@ -1,4 +1,5 @@
 // @flow
+import { IdempotencyStore } from './core/IdempotencyStore';
 import { createRendererAgentHost } from './RendererAgentHost';
 
 const EXPECTED_PUBLIC_COMMANDS = [
@@ -25,11 +26,19 @@ const EXPECTED_PUBLIC_COMMANDS = [
   'editor.functions.call',
   'editor.functions.call-batch',
   'editor.functions.change-behavior-property',
+  'editor.functions.change-custom-behavior',
+  'editor.functions.change-custom-function',
+  'editor.functions.change-custom-object',
+  'editor.functions.change-extension-properties',
   'editor.functions.change-gameplay-tests',
   'editor.functions.change-object-properties-effects',
   'editor.functions.change-object-property',
   'editor.functions.change-project-properties-resources',
   'editor.functions.change-scene-properties-layers-effects-groups',
+  'editor.functions.create-custom-behavior',
+  'editor.functions.create-custom-function',
+  'editor.functions.create-custom-object',
+  'editor.functions.create-extension',
   'editor.functions.create-object',
   'editor.functions.create-or-replace-object',
   'editor.functions.create-scene',
@@ -39,6 +48,7 @@ const EXPECTED_PUBLIC_COMMANDS = [
   'editor.functions.get-game-starter-summary',
   'editor.functions.initialize-project',
   'editor.functions.inspect-behavior-properties',
+  'editor.functions.inspect-extension',
   'editor.functions.inspect-object-properties',
   'editor.functions.inspect-object-properties-effects',
   'editor.functions.inspect-project-properties-resources',
@@ -220,5 +230,70 @@ describe('RendererAgentHost public command inventory', () => {
     const commandNames = host.listCommands().map(command => command.name);
     expect(commandNames).toEqual(EXPECTED_PUBLIC_COMMANDS);
     expect(new Set(commandNames).size).toBe(commandNames.length);
+  });
+
+  it('preserves idempotent mutation replay when the renderer host is recreated', async () => {
+    let revision = 0;
+    const projectRevisionTracker = {
+      synchronize: jest.fn(() => revision),
+      markMutation: jest.fn(() => {
+        revision += 1;
+        return revision;
+      }),
+    };
+    const idempotencyStore = new IdempotencyStore();
+    const run = jest.fn(async () => ({
+      results: [{ status: 'finished', success: true, output: {} }],
+      didModifyProject: true,
+    }));
+    const makeHost = () =>
+      createRendererAgentHost({
+        environment: { project: {}, projectRevisionTracker },
+        idempotencyStore,
+        assetTools: {},
+        diagnosticsTools: {},
+        editorFunctionService: { run },
+        editorVisualService: {},
+        eventTools: {},
+        externalProjectItemsService: {},
+        extensionAuthoringService: {},
+        extensionLifecycleService: {},
+        objectStructureService: {},
+        metadataDiscoveryService: {},
+        documentationService: {},
+        storeService: {},
+        remoteResourceService: {},
+        assetProcessingService: {},
+        buildService: {},
+        publicationService: {},
+        exportService: {},
+        previewService: {},
+        projectLifecycleService: {},
+        runtimeTelemetry: {},
+        runtimeDiagnosticsService: {},
+        safetyService: {},
+        validationService: {},
+      });
+
+    const input = { extension_name: 'ReplaySafeExtension' };
+    const requestContext = {
+      expectedRevision: 0,
+      idempotencyKey: 'renderer-host-recreation-replay',
+    };
+    const first = await makeHost().execute(
+      'editor.functions.create-extension',
+      input,
+      requestContext
+    );
+    const replay = await makeHost().execute(
+      'editor.functions.create-extension',
+      input,
+      requestContext
+    );
+
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(first.meta.projectRevision).toBe(1);
+    expect(replay.meta.projectRevision).toBe(1);
+    expect(replay.meta.idempotencyReplayed).toBe(true);
   });
 });

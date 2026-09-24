@@ -25,6 +25,7 @@ import { createValidationService } from './editor/ValidationService';
 import { createPreviewService } from './runtime/PreviewService';
 import { createRuntimeDiagnosticsService } from './runtime/RuntimeDiagnosticsService';
 import { createSafetyService } from './safety/SafetyService';
+import { IdempotencyStore } from './core/IdempotencyStore';
 import { SemanticConcurrency } from './core/SemanticConcurrency';
 import { createRendererAgentHost } from './RendererAgentHost';
 
@@ -32,6 +33,7 @@ const semanticConcurrencyByProject: WeakMap<
   any,
   SemanticConcurrency
 > = new WeakMap();
+const idempotencyStoreByProject: WeakMap<any, IdempotencyStore> = new WeakMap();
 
 const gd: libGDevelop = global.gd;
 
@@ -62,6 +64,8 @@ type Options = {|
   onWillDeleteScene: any,
   onWillDeleteGameplayTest: any,
   onWillDeleteObject: any,
+  onExtensionsModifiedOutsideEditor: any,
+  onWillDeleteExtensionItem: any,
   ensureExtensionInstalled: any,
   onWillInstallExtension: any,
   onExtensionInstalled: any,
@@ -115,6 +119,8 @@ export const createRendererIntegration = ({
   onWillDeleteScene,
   onWillDeleteGameplayTest,
   onWillDeleteObject,
+  onExtensionsModifiedOutsideEditor,
+  onWillDeleteExtensionItem,
   ensureExtensionInstalled,
   onWillInstallExtension,
   onExtensionInstalled,
@@ -143,9 +149,16 @@ export const createRendererIntegration = ({
   let semanticConcurrency = project
     ? semanticConcurrencyByProject.get(project)
     : undefined;
+  let idempotencyStore = project
+    ? idempotencyStoreByProject.get(project)
+    : undefined;
   if (!semanticConcurrency) {
     semanticConcurrency = new SemanticConcurrency();
     if (project) semanticConcurrencyByProject.set(project, semanticConcurrency);
+  }
+  if (!idempotencyStore && project) {
+    idempotencyStore = new IdempotencyStore();
+    idempotencyStoreByProject.set(project, idempotencyStore);
   }
   const assetTools = project
     ? createAssetTools({
@@ -272,6 +285,9 @@ export const createRendererIntegration = ({
     onWillDeleteScene,
     onWillDeleteGameplayTest,
     onWillDeleteObject,
+    eventsFunctionsExtensionsState,
+    onExtensionsModifiedOutsideEditor,
+    onWillDeleteExtensionItem,
     ensureExtensionInstalled,
     onWillInstallExtension,
     onExtensionInstalled,
@@ -360,6 +376,7 @@ export const createRendererIntegration = ({
 
   return {
     agentHost: createRendererAgentHost({
+      idempotencyStore,
       environment: {
         project,
         fileIdentifier,

@@ -4,10 +4,10 @@ import {
   editorFunctionsWithoutProject,
 } from '../EditorFunctions';
 import { makeFakeLaunchFunctionOptionsWithProject } from '../EditorFunctions/TestHelpers';
-import { getNonScriptableFunctionReason } from '../EditorFunctions/ScriptExecution/NonScriptableFunctionNames';
 import {
   getFunctionMetadata,
   getFunctionMetadataStats,
+  getNonScriptableFunctionReason,
   listFunctionMetadata,
 } from './FunctionMetadata';
 
@@ -157,6 +157,95 @@ describe('AgentIntegration FunctionMetadata', () => {
     expect(variables.exposure.runScript).toEqual({
       available: true,
       hiddenReason: null,
+    });
+  });
+
+  it('projects typed extension-authoring contracts into the unified EditorFunction schema', () => {
+    const createExtension = getFunctionMetadata('create_extension');
+    expect(createExtension).not.toBeNull();
+    expect(createExtension.inputSchema.properties).toMatchObject({
+      extension_name: { type: 'string' },
+      full_name: { type: 'string' },
+      short_description: { type: 'string' },
+      tags: { type: 'string' },
+    });
+
+    const changeExtension = getFunctionMetadata('change_extension_properties');
+    expect(changeExtension).not.toBeNull();
+    expect(changeExtension.inputSchema.properties.new_name).toMatchObject({
+      type: 'string',
+    });
+    expect(
+      changeExtension.inputSchema.properties.changed_properties.items.properties
+        .property_name.enum
+    ).toContain('fullName');
+    expect(
+      changeExtension.inputSchema.properties.changed_dependencies.items
+        .properties.type.enum
+    ).toEqual(['npm', 'cordova']);
+
+    const createFunction = getFunctionMetadata('create_custom_function');
+    expect(createFunction).not.toBeNull();
+    expect(createFunction.inputSchema.required).toEqual(
+      expect.arrayContaining(['function_name', 'scope'])
+    );
+    expect(createFunction.inputSchema.properties.scope).toMatchObject({
+      type: 'object',
+      required: ['type', 'extension_name'],
+      properties: {
+        type: {
+          type: 'string',
+          enum: ['extension', 'custom_behavior', 'custom_object'],
+        },
+      },
+    });
+    expect(createFunction.inputSchema.properties.function_type.enum).toEqual([
+      'Action',
+      'Condition',
+      'Expression',
+      'StringExpression',
+      'ExpressionAndCondition',
+      'ActionWithOperator',
+    ]);
+    expect(createFunction.inputSchema.properties.expression_type.enum).toEqual([
+      'number',
+      'string',
+    ]);
+    expect(
+      createFunction.inputSchema.properties.parameters.items.properties.type
+        .enum
+    ).toEqual(expect.arrayContaining(['expression', 'string', 'yesorno']));
+    expect(createFunction.inputSchema.properties.is_private).toEqual({
+      type: 'boolean',
+      description: 'Whether the function is private to its extension.',
+    });
+    expect(createFunction.inputSchema.properties.is_async).toEqual({
+      type: 'boolean',
+      description: 'Whether the function is asynchronous.',
+    });
+
+    const changeFunction = getFunctionMetadata('change_custom_function');
+    expect(changeFunction).not.toBeNull();
+    expect(changeFunction.inputSchema.required).toEqual(
+      expect.arrayContaining(['function_name', 'scope'])
+    );
+    expect(
+      changeFunction.inputSchema.properties.changed_settings.items.properties
+        .setting_name.enum
+    ).toEqual(
+      expect.arrayContaining([
+        'functionType',
+        'expressionType',
+        'isPrivate',
+        'isAsync',
+      ])
+    );
+    expect(
+      changeFunction.inputSchema.properties.changed_parameters.items.properties
+        .type.enum
+    ).toEqual(expect.arrayContaining(['expression', 'string']));
+    expect(changeFunction.inputSchema.properties.delete_this_function).toEqual({
+      type: 'boolean',
     });
   });
 

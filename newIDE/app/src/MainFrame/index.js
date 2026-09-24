@@ -5908,6 +5908,8 @@ const MainFrame = (props: Props): React.MixedElement => {
     onWillDeleteScene,
     onWillDeleteGameplayTest,
     onWillDeleteObject,
+    onExtensionsModifiedOutsideEditor,
+    onWillDeleteExtensionItem,
     onWillInstallExtension,
     onExtensionInstalled,
   });

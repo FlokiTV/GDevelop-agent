@@ -23,6 +23,8 @@ import {
   type WillDeleteSceneChanges,
   type WillDeleteGameplayTestChanges,
   type WillDeleteObjectChanges,
+  type ExtensionsOutsideEditorChanges,
+  type WillDeleteExtensionItemChanges,
 } from '../EditorFunctions/OutsideEditorChanges';
 import { useEnsureExtensionInstalled } from '../AiGeneration/UseEnsureExtensionInstalled';
 import { useGenerateEvents } from '../AiGeneration/UseGenerateEvents';
@@ -107,6 +109,12 @@ type Props = {|
     changes: WillDeleteGameplayTestChanges
   ) => Promise<void>,
   onWillDeleteObject: (changes: WillDeleteObjectChanges) => void,
+  onExtensionsModifiedOutsideEditor: (
+    changes: ExtensionsOutsideEditorChanges
+  ) => void,
+  onWillDeleteExtensionItem: (
+    changes: WillDeleteExtensionItemChanges
+  ) => Promise<void>,
   onWillInstallExtension: (extensionNames: Array<string>) => void,
   onExtensionInstalled: (extensionNames: Array<string>) => void,
 |};
@@ -141,6 +149,8 @@ export default function useAgentIntegration({
   onWillDeleteScene,
   onWillDeleteGameplayTest,
   onWillDeleteObject,
+  onExtensionsModifiedOutsideEditor,
+  onWillDeleteExtensionItem,
   onWillInstallExtension,
   onExtensionInstalled,
 }: Props) {
@@ -319,6 +329,8 @@ export default function useAgentIntegration({
         onWillDeleteScene,
         onWillDeleteGameplayTest,
         onWillDeleteObject,
+        onExtensionsModifiedOutsideEditor,
+        onWillDeleteExtensionItem,
         ensureExtensionInstalled,
         onWillInstallExtension,
         onExtensionInstalled,
@@ -375,6 +387,8 @@ export default function useAgentIntegration({
       onWillDeleteScene,
       onWillDeleteGameplayTest,
       onWillDeleteObject,
+      onExtensionsModifiedOutsideEditor,
+      onWillDeleteExtensionItem,
       ensureExtensionInstalled,
       onWillInstallExtension,
       onExtensionInstalled,

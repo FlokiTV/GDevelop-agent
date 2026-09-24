@@ -26,14 +26,22 @@ const makeHost = (project: any = {}) => {
 describe('SafetyCommands', () => {
   test('marks restore and rollback as destructive project mutations', () => {
     const { host } = makeHost();
-    expect(host.describeCommand('safety.checkpoints.restore').metadata).toMatchObject({
+    expect(
+      host.describeCommand('safety.checkpoints.restore').metadata
+    ).toMatchObject({
       destructive: true,
+      longRunning: true,
       modifiesProject: true,
       requiresProject: true,
+      defaultTimeoutMs: 600000,
     });
-    expect(host.describeCommand('safety.transactions.rollback').metadata).toMatchObject({
+    expect(
+      host.describeCommand('safety.transactions.rollback').metadata
+    ).toMatchObject({
       destructive: true,
+      longRunning: true,
       modifiesProject: true,
+      defaultTimeoutMs: 600000,
     });
   });
 
@@ -42,7 +50,9 @@ describe('SafetyCommands', () => {
     await host.execute('safety.checkpoints.create', { label: 'before' });
     await host.execute('safety.checkpoints.diff', { checkpointId: 'cp-1' });
     await host.execute('safety.checkpoints.delete', { checkpointId: 'cp-1' });
-    expect(safetyService.createCheckpoint).toHaveBeenCalledWith({ label: 'before' });
+    expect(safetyService.createCheckpoint).toHaveBeenCalledWith({
+      label: 'before',
+    });
     expect(safetyService.diffCheckpoint).toHaveBeenCalledWith({
       checkpointId: 'cp-1',
     });
@@ -55,8 +65,12 @@ describe('SafetyCommands', () => {
     const { host, safetyService } = makeHost();
     await host.execute('safety.transactions.begin', { label: 'tx' });
     await host.execute('safety.transactions.commit', { transactionId: 'tx-1' });
-    await host.execute('safety.transactions.rollback', { transactionId: 'tx-1' });
-    expect(safetyService.beginTransaction).toHaveBeenCalledWith({ label: 'tx' });
+    await host.execute('safety.transactions.rollback', {
+      transactionId: 'tx-1',
+    });
+    expect(safetyService.beginTransaction).toHaveBeenCalledWith({
+      label: 'tx',
+    });
     expect(safetyService.commitTransaction).toHaveBeenCalledWith({
       transactionId: 'tx-1',
     });

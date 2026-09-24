@@ -136,6 +136,12 @@ Do not maintain a separate hard-coded tool catalog in clients. Call `tools/list`
 
 `run_script` uses the same native registry but intentionally excludes recursive script execution, project bootstrap, generation-service/orchestrator-only flows and long-running gameplay-test lifecycle calls. Read-only scripts additionally hide all functions that may mutate the project. Mutating EditorFunctions must therefore be exposed through the generated metadata/typed-tool path rather than ad hoc script allowlists, and metadata generation is checked against every exported native EditorFunction so newly added functions cannot silently disappear from the external API.
 
+### Project extension authoring
+
+Project-owned extensions use that same typed EditorFunction surface: `editor.functions.create-extension` and `editor.functions.change-extension-properties` create/change/rename/delete the extension, while `editor.functions.create-custom-function` and `editor.functions.change-custom-function` create/change/rename/delete free Action, Condition and expression declarations. Their MCP schemas expose extension scope, function kind, expression return type, ordered parameter types, privacy/async flags and editable settings. No direct project JSON edit or external import bootstrap is required.
+
+After declaration mutations, generated metadata is refreshed by the native EditorFunction implementation; discover the resulting action/condition/expression with `events.instructions.search/describe` and use the returned `callForms` rather than guessing names. Author a function body through the ordinary event tools with `target: { kind: "extension-function", extensionName, functionName }` (and owner fields for behavior/object methods). These typed tools inherit the normal MCP `expectedRevision` and `idempotencyKey` preconditions; use `safety.transactions.*`, `validation.run` and explicit `project.save`/`project.save-as` exactly as for other project mutations.
+
 ## Current command families
 
 The registry currently exposes command families for:

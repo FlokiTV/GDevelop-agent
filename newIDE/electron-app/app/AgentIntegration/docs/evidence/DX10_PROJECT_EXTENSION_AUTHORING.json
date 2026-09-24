@@ -1,0 +1,54 @@
+{
+  "kind": "dx10-project-extension-authoring-acceptance",
+  "recordedAt": "2026-09-24",
+  "protocolVersion": "2026-07-28",
+  "authoringSurface": {
+    "createExtension": "editor.functions.create-extension",
+    "changeExtension": "editor.functions.change-extension-properties",
+    "createFunction": "editor.functions.create-custom-function",
+    "changeFunction": "editor.functions.change-custom-function",
+    "functionEvents": "events.insert target=extension-function",
+    "directProjectJsonEdit": false,
+    "externalImportBootstrap": false
+  },
+  "typedFunctions": {
+    "action": "Dx10Localization::Update",
+    "condition": "Dx10Localization::Has",
+    "stringExpression": {
+      "id": "Dx10Localization::Text",
+      "returnType": "string"
+    },
+    "numberExpression": {
+      "id": "Dx10Localization::Count",
+      "returnType": "number"
+    },
+    "callForms": [
+      "await Dx10Localization::Update()",
+      "Dx10Localization::Has(Key)",
+      "Dx10Localization::Text(Key)",
+      "Dx10Localization::Count(Key)"
+    ]
+  },
+  "source": {
+    "ok": true,
+    "label": "source-final",
+    "validationErrors": 0,
+    "idempotencyReplay": true,
+    "transactionRollback": true,
+    "explicitSave": true
+  },
+  "winUnpacked": {
+    "ok": true,
+    "label": "win-unpacked",
+    "validationErrors": 0,
+    "idempotencyReplay": true,
+    "transactionRollback": true,
+    "explicitSave": true,
+    "executable": "newIDE/electron-app/dist/win-unpacked/GDevelop.exe"
+  },
+  "notes": [
+    "Acceptance uses MCP discovery/token-file transport only for authoring operations.",
+    "Transaction rollback is verified before explicit save so atomicity and persistence are independent gates.",
+    "Evidence intentionally omits credentials, authorization headers, temporary project paths and raw replay payloads."
+  ]
+}

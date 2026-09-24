@@ -27,6 +27,12 @@ const createService = (overrides = {}) => {
   const triggerUnsavedChanges = jest.fn();
   const forceUpdate = jest.fn();
   const saveProject = jest.fn(async () => ({ fileIdentifier: 'project.json' }));
+  const eventsFunctionsExtensionsState = {
+    reloadProjectEventsFunctionsExtensions: jest.fn(async () => {}),
+    reloadProjectEventsFunctionsExtensionMetadata: jest.fn(),
+  };
+  const onExtensionsModifiedOutsideEditor = jest.fn();
+  const onWillDeleteExtensionItem = jest.fn(async () => {});
 
   const service = createEditorFunctionService({
     project: ({ getName: () => 'Project' }: any),
@@ -42,6 +48,9 @@ const createService = (overrides = {}) => {
     onWillDeleteScene: jest.fn(),
     onWillDeleteGameplayTest: jest.fn(),
     onWillDeleteObject: jest.fn(),
+    eventsFunctionsExtensionsState,
+    onExtensionsModifiedOutsideEditor,
+    onWillDeleteExtensionItem,
     ensureExtensionInstalled: jest.fn(),
     onWillInstallExtension: jest.fn(),
     onExtensionInstalled: jest.fn(),
@@ -68,6 +77,9 @@ const createService = (overrides = {}) => {
     triggerUnsavedChanges,
     forceUpdate,
     saveProject,
+    eventsFunctionsExtensionsState,
+    onExtensionsModifiedOutsideEditor,
+    onWillDeleteExtensionItem,
   };
 };
 
@@ -132,11 +144,7 @@ describe('EditorFunctionService', () => {
         createdProject: null,
       };
     });
-    const {
-      service,
-      triggerUnsavedChanges,
-      forceUpdate,
-    } = createService({
+    const { service, triggerUnsavedChanges, forceUpdate } = createService({
       processEditorFunctionCalls,
       onInstancesModifiedOutsideEditor,
     });
@@ -211,6 +219,61 @@ describe('EditorFunctionService', () => {
     expect(forceUpdate).toHaveBeenCalledTimes(1);
   });
 
+  it('refreshes changed extension code before notifying editors and preserves delete lifecycle callbacks', async () => {
+    const project = ({ getName: () => 'Project' }: any);
+    const eventsFunctionsExtensionsState = {
+      reloadProjectEventsFunctionsExtensions: jest.fn(async () => {}),
+      reloadProjectEventsFunctionsExtensionMetadata: jest.fn(),
+    };
+    const onExtensionsModifiedOutsideEditor = jest.fn();
+    const onWillDeleteExtensionItem = jest.fn(async () => {});
+    const changes = {
+      extensionNames: ['Localization'],
+      needsCodeRegeneration: true,
+    };
+    const processEditorFunctionCalls = jest.fn(async options => {
+      options.onExtensionsModifiedOutsideEditor(changes);
+      await options.ensureExtensionsUpToDate();
+      expect(options.onWillDeleteExtensionItem).toBe(onWillDeleteExtensionItem);
+      return {
+        results: [
+          { status: 'finished', success: true, didModifyProject: true },
+        ],
+        createdSceneNames: [],
+        createdProject: null,
+      };
+    });
+    const { service, triggerUnsavedChanges, forceUpdate } = createService({
+      project,
+      processEditorFunctionCalls,
+      eventsFunctionsExtensionsState,
+      onExtensionsModifiedOutsideEditor,
+      onWillDeleteExtensionItem,
+    });
+
+    const result = await service.run({
+      calls: [{ name: 'create_extension', arguments: {} }],
+    });
+
+    expect(
+      eventsFunctionsExtensionsState.reloadProjectEventsFunctionsExtensions
+    ).toHaveBeenCalledTimes(1);
+    expect(
+      eventsFunctionsExtensionsState.reloadProjectEventsFunctionsExtensions
+    ).toHaveBeenCalledWith(project);
+    expect(
+      eventsFunctionsExtensionsState.reloadProjectEventsFunctionsExtensionMetadata
+    ).not.toHaveBeenCalled();
+    expect(onExtensionsModifiedOutsideEditor).toHaveBeenCalledTimes(1);
+    expect(onExtensionsModifiedOutsideEditor).toHaveBeenCalledWith({
+      ...changes,
+      deleted: false,
+    });
+    expect(triggerUnsavedChanges).toHaveBeenCalledTimes(1);
+    expect(forceUpdate).toHaveBeenCalledTimes(1);
+    expect(result.didModifyProject).toBe(true);
+  });
+
   it('mutates the live project with the real runner, invalidates the scene editor, and never autosaves', async () => {
     const project = gd.ProjectHelper.createNewGDJSProject();
     const scene = project.insertNewLayout('TestScene', 0);
@@ -219,7 +282,9 @@ describe('EditorFunctionService', () => {
     const onOpenLayout = jest.fn();
     const triggerUnsavedChanges = jest.fn();
     const forceUpdate = jest.fn();
-    const saveProject = jest.fn(async () => ({ fileIdentifier: 'project.json' }));
+    const saveProject = jest.fn(async () => ({
+      fileIdentifier: 'project.json',
+    }));
 
     const service = createEditorFunctionService({
       project,
@@ -235,6 +300,12 @@ describe('EditorFunctionService', () => {
       onWillDeleteScene: jest.fn(),
       onWillDeleteGameplayTest: jest.fn(),
       onWillDeleteObject: jest.fn(),
+      eventsFunctionsExtensionsState: {
+        reloadProjectEventsFunctionsExtensions: jest.fn(async () => {}),
+        reloadProjectEventsFunctionsExtensionMetadata: jest.fn(),
+      },
+      onExtensionsModifiedOutsideEditor: jest.fn(),
+      onWillDeleteExtensionItem: jest.fn(async () => {}),
       ensureExtensionInstalled: jest.fn(async () => {}),
       onWillInstallExtension: jest.fn(),
       onExtensionInstalled: jest.fn(),
@@ -363,10 +434,14 @@ describe('EditorFunctionService', () => {
     });
 
     expect(
-      JSON.parse(processEditorFunctionCalls.mock.calls[0][0].functionCalls[0].arguments)
+      JSON.parse(
+        processEditorFunctionCalls.mock.calls[0][0].functionCalls[0].arguments
+      )
     ).toMatchObject({ test_name: 'Ephemeral', persist: false });
     expect(
-      JSON.parse(processEditorFunctionCalls.mock.calls[1][0].functionCalls[0].arguments)
+      JSON.parse(
+        processEditorFunctionCalls.mock.calls[1][0].functionCalls[0].arguments
+      )
     ).toMatchObject({ test_name: 'Saved', persist: true });
   });
 
@@ -397,7 +472,9 @@ describe('EditorFunctionService', () => {
     }));
     const { service } = createService({ processEditorFunctionCalls });
 
-    await expect(service.run({ calls: [{ name: 'initialize_project' }] })).resolves.toMatchObject({
+    await expect(
+      service.run({ calls: [{ name: 'initialize_project' }] })
+    ).resolves.toMatchObject({
       createdProject: {
         name: 'New Project',
         uuid: 'new-project-uuid',
@@ -408,7 +485,11 @@ describe('EditorFunctionService', () => {
   it('rejects an already-cancelled operation before executing any EditorFunction', async () => {
     const controller = new AbortController();
     controller.abort();
-    const { service, processEditorFunctionCalls, saveProject } = createService();
+    const {
+      service,
+      processEditorFunctionCalls,
+      saveProject,
+    } = createService();
 
     await expect(
       service.run({
@@ -464,11 +545,9 @@ describe('EditorFunctionService', () => {
         createdProject: null,
       };
     });
-    const {
-      service,
-      prepareGameplayTestRun,
-      stopWatching,
-    } = createService({ processEditorFunctionCalls });
+    const { service, prepareGameplayTestRun, stopWatching } = createService({
+      processEditorFunctionCalls,
+    });
 
     await expect(
       service.run({
@@ -486,17 +565,24 @@ describe('EditorFunctionService', () => {
 
   it('rejects invalid batches and explicit save without an open project', async () => {
     const { service } = createService();
-    await expect(service.run({ calls: [] })).rejects.toThrow('no_function_calls');
+    await expect(service.run({ calls: [] })).rejects.toThrow(
+      'no_function_calls'
+    );
     await expect(
-      service.run({ calls: Array.from({ length: 101 }, () => ({ name: 'x.y' })) })
+      service.run({
+        calls: Array.from({ length: 101 }, () => ({ name: 'x.y' })),
+      })
     ).rejects.toThrow('too_many_function_calls');
-    await expect(
-      service.run({ calls: [({}: any)] })
-    ).rejects.toThrow('invalid_function_call_at_index:0');
+    await expect(service.run({ calls: [({}: any)] })).rejects.toThrow(
+      'invalid_function_call_at_index:0'
+    );
 
     const { service: projectlessService } = createService({ project: null });
     await expect(
-      projectlessService.run({ calls: [{ name: 'initialize_project' }], save: true })
+      projectlessService.run({
+        calls: [{ name: 'initialize_project' }],
+        save: true,
+      })
     ).rejects.toThrow('save_after_creation_requires_followup');
   });
 });

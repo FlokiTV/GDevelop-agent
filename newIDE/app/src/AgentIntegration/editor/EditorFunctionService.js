@@ -1,5 +1,9 @@
 // @flow
 import { AgentError } from '../core/AgentError';
+import {
+  doExtensionChangesNeedCodeRegeneration,
+  makeExtensionsOutsideEditorChangesAccumulator,
+} from '../../AiGeneration/ExtensionsOutsideEditorChangesAccumulator';
 
 export type AgentFunctionCall = {|
   name: string,
@@ -21,6 +25,9 @@ type EditorFunctionServiceOptions = {|
   onWillDeleteScene: any,
   onWillDeleteGameplayTest: any,
   onWillDeleteObject: any,
+  eventsFunctionsExtensionsState: any,
+  onExtensionsModifiedOutsideEditor: any,
+  onWillDeleteExtensionItem: any,
   ensureExtensionInstalled: any,
   onWillInstallExtension: any,
   onExtensionInstalled: any,
@@ -56,6 +63,9 @@ export const createEditorFunctionService = ({
   onWillDeleteScene,
   onWillDeleteGameplayTest,
   onWillDeleteObject,
+  eventsFunctionsExtensionsState,
+  onExtensionsModifiedOutsideEditor,
+  onWillDeleteExtensionItem,
   ensureExtensionInstalled,
   onWillInstallExtension,
   onExtensionInstalled,
@@ -79,6 +89,9 @@ export const createEditorFunctionService = ({
       onObjectsModifiedOutsideEditor: any,
       onObjectGroupsModifiedOutsideEditor: any,
       onProjectItemRenamedOutsideEditor: any,
+      onExtensionsModifiedOutsideEditor: any,
+      ensureExtensionsUpToDate: () => Promise<void>,
+      reloadExtensionMetadata: (extensionName: string) => void,
     |} = null
   ) =>
     processEditorFunctionCalls({
@@ -113,6 +126,14 @@ export const createEditorFunctionService = ({
       onWillDeleteScene,
       onWillDeleteGameplayTest,
       onWillDeleteObject,
+      onExtensionsModifiedOutsideEditor:
+        liveMutationCallbacks?.onExtensionsModifiedOutsideEditor ||
+        onExtensionsModifiedOutsideEditor,
+      ensureExtensionsUpToDate:
+        liveMutationCallbacks?.ensureExtensionsUpToDate || (async () => {}),
+      reloadExtensionMetadata:
+        liveMutationCallbacks?.reloadExtensionMetadata || (() => {}),
+      onWillDeleteExtensionItem,
       ensureExtensionInstalled,
       onWillInstallExtension,
       onExtensionInstalled,
@@ -170,6 +191,44 @@ export const createEditorFunctionService = ({
     const pendingInstances = new Map();
     const pendingObjects = new Map();
     const pendingObjectGroups = new Map();
+    const pendingExtensions = makeExtensionsOutsideEditorChangesAccumulator();
+
+    const ensureExtensionsUpToDate = async () => {
+      if (!project || pendingExtensions.isEmpty()) return;
+      const changes = pendingExtensions.flush();
+      if (doExtensionChangesNeedCodeRegeneration(changes)) {
+        await eventsFunctionsExtensionsState.reloadProjectEventsFunctionsExtensions(
+          project
+        );
+      } else {
+        changes.extensionNames.forEach(extensionName => {
+          if (!project.hasEventsFunctionsExtensionNamed(extensionName)) return;
+          eventsFunctionsExtensionsState.reloadProjectEventsFunctionsExtensionMetadata(
+            project,
+            project.getEventsFunctionsExtension(extensionName)
+          );
+        });
+      }
+      onExtensionsModifiedOutsideEditor(changes);
+    };
+
+    const reloadExtensionMetadata = (extensionName: string) => {
+      if (
+        !project ||
+        !project.hasEventsFunctionsExtensionNamed(extensionName)
+      ) {
+        return;
+      }
+      eventsFunctionsExtensionsState.reloadProjectEventsFunctionsExtensionMetadata(
+        project,
+        project.getEventsFunctionsExtension(extensionName)
+      );
+    };
+
+    const queueExtensionsMutation = (changes: any) => {
+      didNotifyLiveMutation = true;
+      pendingExtensions.add(changes);
+    };
 
     const queueSceneEventsMutation = (changes: any) => {
       didNotifyLiveMutation = true;
@@ -212,7 +271,9 @@ export const createEditorFunctionService = ({
       pendingInstances.forEach(changes =>
         onInstancesModifiedOutsideEditor(changes)
       );
-      pendingObjects.forEach(changes => onObjectsModifiedOutsideEditor(changes));
+      pendingObjects.forEach(changes =>
+        onObjectsModifiedOutsideEditor(changes)
+      );
       pendingObjectGroups.forEach(changes =>
         onObjectGroupsModifiedOutsideEditor(changes)
       );
@@ -231,6 +292,9 @@ export const createEditorFunctionService = ({
       onProjectItemRenamedOutsideEditor: observeOrderedLiveMutation(
         onProjectItemRenamedOutsideEditor
       ),
+      onExtensionsModifiedOutsideEditor: queueExtensionsMutation,
+      ensureExtensionsUpToDate,
+      reloadExtensionMetadata,
     };
 
     let processedCallsResult;
@@ -256,6 +320,7 @@ export const createEditorFunctionService = ({
           );
         } finally {
           flushLiveMutations();
+          await ensureExtensionsUpToDate();
           stopWatchingGameplayFrame();
         }
         results.push(...processedCall.results);
@@ -274,14 +339,11 @@ export const createEditorFunctionService = ({
         );
       } finally {
         flushLiveMutations();
+        await ensureExtensionsUpToDate();
       }
     }
 
-    const {
-      results,
-      createdSceneNames,
-      createdProject,
-    } = processedCallsResult;
+    const { results, createdSceneNames, createdProject } = processedCallsResult;
     const didModifyProject =
       didNotifyLiveMutation ||
       results.some(

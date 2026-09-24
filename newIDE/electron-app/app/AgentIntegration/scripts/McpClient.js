@@ -139,17 +139,27 @@ const connectLiveGDevelopMcp = async ({
       }
       return client.readResource({ uri });
     },
-    async call(name, args = {}) {
+    async call(name, args = {}, requestOptions = {}) {
       if (!name || typeof name !== 'string') {
         throw new Error('missing_mcp_tool_name');
       }
       if (!args || typeof args !== 'object' || Array.isArray(args)) {
         throw new Error('invalid_mcp_tool_arguments');
       }
-      const response = await client.callTool({
-        name,
-        arguments: args,
-      });
+      if (
+        !requestOptions ||
+        typeof requestOptions !== 'object' ||
+        Array.isArray(requestOptions)
+      ) {
+        throw new Error('invalid_mcp_request_options');
+      }
+      const response = await client.callTool(
+        {
+          name,
+          arguments: args,
+        },
+        requestOptions
+      );
       return {
         name,
         isError: !!response.isError,

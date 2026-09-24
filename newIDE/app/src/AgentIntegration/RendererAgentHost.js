@@ -1,5 +1,6 @@
 // @flow
 import { AgentHost } from './core/AgentHost';
+import { type IdempotencyStore } from './core/IdempotencyStore';
 import { createCoreCommandDescriptors } from './core/CoreCommands';
 import { createDiagnosticsCommandDescriptors } from './editor/DiagnosticsCommands';
 import { createEditorFunctionCommandDescriptors } from './editor/EditorFunctionCommands';
@@ -26,6 +27,7 @@ import { createSafetyCommandDescriptors } from './safety/SafetyCommands';
 
 type Options = {|
   environment: any,
+  idempotencyStore?: IdempotencyStore,
   assetTools: any,
   diagnosticsTools: any,
   editorFunctionService: {| run: (options: any) => Promise<any> |},
@@ -53,6 +55,7 @@ type Options = {|
 
 export const createRendererAgentHost = ({
   environment,
+  idempotencyStore,
   assetTools,
   diagnosticsTools,
   editorFunctionService,
@@ -79,6 +82,7 @@ export const createRendererAgentHost = ({
 }: Options): AgentHost =>
   new AgentHost({
     environment,
+    idempotencyStore,
     descriptors: [
       ...createCoreCommandDescriptors(),
       ...createProjectLifecycleCommandDescriptors({ projectLifecycleService }),
