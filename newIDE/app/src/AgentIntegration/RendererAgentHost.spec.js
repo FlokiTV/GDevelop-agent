@@ -175,6 +175,7 @@ const EXPECTED_PUBLIC_COMMANDS = [
   'runtime.assert',
   'runtime.debugger.capabilities',
   'runtime.event-trace.capture',
+  'runtime.inspect',
   'runtime.logs',
   'runtime.profile.run',
   'runtime.profiler.start',

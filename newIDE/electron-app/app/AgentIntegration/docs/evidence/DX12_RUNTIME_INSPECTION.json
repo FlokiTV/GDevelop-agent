@@ -1,0 +1,78 @@
+{
+  "kind": "dx12-runtime-inspection-acceptance",
+  "recordedAt": "2026-09-24",
+  "protocolVersion": "2026-07-28",
+  "contract": {
+    "inspectTool": "runtime.inspect",
+    "selectorKinds": [
+      "global-variable",
+      "scene-variable",
+      "object-count",
+      "object-instance",
+      "object-property",
+      "object-variable"
+    ],
+    "assertions": "runtime.assert condition.selector",
+    "polling": "runtime.wait-for condition.selector",
+    "legacyPathCompatibility": true,
+    "projectReadOnly": true
+  },
+  "source": {
+    "ok": true,
+    "label": "source-final",
+    "localization": {
+      "language": "pt-BR",
+      "ruleText": "Cara ou coroa",
+      "qaJsCodeInstrumentation": false,
+      "documentTitleInstrumentation": false
+    },
+    "economy": {
+      "moneyBefore": 123,
+      "moneyAfter": 123,
+      "preserved": true
+    },
+    "assertions": {
+      "text": true,
+      "money": true,
+      "waitForLanguage": true
+    },
+    "readOnlyProjectRevision": {
+      "before": 6,
+      "after": 6,
+      "unchanged": true
+    },
+    "validationErrors": 0
+  },
+  "winUnpacked": {
+    "ok": true,
+    "label": "win-unpacked",
+    "localization": {
+      "language": "pt-BR",
+      "ruleText": "Cara ou coroa",
+      "qaJsCodeInstrumentation": false,
+      "documentTitleInstrumentation": false
+    },
+    "economy": {
+      "moneyBefore": 123,
+      "moneyAfter": 123,
+      "preserved": true
+    },
+    "assertions": {
+      "text": true,
+      "money": true,
+      "waitForLanguage": true
+    },
+    "readOnlyProjectRevision": {
+      "before": 6,
+      "after": 6,
+      "unchanged": true
+    },
+    "validationErrors": 0,
+    "executable": "newIDE/electron-app/dist/win-unpacked/GDevelop.exe"
+  },
+  "notes": [
+    "The acceptance authors only normal project state; no JsCode event or document.title QA channel is added.",
+    "Targeted runtime observation and assertions do not change projectRevision or observed economy state.",
+    "Common runtime object text/properties are read from bounded preview snapshots; missing targets use stable diagnostics."
+  ]
+}

@@ -160,7 +160,7 @@ The registry currently exposes command families for:
 - checkpoints and transactions: `safety.*`;
 - diagnostics and aggregate validation: `diagnostics.inspect`, `validation.run`;
 - preview lifecycle: `preview.status`, `preview.start`, `preview.hot-reload`, `preview.control`, `preview.close-all`;
-- runtime observation: `runtime.status`, `runtime.snapshot`, `runtime.logs`, `runtime.assert`, `runtime.wait-for`;
+- runtime observation: `runtime.status`, `runtime.snapshot`, targeted `runtime.inspect`, `runtime.logs`, `runtime.assert`, `runtime.wait-for`;
 - desktop windows/capture: `desktop.windows.list`, `desktop.window.capture`;
 - preview input: `preview.input.*`;
 - preview QA: `preview.qa.capabilities`, `preview.input.record.*`, `preview.input.replay`, `preview.visual.baseline.*`;
@@ -179,6 +179,12 @@ The registry currently exposes command families for:
 `preview.multiplayer.*` discovers the live external preview BrowserWindows already created by GDevelop (including `preview.start({ numberOfWindows: N })`), then lets a client assign bounded stable aliases such as `host`/`guest` and address ordered input/runtime-status batches by alias. Aliases are process-local orchestration state and are pruned when their preview closes; they do not modify or persist in the project.
 
 `preview.network.capture.*` uses Electron's `webContents.debugger`/CDP `Network` domain only for an explicitly aliased preview. Capture is bounded (maximum 2000 recent events), redacts credential-bearing URL query fields and sensitive headers by default, records HTTP request/response/failure metadata and WebSocket lifecycle/handshake metadata, and intentionally omits response bodies and WebSocket frame payloads. It refuses to attach when another debugger client already owns that `webContents`. Network shaping/latency/loss simulation is reported as unsupported rather than emulated through an unreliable hidden mechanism.
+
+### Targeted runtime inspection
+
+`runtime.inspect` reads one value from the live preview without modifying the project or injecting QA events. Selectors cover `global-variable`, `scene-variable`, `object-count`, `object-instance`, `object-property` and `object-variable`. Object selectors can target an instance by zero-based `instanceIndex` or runtime `instanceId`; variable selectors accept dotted/array paths such as `Config.Locale` or `Inventory[0].Count`. Common object properties include position/layer/visibility plus `text`, `opacity`, animation and flip state when the runtime object exposes those getters.
+
+`runtime.assert` and `runtime.wait-for` accept the same selector in `condition.selector`; the older snapshot `condition.path` form remains supported. Missing scene/object/instance/variable/property state returns typed diagnostics rather than requiring JavaScript instrumentation, and selector-based inspection remains read-only from the project perspective.
 
 ## Native Event Sheet authoring
 

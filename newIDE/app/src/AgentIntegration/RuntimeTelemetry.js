@@ -127,6 +127,24 @@ const summarizeInstance = (instance: any): any => {
   const behaviors = Array.isArray(instance._behaviors)
     ? instance._behaviors.map(summarizeBehavior).filter(Boolean)
     : [];
+  const text =
+    typeof instance.text === 'string'
+      ? instance.text
+      : typeof instance._str === 'string'
+      ? instance._str
+      : null;
+  const opacity =
+    typeof instance.opacity === 'number'
+      ? instance.opacity
+      : typeof instance._opacity === 'number'
+      ? instance._opacity
+      : null;
+  const animation =
+    typeof instance.animation === 'string'
+      ? instance.animation
+      : typeof instance._animationName === 'string'
+      ? instance._animationName
+      : null;
   return {
     id: instance.id != null ? instance.id : null,
     name: instance.name || null,
@@ -139,6 +157,9 @@ const summarizeInstance = (instance: any): any => {
     layer: typeof instance.layer === 'string' ? instance.layer : '',
     hidden: !!instance.hidden,
     livingOnScene: instance.livingOnScene !== false,
+    ...(text !== null ? { text } : {}),
+    ...(opacity !== null ? { opacity } : {}),
+    ...(animation !== null ? { animation } : {}),
     variables: transformVariablesContainer(instance._variables),
     behaviors,
   };
@@ -252,6 +273,390 @@ const getPathValue = (root: any, path: any): any => {
   return value;
 };
 
+const parseVariableSelectorPath = (path: any): Array<string | number> => {
+  if (typeof path !== 'string' || !path.trim()) {
+    throw makeError(
+      'invalid_runtime_variable_selector',
+      'Variable selectors require a non-empty path.'
+    );
+  }
+  const parts = [];
+  const source = path.trim();
+  let current = '';
+  let index = 0;
+  const pushCurrent = () => {
+    const trimmed = current.trim();
+    if (trimmed) parts.push(trimmed);
+    current = '';
+  };
+  while (index < source.length) {
+    const character = source[index];
+    if (character === '.') {
+      pushCurrent();
+      index += 1;
+      continue;
+    }
+    if (character === '[') {
+      pushCurrent();
+      index += 1;
+      let rawIndex = '';
+      while (index < source.length && source[index] !== ']') {
+        rawIndex += source[index++];
+      }
+      if (index >= source.length || source[index] !== ']') {
+        throw makeError(
+          'invalid_runtime_variable_selector',
+          'Variable array selectors must use a closing ].'
+        );
+      }
+      if (!/^\d+$/.test(rawIndex.trim())) {
+        throw makeError(
+          'invalid_runtime_variable_selector',
+          'Variable array selectors require a non-negative integer index.'
+        );
+      }
+      parts.push(parseInt(rawIndex.trim(), 10));
+      index += 1;
+      continue;
+    }
+    current += character;
+    index += 1;
+  }
+  pushCurrent();
+  if (!parts.length) {
+    throw makeError(
+      'invalid_runtime_variable_selector',
+      'Variable selectors require a non-empty path.'
+    );
+  }
+  return parts;
+};
+
+const makeMissingSelection = (
+  code: string,
+  message: string,
+  selector: any,
+  allowMissing: boolean
+): any => {
+  if (!allowMissing) throw makeError(code, message);
+  return {
+    found: false,
+    value: undefined,
+    valueType: null,
+    selector,
+    diagnostic: { code, message },
+  };
+};
+
+const selectVariableValue = ({
+  variables,
+  path,
+  selector,
+  allowMissing,
+}: {|
+  variables: any,
+  path: any,
+  selector: any,
+  allowMissing: boolean,
+|}): any => {
+  const parts = parseVariableSelectorPath(path);
+  const rootName = parts[0];
+  if (typeof rootName !== 'string' || !variables || !variables[rootName]) {
+    return makeMissingSelection(
+      'runtime_variable_not_found',
+      `Runtime variable "${String(path)}" was not found.`,
+      selector,
+      allowMissing
+    );
+  }
+  let variable = variables[rootName];
+  for (const part of parts.slice(1)) {
+    if (!variable || typeof variable !== 'object') {
+      return makeMissingSelection(
+        'runtime_variable_path_not_found',
+        `Runtime variable path "${String(path)}" was not found.`,
+        selector,
+        allowMissing
+      );
+    }
+    if (typeof part === 'number') {
+      if (
+        variable.type !== 'array' ||
+        !Array.isArray(variable.value) ||
+        !variable.value[part]
+      ) {
+        return makeMissingSelection(
+          'runtime_variable_path_not_found',
+          `Runtime variable path "${String(path)}" was not found.`,
+          selector,
+          allowMissing
+        );
+      }
+      variable = variable.value[part];
+    } else {
+      if (
+        variable.type !== 'structure' ||
+        !variable.value ||
+        typeof variable.value !== 'object' ||
+        !variable.value[part]
+      ) {
+        return makeMissingSelection(
+          'runtime_variable_path_not_found',
+          `Runtime variable path "${String(path)}" was not found.`,
+          selector,
+          allowMissing
+        );
+      }
+      variable = variable.value[part];
+    }
+  }
+  return {
+    found: true,
+    value: variable ? variable.value : undefined,
+    valueType: variable && variable.type ? variable.type : null,
+    selector,
+  };
+};
+
+const selectRuntimeInstance = (
+  snapshot: any,
+  selector: any,
+  allowMissing: boolean
+): any => {
+  const objectName =
+    selector && typeof selector.objectName === 'string'
+      ? selector.objectName.trim()
+      : '';
+  if (!objectName) {
+    throw makeError(
+      'invalid_runtime_selector',
+      'Object selectors require objectName.'
+    );
+  }
+  const objectEntry = snapshot.objects && snapshot.objects[objectName];
+  if (!objectEntry) {
+    return makeMissingSelection(
+      'runtime_object_not_found',
+      `Runtime object "${objectName}" was not found.`,
+      selector,
+      allowMissing
+    );
+  }
+  const instances = Array.isArray(objectEntry.instances)
+    ? objectEntry.instances
+    : [];
+  let instance = null;
+  let instanceIndex = null;
+  if (
+    selector.instanceId !== undefined &&
+    selector.instanceId !== null &&
+    String(selector.instanceId) !== ''
+  ) {
+    instanceIndex = instances.findIndex(
+      candidate =>
+        String(candidate && candidate.id) === String(selector.instanceId)
+    );
+    instance = instanceIndex >= 0 ? instances[instanceIndex] : null;
+  } else {
+    instanceIndex = Number.isInteger(selector.instanceIndex)
+      ? selector.instanceIndex
+      : 0;
+    instance =
+      instanceIndex >= 0 && instanceIndex < instances.length
+        ? instances[instanceIndex]
+        : null;
+  }
+  if (!instance) {
+    return makeMissingSelection(
+      'runtime_instance_not_found',
+      `Runtime instance for object "${objectName}" was not found.`,
+      selector,
+      allowMissing
+    );
+  }
+  return {
+    found: true,
+    instance,
+    instanceIndex,
+    objectName,
+  };
+};
+
+export const selectRuntimeValue = (
+  snapshot: any,
+  selector: any,
+  options: {| allowMissing?: boolean |} = {}
+): any => {
+  if (!snapshot || typeof snapshot !== 'object') {
+    throw makeError('invalid_runtime_snapshot');
+  }
+  if (!selector || typeof selector !== 'object') {
+    throw makeError('invalid_runtime_selector');
+  }
+  const allowMissing = options.allowMissing === true;
+  const kind = selector.kind;
+
+  if (kind === 'global-variable') {
+    return selectVariableValue({
+      variables: snapshot.globalVariables,
+      path: selector.path,
+      selector,
+      allowMissing,
+    });
+  }
+
+  if (kind === 'scene-variable') {
+    if (!snapshot.scene) {
+      return makeMissingSelection(
+        'runtime_scene_unavailable',
+        'No runtime scene is available.',
+        selector,
+        allowMissing
+      );
+    }
+    return selectVariableValue({
+      variables: snapshot.scene.variables,
+      path: selector.path,
+      selector,
+      allowMissing,
+    });
+  }
+
+  if (kind === 'object-count') {
+    const objectName =
+      typeof selector.objectName === 'string' ? selector.objectName.trim() : '';
+    if (!objectName) {
+      throw makeError(
+        'invalid_runtime_selector',
+        'object-count selectors require objectName.'
+      );
+    }
+    const objectEntry = snapshot.objects && snapshot.objects[objectName];
+    if (!objectEntry) {
+      return makeMissingSelection(
+        'runtime_object_not_found',
+        `Runtime object "${objectName}" was not found.`,
+        selector,
+        allowMissing
+      );
+    }
+    return {
+      found: true,
+      value: Number(objectEntry.count) || 0,
+      valueType: 'number',
+      selector,
+    };
+  }
+
+  if (
+    kind === 'object-instance' ||
+    kind === 'object-property' ||
+    kind === 'object-variable'
+  ) {
+    const selected = selectRuntimeInstance(snapshot, selector, allowMissing);
+    if (!selected.found) return selected;
+    const { instance, instanceIndex, objectName } = selected;
+
+    if (kind === 'object-instance') {
+      return {
+        found: true,
+        value: instance,
+        valueType: 'object',
+        selector,
+        objectName,
+        instanceIndex,
+        instanceId: instance.id,
+      };
+    }
+
+    if (kind === 'object-property') {
+      const property =
+        typeof selector.property === 'string' ? selector.property.trim() : '';
+      if (!property) {
+        throw makeError(
+          'invalid_runtime_selector',
+          'object-property selectors require property.'
+        );
+      }
+      if (!Object.prototype.hasOwnProperty.call(instance, property)) {
+        return makeMissingSelection(
+          'runtime_property_not_found',
+          `Runtime property "${property}" was not found on object "${objectName}".`,
+          selector,
+          allowMissing
+        );
+      }
+      const value = instance[property];
+      return {
+        found: true,
+        value,
+        valueType:
+          value === null
+            ? 'null'
+            : Array.isArray(value)
+            ? 'array'
+            : typeof value,
+        selector,
+        objectName,
+        instanceIndex,
+        instanceId: instance.id,
+      };
+    }
+
+    return {
+      ...selectVariableValue({
+        variables: instance.variables,
+        path: selector.path,
+        selector,
+        allowMissing,
+      }),
+      objectName,
+      instanceIndex,
+      instanceId: instance.id,
+    };
+  }
+
+  throw makeError(
+    'unsupported_runtime_selector_kind',
+    `Unsupported runtime selector kind: ${String(kind)}.`
+  );
+};
+
+const getSelectorObjectName = (selector: any): ?string =>
+  selector &&
+  [
+    'object-count',
+    'object-instance',
+    'object-property',
+    'object-variable',
+  ].includes(selector.kind) &&
+  typeof selector.objectName === 'string' &&
+  selector.objectName.trim()
+    ? selector.objectName.trim()
+    : null;
+
+const makeTargetedSnapshotRequest = (request: any, selector: any): any => {
+  const objectName = getSelectorObjectName(selector);
+  if (!objectName) return request;
+  const requestedIndex =
+    selector && Number.isInteger(selector.instanceIndex)
+      ? selector.instanceIndex
+      : 0;
+  return {
+    ...request,
+    objectNames: [objectName],
+    maxInstances: Math.max(
+      clampInteger(
+        request.maxInstances,
+        DEFAULT_MAX_INSTANCES,
+        1,
+        MAX_INSTANCES
+      ),
+      Math.min(MAX_INSTANCES, requestedIndex + 1)
+    ),
+  };
+};
+
 export const evaluateRuntimeCondition = (
   snapshot: any,
   condition: any
@@ -259,7 +664,12 @@ export const evaluateRuntimeCondition = (
   if (!condition || typeof condition !== 'object') {
     throw makeError('invalid_runtime_condition');
   }
-  const actual = getPathValue(snapshot, condition.path);
+  const selection = condition.selector
+    ? selectRuntimeValue(snapshot, condition.selector, { allowMissing: true })
+    : null;
+  const actual = selection
+    ? selection.value
+    : getPathValue(snapshot, condition.path);
   const expected = condition.value;
   const operator = condition.operator || 'equals';
   let passed = false;
@@ -279,7 +689,21 @@ export const evaluateRuntimeCondition = (
   else if (operator === 'truthy') passed = !!actual;
   else if (operator === 'falsy') passed = !actual;
   else throw makeError(`unsupported_runtime_operator:${String(operator)}`);
-  return { passed, path: condition.path, operator, expected, actual };
+  return {
+    passed,
+    ...(condition.selector
+      ? {
+          selector: condition.selector,
+          actualType: selection && selection.valueType,
+          ...(selection && selection.diagnostic
+            ? { diagnostic: selection.diagnostic }
+            : {}),
+        }
+      : { path: condition.path }),
+    operator,
+    expected,
+    actual,
+  };
 };
 
 export const summarizeProfilerOutput = (output: any): any => {
@@ -583,6 +1007,27 @@ export const createRuntimeTelemetry = (
     };
   };
 
+  const inspectRuntime = async (request: any = {}): Promise<any> => {
+    const selector = request.selector;
+    if (!selector || typeof selector !== 'object') {
+      throw makeError(
+        'invalid_runtime_selector',
+        'runtime.inspect requires a selector.'
+      );
+    }
+    const snapshot = await getSnapshot(
+      makeTargetedSnapshotRequest(request, selector)
+    );
+    const selection = selectRuntimeValue(snapshot, selector);
+    return {
+      debuggerId: snapshot.debuggerId,
+      capturedAt: snapshot.capturedAt,
+      snapshotSource: snapshot.snapshotSource || 'debugger-dump',
+      sceneName: snapshot.scene ? snapshot.scene.name : null,
+      ...selection,
+    };
+  };
+
   const getLogs = (request: any = {}): any => {
     const debuggerId = selectDebuggerId(request.debuggerId);
     const limit = clampInteger(request.limit, 50, 1, MAX_LOGS_PER_DEBUGGER);
@@ -654,7 +1099,15 @@ export const createRuntimeTelemetry = (
   };
 
   const assertRuntime = async (request: any = {}): Promise<any> => {
-    const snapshot = await getSnapshot(request);
+    const selector =
+      request.condition &&
+      typeof request.condition === 'object' &&
+      request.condition.selector
+        ? request.condition.selector
+        : null;
+    const snapshot = await getSnapshot(
+      selector ? makeTargetedSnapshotRequest(request, selector) : request
+    );
     return {
       ...evaluateRuntimeCondition(snapshot, request.condition),
       debuggerId: snapshot.debuggerId,
@@ -670,13 +1123,21 @@ export const createRuntimeTelemetry = (
       MIN_POLL_MS,
       MAX_POLL_MS
     );
+    const selector =
+      request.condition &&
+      typeof request.condition === 'object' &&
+      request.condition.selector
+        ? request.condition.selector
+        : null;
     const startedAt = Date.now();
     let attempts = 0;
     let lastResult = null;
     let lastSnapshot = null;
     while (Date.now() - startedAt <= timeoutMs) {
       attempts += 1;
-      lastSnapshot = await getSnapshot(request);
+      lastSnapshot = await getSnapshot(
+        selector ? makeTargetedSnapshotRequest(request, selector) : request
+      );
       lastResult = evaluateRuntimeCondition(lastSnapshot, request.condition);
       if (lastResult.passed) {
         return {
@@ -719,6 +1180,7 @@ export const createRuntimeTelemetry = (
     getPreviewDebuggerIds,
     getStatus,
     getSnapshot,
+    inspectRuntime,
     getLogs,
     getProfilerStatus,
     startProfiler,

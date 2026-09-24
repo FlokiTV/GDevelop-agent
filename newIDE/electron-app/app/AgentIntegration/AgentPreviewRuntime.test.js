@@ -204,6 +204,8 @@ test('captures a bounded structured runtime snapshot without serializing Runtime
             zOrder: 3,
             layer: '',
             livingOnScene: true,
+            getText: () => 'Runtime text',
+            getOpacity: () => 200,
             _variables: { _variables: { items: {} } },
             _behaviors: [
               {
@@ -260,6 +262,8 @@ test('captures a bounded structured runtime snapshot without serializing Runtime
     snapshot.objects.Player.instances[0].behaviors[0].state.speed,
     42
   );
+  assert.equal(snapshot.objects.Player.instances[0].text, 'Runtime text');
+  assert.equal(snapshot.objects.Player.instances[0].opacity, 200);
   assert.equal(snapshot.objects.Coin, undefined);
   assert.equal(snapshot.totalInstances, 2);
   assert.equal(snapshot.includedInstances, 1);

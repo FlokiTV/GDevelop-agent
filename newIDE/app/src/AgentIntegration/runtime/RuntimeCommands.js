@@ -29,6 +29,110 @@ const DEBUGGER_TARGET_PROPERTIES = {
   },
 };
 
+const RUNTIME_SELECTOR_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['kind'],
+  properties: {
+    kind: {
+      type: 'string',
+      enum: [
+        'global-variable',
+        'scene-variable',
+        'object-count',
+        'object-instance',
+        'object-property',
+        'object-variable',
+      ],
+    },
+    path: { type: 'string', minLength: 1, maxLength: 1000 },
+    objectName: { type: 'string', minLength: 1, maxLength: 500 },
+    instanceIndex: { type: 'integer', minimum: 0, maximum: 999 },
+    instanceId: {
+      anyOf: [
+        { type: 'string', minLength: 1, maxLength: 200 },
+        { type: 'number' },
+      ],
+    },
+    property: {
+      type: 'string',
+      enum: [
+        'id',
+        'name',
+        'type',
+        'x',
+        'y',
+        'z',
+        'angle',
+        'zOrder',
+        'layer',
+        'hidden',
+        'livingOnScene',
+        'text',
+        'opacity',
+        'animation',
+        'flippedX',
+        'flippedY',
+      ],
+    },
+  },
+};
+
+const RUNTIME_CONDITION_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    path: {
+      anyOf: [
+        { type: 'string', minLength: 1, maxLength: 2000 },
+        {
+          type: 'array',
+          minItems: 1,
+          maxItems: 100,
+          items: { type: 'string', minLength: 1, maxLength: 500 },
+        },
+      ],
+    },
+    selector: RUNTIME_SELECTOR_SCHEMA,
+    operator: {
+      type: 'string',
+      enum: [
+        'equals',
+        'eq',
+        'notEquals',
+        'neq',
+        'gt',
+        'gte',
+        'lt',
+        'lte',
+        'contains',
+        'exists',
+        'not-exists',
+        'truthy',
+        'falsy',
+      ],
+      default: 'equals',
+    },
+    value: {},
+  },
+  anyOf: [{ required: ['path'] }, { required: ['selector'] }],
+};
+
+const RUNTIME_SNAPSHOT_PROPERTIES = {
+  ...DEBUGGER_TARGET_PROPERTIES,
+  maxInstances: {
+    type: 'integer',
+    minimum: 1,
+    maximum: 1000,
+    default: 200,
+  },
+  objectNames: {
+    type: 'array',
+    maxItems: 200,
+    items: { type: 'string', minLength: 1, maxLength: 500 },
+  },
+};
+
 const PROFILE_PROPERTIES = {
   sceneName: { type: 'string', minLength: 1, maxLength: 500 },
   frames: { type: 'integer', minimum: 1, maximum: 600, default: 60 },
@@ -63,10 +167,31 @@ export const createRuntimeCommandDescriptors = ({
   {
     name: 'runtime.snapshot',
     description: 'Capture a structured runtime snapshot from a preview target.',
-    inputSchema: { type: 'object', additionalProperties: true, properties: {} },
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: RUNTIME_SNAPSHOT_PROPERTIES,
+    },
     metadata: makeCommandMetadata(),
     execute: ({ input }) =>
       requireTelemetry(runtimeTelemetry).getSnapshot(input),
+  },
+  {
+    name: 'runtime.inspect',
+    description:
+      'Read one targeted runtime value using a typed selector for variables, object counts, instances, properties or instance variables.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['selector'],
+      properties: {
+        ...RUNTIME_SNAPSHOT_PROPERTIES,
+        selector: RUNTIME_SELECTOR_SCHEMA,
+      },
+    },
+    metadata: makeCommandMetadata(),
+    execute: ({ input }) =>
+      requireTelemetry(runtimeTelemetry).inspectRuntime(input),
   },
   {
     name: 'runtime.logs',
@@ -78,16 +203,45 @@ export const createRuntimeCommandDescriptors = ({
   {
     name: 'runtime.assert',
     description:
-      'Evaluate a runtime assertion against the selected preview target.',
-    inputSchema: { type: 'object', additionalProperties: true, properties: {} },
+      'Evaluate a read-only runtime assertion using a typed selector or legacy snapshot path.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['condition'],
+      properties: {
+        ...RUNTIME_SNAPSHOT_PROPERTIES,
+        condition: RUNTIME_CONDITION_SCHEMA,
+      },
+    },
     metadata: makeCommandMetadata({ idempotent: false }),
     execute: ({ input }) =>
       requireTelemetry(runtimeTelemetry).assertRuntime(input),
   },
   {
     name: 'runtime.wait-for',
-    description: 'Wait until a runtime assertion or condition becomes true.',
-    inputSchema: { type: 'object', additionalProperties: true, properties: {} },
+    description:
+      'Poll read-only runtime state until a selector/path condition becomes true or times out.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['condition'],
+      properties: {
+        ...RUNTIME_SNAPSHOT_PROPERTIES,
+        condition: RUNTIME_CONDITION_SCHEMA,
+        timeoutMs: {
+          type: 'integer',
+          minimum: 100,
+          maximum: 30000,
+          default: 5000,
+        },
+        intervalMs: {
+          type: 'integer',
+          minimum: 100,
+          maximum: 5000,
+          default: 250,
+        },
+      },
+    },
     metadata: makeCommandMetadata({
       idempotent: false,
       longRunning: true,

@@ -3,6 +3,7 @@ import debuggerDump from '../fixtures/DebuggerGameDataDump.json';
 import {
   createRuntimeTelemetry,
   evaluateRuntimeCondition,
+  selectRuntimeValue,
   summarizeProfilerOutput,
   summarizeRuntimeDump,
   transformVariablesContainer,
@@ -163,6 +164,126 @@ describe('AgentIntegration RuntimeTelemetry', () => {
     ).toBe(false);
   });
 
+  it('selects typed global, scene, object property and instance variable values', () => {
+    const snapshot = {
+      globalVariables: {
+        Money: { type: 'number', value: 42 },
+        Config: {
+          type: 'structure',
+          value: {
+            Locale: { type: 'string', value: 'pt-BR' },
+          },
+        },
+      },
+      scene: {
+        name: 'CoinIdle',
+        variables: {
+          Round: { type: 'number', value: 3 },
+        },
+      },
+      objects: {
+        RuleText: {
+          count: 1,
+          instances: [
+            {
+              id: 7,
+              name: 'RuleText',
+              type: 'TextObject::Text',
+              text: 'Cara ou coroa',
+              x: 120,
+              variables: {
+                Visible: { type: 'boolean', value: true },
+              },
+            },
+          ],
+        },
+      },
+    };
+
+    expect(
+      selectRuntimeValue(snapshot, {
+        kind: 'global-variable',
+        path: 'Money',
+      })
+    ).toMatchObject({ value: 42, valueType: 'number', found: true });
+    expect(
+      selectRuntimeValue(snapshot, {
+        kind: 'global-variable',
+        path: 'Config.Locale',
+      })
+    ).toMatchObject({ value: 'pt-BR', valueType: 'string', found: true });
+    expect(
+      selectRuntimeValue(snapshot, {
+        kind: 'scene-variable',
+        path: 'Round',
+      })
+    ).toMatchObject({ value: 3, valueType: 'number', found: true });
+    expect(
+      selectRuntimeValue(snapshot, {
+        kind: 'object-property',
+        objectName: 'RuleText',
+        property: 'text',
+      })
+    ).toMatchObject({
+      value: 'Cara ou coroa',
+      valueType: 'string',
+      objectName: 'RuleText',
+      instanceIndex: 0,
+    });
+    expect(
+      selectRuntimeValue(snapshot, {
+        kind: 'object-variable',
+        objectName: 'RuleText',
+        instanceId: 7,
+        path: 'Visible',
+      })
+    ).toMatchObject({ value: true, valueType: 'boolean', instanceId: 7 });
+    expect(
+      evaluateRuntimeCondition(snapshot, {
+        selector: {
+          kind: 'object-property',
+          objectName: 'RuleText',
+          property: 'text',
+        },
+        operator: 'contains',
+        value: 'coroa',
+      })
+    ).toMatchObject({ passed: true, actual: 'Cara ou coroa' });
+  });
+
+  it('returns clear selector diagnostics for absent runtime state', () => {
+    const snapshot = {
+      globalVariables: {},
+      scene: null,
+      objects: {},
+    };
+
+    expect(() =>
+      selectRuntimeValue(snapshot, {
+        kind: 'global-variable',
+        path: 'Money',
+      })
+    ).toThrow(expect.objectContaining({ code: 'runtime_variable_not_found' }));
+    expect(() =>
+      selectRuntimeValue(snapshot, {
+        kind: 'object-property',
+        objectName: 'Missing',
+        property: 'text',
+      })
+    ).toThrow(expect.objectContaining({ code: 'runtime_object_not_found' }));
+
+    expect(
+      evaluateRuntimeCondition(snapshot, {
+        selector: { kind: 'scene-variable', path: 'Ready' },
+        operator: 'exists',
+      })
+    ).toMatchObject({
+      passed: false,
+      actual: undefined,
+      diagnostic: { code: 'runtime_scene_unavailable' },
+    });
+  });
+
   it('requests native status and dump and keeps bounded console logs', async () => {
     const server = createDebuggerServer();
     const telemetry = createRuntimeTelemetry(server);
@@ -311,6 +432,95 @@ describe('AgentIntegration RuntimeTelemetry', () => {
       profiling: false,
       hasOutput: true,
     });
+    telemetry.dispose();
+  });
+
+  it('inspects and waits on typed selectors through bounded snapshots', async () => {
+    const server = createDebuggerServer();
+    let calls = 0;
+    const snapshotProvider = jest.fn(async request => {
+      calls += 1;
+      return {
+        snapshotSource: 'bounded-preview-runtime',
+        paused: false,
+        scene: {
+          name: 'CoinIdle',
+          variables: {
+            CurrentLanguage: {
+              type: 'string',
+              value: calls >= 2 ? 'pt-BR' : 'en',
+            },
+          },
+        },
+        globalVariables: {
+          Money: { type: 'number', value: 123 },
+        },
+        objects: {
+          RuleText: {
+            count: 1,
+            instances: [
+              {
+                id: 1,
+                name: 'RuleText',
+                type: 'TextObject::Text',
+                text: 'Cara ou coroa',
+                variables: {},
+                behaviors: [],
+              },
+            ],
+            truncated: false,
+          },
+        },
+        totalInstances: 1,
+        includedInstances: 1,
+        truncatedInstances: 0,
+      };
+    });
+    const telemetry = createRuntimeTelemetry(server, { snapshotProvider });
+
+    await expect(
+      telemetry.inspectRuntime({
+        selector: { kind: 'global-variable', path: 'Money' },
+      })
+    ).resolves.toMatchObject({
+      value: 123,
+      valueType: 'number',
+      snapshotSource: 'bounded-preview-runtime',
+    });
+
+    await expect(
+      telemetry.inspectRuntime({
+        selector: {
+          kind: 'object-property',
+          objectName: 'RuleText',
+          property: 'text',
+        },
+      })
+    ).resolves.toMatchObject({
+      value: 'Cara ou coroa',
+      objectName: 'RuleText',
+    });
+    expect(snapshotProvider).toHaveBeenLastCalledWith(
+      expect.objectContaining({ objectNames: ['RuleText'] })
+    );
+
+    calls = 0;
+    const waited = await telemetry.waitFor({
+      condition: {
+        selector: { kind: 'scene-variable', path: 'CurrentLanguage' },
+        operator: 'equals',
+        value: 'pt-BR',
+      },
+      timeoutMs: 1000,
+      intervalMs: 100,
+    });
+    expect(waited).toMatchObject({
+      passed: true,
+      actual: 'pt-BR',
+      timedOut: false,
+      attempts: 2,
+    });
+    expect(server.sendMessage).not.toHaveBeenCalled();
     telemetry.dispose();
   });
 

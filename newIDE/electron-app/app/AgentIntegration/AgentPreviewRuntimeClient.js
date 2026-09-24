@@ -282,6 +282,23 @@
     const behaviors = Array.isArray(instance && instance._behaviors)
       ? instance._behaviors.map(summarizeBehavior).filter(Boolean)
       : [];
+    const readOptional = getterName => {
+      if (!instance || typeof instance[getterName] !== 'function') return null;
+      try {
+        const value = instance[getterName]();
+        return value === undefined ? null : value;
+      } catch (_) {
+        return null;
+      }
+    };
+    const text =
+      readOptional('getText') !== null
+        ? readOptional('getText')
+        : readOptional('getString');
+    const opacity = readOptional('getOpacity');
+    const animation = readOptional('getAnimationName');
+    const flippedX = readOptional('isFlippedX');
+    const flippedY = readOptional('isFlippedY');
     return {
       id: instance && instance.id != null ? instance.id : null,
       name: (instance && instance.name) || null,
@@ -302,6 +319,11 @@
         instance && typeof instance.layer === 'string' ? instance.layer : '',
       hidden: !!(instance && instance.hidden),
       livingOnScene: !instance || instance.livingOnScene !== false,
+      ...(text !== null ? { text } : {}),
+      ...(opacity !== null ? { opacity } : {}),
+      ...(animation !== null ? { animation } : {}),
+      ...(flippedX !== null ? { flippedX } : {}),
+      ...(flippedY !== null ? { flippedY } : {}),
       variables: transformVariablesContainer(instance && instance._variables),
       behaviors,
     };
