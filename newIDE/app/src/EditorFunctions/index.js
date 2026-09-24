@@ -58,7 +58,10 @@ import Text from '../UI/Text';
 import {
   applyVariableChange,
   applyVariableDeletion,
+  applyVariableRename,
+  applyVariableReorder,
   getVariableAtPath,
+  VariableMutationError,
 } from './ApplyVariableChange';
 import {
   addDefaultLightToAllLayers,
@@ -246,6 +249,12 @@ export type EditorFunctionGenericOutput = {|
   gameTimeMs?: number,
   assertions?: Array<Object>,
   errors?: Array<string>,
+  operationErrors?: Array<{|
+    code: string,
+    message: string,
+    variablePath?: string,
+    details?: Object,
+  |}>,
   eventLog?: Array<Object>,
   finalState?: Object | null,
   screenshots?: Array<Object>,
@@ -9348,40 +9357,48 @@ const extractVariableOperations = (
   value: string | null,
   variable_type: string | null,
   delete_this_variable: boolean,
+  new_variable_name: string | null,
+  move_before_variable: string | null,
+  move_after_variable: string | null,
+  move_to_index: number | null,
 |}> => {
+  const extractOperation = (variableArgs: any) => ({
+    variable_name_or_path: SafeExtractor.extractStringProperty(
+      variableArgs,
+      'variable_name_or_path'
+    ),
+    value: SafeExtractor.extractStringProperty(variableArgs, 'value'),
+    variable_type: SafeExtractor.extractStringProperty(
+      variableArgs,
+      'variable_type'
+    ),
+    delete_this_variable:
+      SafeExtractor.extractBooleanProperty(
+        variableArgs,
+        'delete_this_variable'
+      ) || false,
+    new_variable_name: SafeExtractor.extractStringProperty(
+      variableArgs,
+      'new_variable_name'
+    ),
+    move_before_variable: SafeExtractor.extractStringProperty(
+      variableArgs,
+      'move_before_variable'
+    ),
+    move_after_variable: SafeExtractor.extractStringProperty(
+      variableArgs,
+      'move_after_variable'
+    ),
+    move_to_index: SafeExtractor.extractNumberProperty(
+      variableArgs,
+      'move_to_index'
+    ),
+  });
+
   const variablesArray = SafeExtractor.extractArrayProperty(args, 'variables');
-  if (variablesArray) {
-    return variablesArray.map(variableArgs => ({
-      variable_name_or_path: SafeExtractor.extractStringProperty(
-        variableArgs,
-        'variable_name_or_path'
-      ),
-      value: SafeExtractor.extractStringProperty(variableArgs, 'value'),
-      variable_type: SafeExtractor.extractStringProperty(
-        variableArgs,
-        'variable_type'
-      ),
-      delete_this_variable:
-        SafeExtractor.extractBooleanProperty(
-          variableArgs,
-          'delete_this_variable'
-        ) || false,
-    }));
-  }
-
-  return [
-    {
-      variable_name_or_path: SafeExtractor.extractStringProperty(
-        args,
-        'variable_name_or_path'
-      ),
-      value: SafeExtractor.extractStringProperty(args, 'value'),
-      variable_type: SafeExtractor.extractStringProperty(args, 'variable_type'),
-      delete_this_variable: false,
-    },
-  ];
+  if (variablesArray) return variablesArray.map(extractOperation);
+  return [extractOperation(args)];
 };
-
 type VariablesContainersResolution = {|
   failure: EditorFunctionGenericOutput | null,
   variablesContainers: Array<gdVariablesContainer>,
@@ -9610,6 +9627,183 @@ const resolveVariablesContainers = ({
       scope.type === 'project'
         ? `global ${objectOrGroupLabel}`
         : `${label} ${objectOrGroupLabel}`,
+  };
+};
+
+type VariableOperationErrorOutput = {|
+  code: string,
+  message: string,
+  variablePath?: string,
+  details?: Object,
+|};
+
+const toVariableOperationErrorOutput = (
+  error: any,
+  variablePath: string
+): VariableOperationErrorOutput => ({
+  code:
+    error instanceof VariableMutationError
+      ? error.code
+      : 'variable_operation_failed',
+  message: error && error.message ? error.message : String(error),
+  variablePath,
+  ...(error instanceof VariableMutationError && error.details
+    ? { details: error.details }
+    : {}),
+});
+
+const mutateVariablesContainerWithRefactoring = ({
+  project,
+  variablesContainer,
+  resolvedScope,
+  objectName,
+  mutation,
+}: {|
+  project: gdProject,
+  variablesContainer: gdVariablesContainer,
+  resolvedScope: ResolvedScope,
+  objectName: string | null,
+  mutation: (variablesContainer: gdVariablesContainer) => any,
+|}): any => {
+  variablesContainer.ensurePersistentUuids();
+  const snapshot = new gd.SerializerElement();
+  variablesContainer.serializeTo(snapshot);
+  try {
+    const result = mutation(variablesContainer);
+    if (result && result.renamed === false) return result;
+
+    const changeset = gd.WholeProjectRefactorer.computeChangesetForVariablesContainer(
+      snapshot,
+      variablesContainer
+    );
+    if (objectName) {
+      const { initialInstances, eventsBasedObject } = resolvedScope;
+      if (!initialInstances) {
+        throw new VariableMutationError(
+          'variable_refactor_context_unavailable',
+          `Cannot safely refactor references for object "${objectName}" in this scope.`,
+          { objectName }
+        );
+      }
+      gd.WholeProjectRefactorer.applyRefactoringForObjectVariablesContainer(
+        project,
+        variablesContainer,
+        initialInstances,
+        objectName,
+        changeset,
+        snapshot
+      );
+      if (eventsBasedObject) {
+        gd.ObjectRefactorer.applyChangesToVariants(
+          eventsBasedObject,
+          objectName,
+          changeset
+        );
+      }
+    } else {
+      gd.WholeProjectRefactorer.applyRefactoringForVariablesContainer(
+        project,
+        variablesContainer,
+        changeset,
+        snapshot
+      );
+    }
+    return result;
+  } finally {
+    snapshot.delete();
+  }
+};
+
+const getVariableDeclarationMutationTarget = ({
+  resolvedScope,
+  variableScope,
+  objectName,
+  variablesContainers,
+  instancesObjects,
+}: {|
+  resolvedScope: ResolvedScope,
+  variableScope: string,
+  objectName: ?string,
+  variablesContainers: Array<gdVariablesContainer>,
+  instancesObjects: Array<gdObject>,
+|}): {|
+  failure: VariableMutationError | null,
+  variablesContainer: gdVariablesContainer | null,
+  objectNameForRefactor: string | null,
+|} => {
+  if (variableScope === 'instance') {
+    if (instancesObjects.length !== 1) {
+      return {
+        failure: new VariableMutationError(
+          'instance_variable_owner_ambiguous',
+          'Rename/reorder requires the instance id to resolve to exactly one object declaration.',
+          { ownerCount: instancesObjects.length }
+        ),
+        variablesContainer: null,
+        objectNameForRefactor: null,
+      };
+    }
+    const object = instancesObjects[0];
+    return {
+      failure: null,
+      variablesContainer: object.getVariables(),
+      objectNameForRefactor: object.getName(),
+    };
+  }
+
+  if (variableScope === 'group') {
+    return {
+      failure: new VariableMutationError(
+        'group_variable_reorder_rename_unsupported',
+        'Rename/reorder of group variables is not supported by this operation yet; edit a concrete object or use create/update/delete.',
+        { objectName: objectName || null }
+      ),
+      variablesContainer: null,
+      objectNameForRefactor: null,
+    };
+  }
+
+  if (variableScope === 'object') {
+    const { objectsContainer, globalObjectsContainer } = resolvedScope;
+    const concerned =
+      objectName && objectsContainer
+        ? resolveObjectsFromContextAndName({
+            objectsContainer,
+            globalObjectsContainer: globalObjectsContainer || null,
+            objectOrGroupName: objectName,
+          })
+        : null;
+    if (
+      !concerned ||
+      concerned.group ||
+      concerned.objects.length !== 1 ||
+      variablesContainers.length !== 1
+    ) {
+      return {
+        failure: new VariableMutationError(
+          'object_variable_owner_ambiguous',
+          'Rename/reorder requires a concrete object, not an object group.',
+          {
+            objectName: objectName || null,
+            containerCount: variablesContainers.length,
+          }
+        ),
+        variablesContainer: null,
+        objectNameForRefactor: null,
+      };
+    }
+    const concreteObjectName = concerned.objects[0].getName();
+    return {
+      failure: null,
+      variablesContainer: variablesContainers[0],
+      objectNameForRefactor: concreteObjectName,
+    };
+  }
+
+  return {
+    failure: null,
+    variablesContainer: variablesContainers[0] || null,
+    objectNameForRefactor: null,
   };
 };
 
@@ -9907,25 +10101,54 @@ const addOrEditVariable: EditorFunction = {
 
     const changes = [];
     const warnings = [];
+    const operationErrors: Array<VariableOperationErrorOutput> = [];
     for (const operation of operations) {
       const {
         variable_name_or_path,
         value,
         variable_type,
         delete_this_variable,
+        new_variable_name,
+        move_before_variable,
+        move_after_variable,
+        move_to_index,
       } = operation;
 
       if (!variable_name_or_path) {
+        const message =
+          'A variable was skipped because "variable_name_or_path" is missing.';
+        warnings.push(message);
+        operationErrors.push({
+          code: 'missing_variable_path',
+          message,
+        });
+        continue;
+      }
+
+      const hasRename =
+        typeof new_variable_name === 'string' &&
+        new_variable_name.trim().length > 0;
+      const hasReorder =
+        !!move_before_variable ||
+        !!move_after_variable ||
+        move_to_index !== null;
+
+      if (delete_this_variable && (hasRename || hasReorder || value !== null)) {
+        const message =
+          'delete_this_variable cannot be combined with rename, reorder or value update fields.';
         warnings.push(
-          `A variable was skipped because "variable_name_or_path" is missing.`
+          `Could not change ${scopeDescription} variable "${variable_name_or_path}": ${message}`
         );
+        operationErrors.push({
+          code: 'variable_delete_operation_conflict',
+          message,
+          variablePath: variable_name_or_path,
+        });
         continue;
       }
 
       if (delete_this_variable) {
         let removed = false;
-        // A malformed path throws: report it for this item only, so the other
-        // items of the batch are still applied and reported.
         try {
           for (const variablesContainer of variablesContainers) {
             const result = applyVariableDeletion({
@@ -9935,10 +10158,12 @@ const addOrEditVariable: EditorFunction = {
             removed = removed || result.removed;
           }
         } catch (error) {
-          warnings.push(
-            `Could not delete ${scopeDescription} variable "${variable_name_or_path}": ${
-              error.message
-            }`
+          const message = `Could not delete ${scopeDescription} variable "${variable_name_or_path}": ${
+            error.message
+          }`;
+          warnings.push(message);
+          operationErrors.push(
+            toVariableOperationErrorOutput(error, variable_name_or_path)
           );
           continue;
         }
@@ -9949,29 +10174,143 @@ const addOrEditVariable: EditorFunction = {
             `Deleted ${scopeDescription} variable "${variable_name_or_path}".`
           );
         } else {
-          warnings.push(
-            `Could not delete ${scopeDescription} variable "${variable_name_or_path}": not found.`
-          );
+          const message = `Could not delete ${scopeDescription} variable "${variable_name_or_path}": not found.`;
+          warnings.push(message);
+          operationErrors.push({
+            code: 'variable_not_found',
+            message,
+            variablePath: variable_name_or_path,
+          });
         }
         continue;
       }
 
+      let effectiveVariablePath = variable_name_or_path;
+      let declarationTarget = null;
+      if (hasRename || hasReorder) {
+        declarationTarget = getVariableDeclarationMutationTarget({
+          resolvedScope,
+          variableScope: variable_scope,
+          objectName: object_name,
+          variablesContainers,
+          instancesObjects,
+        });
+        if (
+          declarationTarget.failure ||
+          !declarationTarget.variablesContainer
+        ) {
+          const error =
+            declarationTarget.failure ||
+            new VariableMutationError(
+              'variable_declaration_target_missing',
+              'Could not resolve the variable declaration to rename/reorder.'
+            );
+          const message = `Could not change ${scopeDescription} variable "${variable_name_or_path}": ${
+            error.message
+          }`;
+          warnings.push(message);
+          operationErrors.push(
+            toVariableOperationErrorOutput(error, variable_name_or_path)
+          );
+          continue;
+        }
+      }
+
+      if (
+        hasRename &&
+        declarationTarget &&
+        declarationTarget.variablesContainer
+      ) {
+        try {
+          const renameResult = mutateVariablesContainerWithRefactoring({
+            project,
+            variablesContainer: declarationTarget.variablesContainer,
+            resolvedScope,
+            objectName: declarationTarget.objectNameForRefactor,
+            mutation: variablesContainer =>
+              applyVariableRename({
+                variablePath: effectiveVariablePath,
+                newVariableName: new_variable_name || '',
+                variablesContainer,
+              }),
+          });
+          if (renameResult.renamed) {
+            changes.push(
+              `Renamed ${scopeDescription} variable "${
+                renameResult.oldPath
+              }" to "${renameResult.newPath}" (references updated).`
+            );
+            effectiveVariablePath = renameResult.newPath;
+          } else {
+            changes.push(
+              `${scopeDescription} variable "${effectiveVariablePath}" already has the requested name.`
+            );
+          }
+        } catch (error) {
+          const message = `Could not rename ${scopeDescription} variable "${effectiveVariablePath}": ${
+            error.message
+          }`;
+          warnings.push(message);
+          operationErrors.push(
+            toVariableOperationErrorOutput(error, effectiveVariablePath)
+          );
+          continue;
+        }
+      }
+
+      if (
+        hasReorder &&
+        declarationTarget &&
+        declarationTarget.variablesContainer
+      ) {
+        try {
+          const reorderResult = applyVariableReorder({
+            variablePath: effectiveVariablePath,
+            variablesContainer: declarationTarget.variablesContainer,
+            moveBeforeVariable: move_before_variable,
+            moveAfterVariable: move_after_variable,
+            moveToIndex: move_to_index,
+          });
+          changes.push(
+            reorderResult.moved
+              ? `Moved ${scopeDescription} variable "${effectiveVariablePath}" from index ${
+                  reorderResult.fromIndex
+                } to ${reorderResult.toIndex}.`
+              : `${scopeDescription} variable "${effectiveVariablePath}" is already at index ${
+                  reorderResult.toIndex
+                }.`
+          );
+        } catch (error) {
+          const message = `Could not reorder ${scopeDescription} variable "${effectiveVariablePath}": ${
+            error.message
+          }`;
+          warnings.push(message);
+          operationErrors.push(
+            toVariableOperationErrorOutput(error, effectiveVariablePath)
+          );
+          continue;
+        }
+      }
+
       if (value === null || value === undefined) {
-        warnings.push(
-          `Variable "${variable_name_or_path}" was skipped: no "value" provided and it was not marked for deletion.`
-        );
+        if (!hasRename && !hasReorder) {
+          const message = `Variable "${variable_name_or_path}" was skipped: no "value" provided and it was not marked for deletion.`;
+          warnings.push(message);
+          operationErrors.push({
+            code: 'variable_operation_missing',
+            message,
+            variablePath: variable_name_or_path,
+          });
+        }
         continue;
       }
 
       let addedNewVariable = false;
-      // The containers list is always non-empty here, so this is overwritten.
       let variableType = '';
-      // A malformed path or invalid value throws: report it for this item
-      // only, so the other items of the batch are still applied and reported.
       try {
         for (const variablesContainer of variablesContainers) {
           const result = applyVariableChange({
-            variablePath: variable_name_or_path,
+            variablePath: effectiveVariablePath,
             forcedVariableType: variable_type,
             variablesContainer,
             value,
@@ -9980,10 +10319,12 @@ const addOrEditVariable: EditorFunction = {
           variableType = result.variableType;
         }
       } catch (error) {
-        warnings.push(
-          `Could not change ${scopeDescription} variable "${variable_name_or_path}": ${
-            error.message
-          }`
+        const message = `Could not change ${scopeDescription} variable "${effectiveVariablePath}": ${
+          error.message
+        }`;
+        warnings.push(message);
+        operationErrors.push(
+          toVariableOperationErrorOutput(error, effectiveVariablePath)
         );
         continue;
       }
@@ -9994,17 +10335,15 @@ const addOrEditVariable: EditorFunction = {
       const truncatedValue = truncateValue(value);
       changes.push(
         addedNewVariable
-          ? `Added ${scopeDescription} variable "${variable_name_or_path}" (${variableType}) = ${truncatedValue}`
-          : `Edited ${scopeDescription} variable "${variable_name_or_path}" = ${truncatedValue}`
+          ? `Added ${scopeDescription} variable "${effectiveVariablePath}" (${variableType}) = ${truncatedValue}`
+          : `Edited ${scopeDescription} variable "${effectiveVariablePath}" = ${truncatedValue}`
       );
       if (variable_scope === 'instance') {
         const declaredOnObjectsLines = declareInstanceVariableOnObjects({
-          variablePath: variable_name_or_path,
+          variablePath: effectiveVariablePath,
           instanceVariablesContainer: variablesContainers[0],
           instancesObjects,
         });
-        // A child object of a custom object got a variable: a structural
-        // change, made on the default variant and followed by the others.
         if (declaredOnObjectsLines.length > 0 && resolvedScope.variant)
           didChangeChildVariablesStructure = true;
         changes.push(...declaredOnObjectsLines);
@@ -10020,10 +10359,12 @@ const addOrEditVariable: EditorFunction = {
     // One line per change (so a single variable keeps its original message),
     // with any warnings appended below.
     const message = [...changes, ...warnings].join('\n');
-    if (changes.length === 0) {
-      return makeGenericFailure(message || `No variable was changed.`);
-    }
-    return makeGenericSuccess(message);
+    const output =
+      changes.length === 0
+        ? makeGenericFailure(message || `No variable was changed.`)
+        : makeGenericSuccess(message);
+    if (operationErrors.length > 0) output.operationErrors = operationErrors;
+    return output;
   },
   modifiesProject: true,
 };

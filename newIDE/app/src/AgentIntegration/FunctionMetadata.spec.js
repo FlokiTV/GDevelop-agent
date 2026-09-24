@@ -146,14 +146,42 @@ describe('AgentIntegration FunctionMetadata', () => {
     expect(variables).not.toBeNull();
     if (!variables) return;
     expect(variables.description).toBe(
-      'Create, update or delete project, scene, object or instance variables.'
+      'Create, update, rename, move/reorder or delete project, scene, object or instance variables without destructive declaration reconstruction.'
     );
     expect(variables.capabilities).toEqual(
-      expect.arrayContaining(['create', 'update', 'delete'])
+      expect.arrayContaining([
+        'create',
+        'update',
+        'rename',
+        'move',
+        'reorder',
+        'delete',
+      ])
     );
-    expect(variables.capabilities).not.toEqual(
-      expect.arrayContaining(['rename', 'move'])
-    );
+    expect(variables.inputSchema.properties).toMatchObject({
+      variable_scope: {
+        type: 'string',
+        enum: ['global', 'scene', 'object', 'group', 'instance'],
+      },
+      new_variable_name: { type: 'string' },
+      move_before_variable: { type: 'string' },
+      move_after_variable: { type: 'string' },
+      move_to_index: { type: 'integer', minimum: 0 },
+    });
+    expect(variables.inputSchema.properties.variables).toMatchObject({
+      type: 'array',
+      minItems: 1,
+      items: {
+        type: 'object',
+        required: ['variable_name_or_path'],
+        properties: {
+          new_variable_name: { type: 'string' },
+          move_before_variable: { type: 'string' },
+          move_after_variable: { type: 'string' },
+          move_to_index: { type: 'integer', minimum: 0 },
+        },
+      },
+    });
     expect(variables.exposure.runScript).toEqual({
       available: true,
       hiddenReason: null,

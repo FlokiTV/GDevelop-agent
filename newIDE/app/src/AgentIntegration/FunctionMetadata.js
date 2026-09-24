@@ -123,7 +123,7 @@ const descriptionOverrides = {
   inspect_extension:
     'Inspect project-owned extension declarations, functions, call forms and editable metadata.',
   add_or_edit_variable:
-    'Create, update or delete project, scene, object or instance variables.',
+    'Create, update, rename, move/reorder or delete project, scene, object or instance variables without destructive declaration reconstruction.',
   change_project_properties_resources:
     'Change project properties and resource configuration.',
   change_scene_properties_layers_effects_groups:
@@ -260,9 +260,110 @@ const extensionDependencyChangeSchema = {
   },
 };
 
+const variableMutationOperationSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['variable_name_or_path'],
+  properties: {
+    variable_name_or_path: {
+      type: 'string',
+      minLength: 1,
+      description:
+        'Variable path to create/update/delete, or existing declaration path to rename/reorder.',
+    },
+    value: {
+      type: 'string',
+      description:
+        'Optional serialized value. Omit for rename/reorder-only operations.',
+    },
+    variable_type: {
+      type: 'string',
+      enum: ['string', 'number', 'boolean'],
+    },
+    delete_this_variable: { type: 'boolean' },
+    new_variable_name: {
+      type: 'string',
+      minLength: 1,
+      description:
+        'Rename the existing declaration in place. References are refactored.',
+    },
+    move_before_variable: {
+      type: 'string',
+      minLength: 1,
+      description:
+        'Move a top-level declaration immediately before this sibling.',
+    },
+    move_after_variable: {
+      type: 'string',
+      minLength: 1,
+      description:
+        'Move a top-level declaration immediately after this sibling.',
+    },
+    move_to_index: {
+      type: 'integer',
+      minimum: 0,
+      description:
+        'Move a top-level declaration to this final zero-based index.',
+    },
+  },
+};
+
 const argumentOverrides: {
   [string]: { [string]: $Shape<AgentFunctionArgumentMetadata> },
 } = {
+  add_or_edit_variable: {
+    variable_scope: {
+      type: 'string',
+      enum: ['global', 'scene', 'object', 'group', 'instance'],
+      description: 'Variable declaration scope.',
+    },
+    scene_name: {
+      type: 'string',
+      description: 'Required for scene/object/instance scope in a scene.',
+    },
+    variables: {
+      type: 'array',
+      schema: {
+        type: 'array',
+        minItems: 1,
+        items: variableMutationOperationSchema,
+      },
+      description:
+        'Ordered variable mutations. Each item can create/update, rename, move/reorder or delete one declaration. Group scope keeps create/update/delete only; rename/reorder requires a concrete declaration.',
+    },
+    variable_name_or_path: {
+      type: 'string',
+      description:
+        'Legacy single-operation variable path. Prefer variables[] for batches.',
+    },
+    value: {
+      type: 'string',
+      description: 'Legacy single-operation value.',
+    },
+    variable_type: {
+      type: 'string',
+      enum: ['string', 'number', 'boolean'],
+    },
+    delete_this_variable: { type: 'boolean' },
+    new_variable_name: {
+      type: 'string',
+      description:
+        'Legacy single-operation in-place rename; references are refactored. Not supported for group scope.',
+    },
+    move_before_variable: {
+      type: 'string',
+      description: 'Legacy single-operation before-sibling reorder.',
+    },
+    move_after_variable: {
+      type: 'string',
+      description: 'Legacy single-operation after-sibling reorder.',
+    },
+    move_to_index: {
+      schema: { type: 'integer', minimum: 0 },
+      description:
+        'Legacy single-operation final zero-based declaration index.',
+    },
+  },
   create_extension: {
     full_name: {
       type: 'string',

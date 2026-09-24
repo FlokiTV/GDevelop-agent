@@ -1,0 +1,86 @@
+{
+  "kind": "dx11-variable-rename-reorder-acceptance",
+  "recordedAt": "2026-09-24",
+  "protocolVersion": "2026-07-28",
+  "contract": {
+    "tool": "editor.functions.add-or-edit-variable",
+    "renameField": "new_variable_name",
+    "orderingFields": [
+      "move_before_variable",
+      "move_after_variable",
+      "move_to_index"
+    ],
+    "moveToIndexSemantics": "final zero-based index",
+    "references": "WholeProjectRefactorer",
+    "deleteRecreateWorkaroundUsed": false
+  },
+  "source": {
+    "ok": true,
+    "label": "source",
+    "globalOrder": [
+      "DisplayName",
+      "PublicB",
+      "__Internal"
+    ],
+    "scopes": [
+      "global",
+      "scene",
+      "object",
+      "instance"
+    ],
+    "validationErrors": 0,
+    "transactionRollback": true
+  },
+  "winUnpacked": {
+    "ok": true,
+    "label": "win-unpacked",
+    "globalOrder": [
+      "DisplayName",
+      "PublicB",
+      "__Internal"
+    ],
+    "scopes": [
+      "global",
+      "scene",
+      "object",
+      "instance"
+    ],
+    "validationErrors": 0,
+    "transactionRollback": true,
+    "executable": "newIDE/electron-app/dist/win-unpacked/GDevelop.exe"
+  },
+  "preservedValuesAndTypes": {
+    "DisplayName": {
+      "type": "String",
+      "value": "alpha"
+    },
+    "PublicB": {
+      "type": "Boolean",
+      "value": "True"
+    },
+    "__Internal": {
+      "type": "Number",
+      "value": "7"
+    },
+    "WaveIndex": {
+      "type": "Number",
+      "value": "2"
+    },
+    "HitPoints": {
+      "type": "Number",
+      "value": "100"
+    },
+    "AccessLevelDeclaration": {
+      "type": "Number",
+      "value": "1"
+    },
+    "AccessLevelInstance": {
+      "type": "Number",
+      "value": "9"
+    }
+  },
+  "notes": [
+    "Unit regressions additionally prove persistent UUID preservation and event-reference rewriting for global, scene, object and instance-owned declarations.",
+    "Group variables remain create/update/delete-only; rename/reorder returns a stable structured unsupported error rather than applying an ambiguous refactor."
+  ]
+}

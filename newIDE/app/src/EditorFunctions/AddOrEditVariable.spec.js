@@ -17,6 +17,227 @@ describe('add_or_edit_variable', () => {
     project.delete();
   });
 
+  const addVariableReferenceAction = ({
+    scene,
+    type,
+    parameters,
+  }: {|
+    scene: gdLayout,
+    type: string,
+    parameters: Array<string>,
+  |}) => {
+    const event = new gd.StandardEvent();
+    const action = new gd.Instruction();
+    action.setType(type);
+    action.setParametersCount(parameters.length);
+    parameters.forEach((parameter, index) =>
+      action.setParameter(index, parameter)
+    );
+    event.getActions().insert(action, 0);
+    scene.getEvents().insertEvent(event, 0);
+    action.delete();
+    event.delete();
+    return gd
+      .asStandardEvent(scene.getEvents().getEventAt(0))
+      .getActions()
+      .get(0);
+  };
+
+  it('renames a global variable with references and reorders declarations without value/type loss', async () => {
+    const variables = project.getVariables();
+    variables.insertNew('PublicA', 0).setString('alpha');
+    variables.insertNew('__Internal', 1).setValue(7);
+    variables.insertNew('PublicB', 2).setBool(true);
+    variables.ensurePersistentUuids();
+    const uuid = variables.get('PublicA').getPersistentUuid();
+    const action = addVariableReferenceAction({
+      scene: project.getLayout('TestScene'),
+      type: 'SetNumberVariable',
+      parameters: ['PublicA', '=', '123'],
+    });
+
+    const rename: EditorFunctionGenericOutput = await editorFunctions.add_or_edit_variable.launchFunction(
+      {
+        ...makeFakeLaunchFunctionOptionsWithProject(project),
+        args: {
+          variable_scope: 'global',
+          variables: [
+            {
+              variable_name_or_path: 'PublicA',
+              new_variable_name: 'DisplayName',
+            },
+          ],
+        },
+      }
+    );
+
+    expect(rename.success).toBe(true);
+    expect(rename.message).toContain('references updated');
+    expect(action.getParameter(0).getPlainString()).toBe('DisplayName');
+    const renamed = variables.get('DisplayName');
+    expect(renamed.getPersistentUuid()).toBe(uuid);
+    expect(renamed.getType()).toBe(gd.Variable.String);
+    expect(renamed.getString()).toBe('alpha');
+
+    const reorder: EditorFunctionGenericOutput = await editorFunctions.add_or_edit_variable.launchFunction(
+      {
+        ...makeFakeLaunchFunctionOptionsWithProject(project),
+        args: {
+          variable_scope: 'global',
+          variables: [
+            {
+              variable_name_or_path: '__Internal',
+              move_to_index: 2,
+            },
+          ],
+        },
+      }
+    );
+
+    expect(reorder.success).toBe(true);
+    expect(
+      Array.from({ length: variables.count() }, (_, index) =>
+        variables.getNameAt(index)
+      )
+    ).toEqual(['DisplayName', 'PublicB', '__Internal']);
+    expect(variables.get('__Internal').getValue()).toBe(7);
+    expect(variables.get('PublicB').getBool()).toBe(true);
+  });
+
+  it('renames a scene variable and rewrites its event reference', async () => {
+    const scene = project.getLayout('TestScene');
+    scene
+      .getVariables()
+      .insertNew('Wave', 0)
+      .setValue(2);
+    const action = addVariableReferenceAction({
+      scene,
+      type: 'SetNumberVariable',
+      parameters: ['Wave', '=', '3'],
+    });
+
+    const result: EditorFunctionGenericOutput = await editorFunctions.add_or_edit_variable.launchFunction(
+      {
+        ...makeFakeLaunchFunctionOptionsWithProject(project),
+        args: {
+          variable_scope: 'scene',
+          scene_name: 'TestScene',
+          variable_name_or_path: 'Wave',
+          new_variable_name: 'WaveIndex',
+        },
+      }
+    );
+
+    expect(result.success).toBe(true);
+    expect(scene.getVariables().has('Wave')).toBe(false);
+    expect(
+      scene
+        .getVariables()
+        .get('WaveIndex')
+        .getValue()
+    ).toBe(2);
+    expect(action.getParameter(0).getPlainString()).toBe('WaveIndex');
+  });
+
+  it('renames an object variable, its instance override and object references', async () => {
+    const scene = project.getLayout('TestScene');
+    const object = scene
+      .getObjects()
+      .insertNewObject(project, 'Sprite', 'Enemy', 0);
+    object
+      .getVariables()
+      .insertNew('Health', 0)
+      .setValue(100);
+    const instance = scene.getInitialInstances().insertNewInitialInstance();
+    instance.setObjectName('Enemy');
+    instance
+      .getVariables()
+      .insertNew('Health', 0)
+      .setValue(35);
+    const action = addVariableReferenceAction({
+      scene,
+      type: 'SetNumberObjectVariable',
+      parameters: ['Enemy', 'Health', '=', 'Enemy.Health'],
+    });
+
+    const result: EditorFunctionGenericOutput = await editorFunctions.add_or_edit_variable.launchFunction(
+      {
+        ...makeFakeLaunchFunctionOptionsWithProject(project),
+        args: {
+          variable_scope: 'object',
+          scene_name: 'TestScene',
+          object_name: 'Enemy',
+          variable_name_or_path: 'Health',
+          new_variable_name: 'HitPoints',
+        },
+      }
+    );
+
+    expect(result.success).toBe(true);
+    expect(
+      object
+        .getVariables()
+        .get('HitPoints')
+        .getValue()
+    ).toBe(100);
+    expect(
+      instance
+        .getVariables()
+        .get('HitPoints')
+        .getValue()
+    ).toBe(35);
+    expect(action.getParameter(1).getPlainString()).toBe('HitPoints');
+    expect(action.getParameter(3).getPlainString()).toBe('Enemy.HitPoints');
+  });
+
+  it('returns structured duplicate-name and reorder conflicts', async () => {
+    project
+      .getVariables()
+      .insertNew('First', 0)
+      .setValue(1);
+    project
+      .getVariables()
+      .insertNew('Second', 1)
+      .setValue(2);
+
+    const duplicate: EditorFunctionGenericOutput = await editorFunctions.add_or_edit_variable.launchFunction(
+      {
+        ...makeFakeLaunchFunctionOptionsWithProject(project),
+        args: {
+          variable_scope: 'global',
+          variable_name_or_path: 'First',
+          new_variable_name: 'Second',
+        },
+      }
+    );
+    expect(duplicate.success).toBe(false);
+    expect(duplicate.operationErrors).toEqual([
+      expect.objectContaining({
+        code: 'variable_name_conflict',
+        variablePath: 'First',
+      }),
+    ]);
+
+    const reorder: EditorFunctionGenericOutput = await editorFunctions.add_or_edit_variable.launchFunction(
+      {
+        ...makeFakeLaunchFunctionOptionsWithProject(project),
+        args: {
+          variable_scope: 'global',
+          variable_name_or_path: 'First',
+          move_before_variable: 'Second',
+          move_after_variable: 'Second',
+        },
+      }
+    );
+    expect(reorder.success).toBe(false);
+    expect(reorder.operationErrors).toEqual([
+      expect.objectContaining({
+        code: 'variable_reorder_position_conflict',
+        variablePath: 'First',
+      }),
+    ]);
+  });
+
   it('forces a numeric-looking value to be stored as a string', async () => {
     const result: EditorFunctionGenericOutput = await editorFunctions.add_or_edit_variable.launchFunction(
       {
@@ -368,6 +589,61 @@ describe('add_or_edit_variable (instance scope)', () => {
         .getVariables()
         .has('LevelNumber')
     ).toBe(false);
+  });
+
+  it('renames an instance variable through its object declaration and preserves references', async () => {
+    const doorObject = testScene.getObjects().getObject('Door');
+    doorObject
+      .getVariables()
+      .insertNew('Locked', 0)
+      .setValue(1);
+    doorInstance1
+      .getVariables()
+      .insertNew('Locked', 0)
+      .setValue(5);
+
+    const event = new gd.StandardEvent();
+    const action = new gd.Instruction();
+    action.setType('SetNumberObjectVariable');
+    action.setParametersCount(4);
+    action.setParameter(0, 'Door');
+    action.setParameter(1, 'Locked');
+    action.setParameter(2, '=');
+    action.setParameter(3, 'Door.Locked');
+    event.getActions().insert(action, 0);
+    testScene.getEvents().insertEvent(event, 0);
+    action.delete();
+    event.delete();
+    const storedAction = gd
+      .asStandardEvent(testScene.getEvents().getEventAt(0))
+      .getActions()
+      .get(0);
+
+    const result = await addOrEditVariable({
+      variable_scope: 'instance',
+      scene_name: 'TestScene',
+      instance_id: getIdOf(doorInstance1),
+      variable_name_or_path: 'Locked',
+      new_variable_name: 'AccessLevel',
+    });
+
+    expect(result.success).toBe(true);
+    expect(
+      doorObject
+        .getVariables()
+        .get('AccessLevel')
+        .getValue()
+    ).toBe(1);
+    expect(
+      doorInstance1
+        .getVariables()
+        .get('AccessLevel')
+        .getValue()
+    ).toBe(5);
+    expect(storedAction.getParameter(1).getPlainString()).toBe('AccessLevel');
+    expect(storedAction.getParameter(3).getPlainString()).toBe(
+      'Door.AccessLevel'
+    );
   });
 
   it('leaves the object alone when it already declares the variable', async () => {

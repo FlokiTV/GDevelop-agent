@@ -30,7 +30,7 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": true,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 3025
+      "line": 3034
     },
     "generatedExample": {
       "name": "add_behavior",
@@ -70,7 +70,7 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": true,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 9685
+      "line": 9879
     },
     "generatedExample": {
       "name": "add_or_edit_variable",
@@ -169,7 +169,7 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": true,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 6447
+      "line": 6456
     },
     "generatedExample": {
       "name": "add_scene_events",
@@ -228,7 +228,7 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": true,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 3548
+      "line": 3557
     },
     "generatedExample": {
       "name": "change_behavior_property",
@@ -565,7 +565,7 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": true,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 2489
+      "line": 2498
     },
     "generatedExample": {
       "name": "change_object_properties_effects",
@@ -624,7 +624,7 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": true,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 2489
+      "line": 2498
     },
     "generatedExample": {
       "name": "change_object_property",
@@ -689,7 +689,7 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": true,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 8946
+      "line": 8955
     },
     "generatedExample": {
       "name": "change_project_properties_resources",
@@ -816,7 +816,7 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": true,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 7921
+      "line": 7930
     },
     "generatedExample": {
       "name": "change_scene_properties_layers_effects_groups",
@@ -1125,7 +1125,7 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": true,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 1177
+      "line": 1186
     },
     "generatedExample": {
       "name": "create_object",
@@ -1214,7 +1214,7 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": true,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 1177
+      "line": 1186
     },
     "generatedExample": {
       "name": "create_or_replace_object",
@@ -1236,7 +1236,7 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": false,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 10147
+      "line": 10488
     },
     "generatedExample": {
       "name": "create_or_update_plan",
@@ -1279,7 +1279,7 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": true,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 7288
+      "line": 7297
     },
     "generatedExample": {
       "name": "create_scene",
@@ -1306,7 +1306,7 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": false,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 4021
+      "line": 4030
     },
     "generatedExample": {
       "name": "describe_instances",
@@ -1403,7 +1403,7 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": true,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 6447
+      "line": 6456
     },
     "generatedExample": {
       "name": "generate_events",
@@ -1432,7 +1432,7 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": false,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 10201
+      "line": 10542
     },
     "generatedExample": {
       "name": "get_game_starter_summary",
@@ -1469,7 +1469,7 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": true,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 10244
+      "line": 10585
     },
     "generatedExample": {
       "name": "initialize_project",
@@ -1503,7 +1503,7 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": false,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 3431
+      "line": 3440
     },
     "generatedExample": {
       "name": "inspect_behavior_properties",
@@ -1582,7 +1582,7 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": false,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 2317
+      "line": 2326
     },
     "generatedExample": {
       "name": "inspect_object_properties",
@@ -1611,7 +1611,7 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": false,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 2317
+      "line": 2326
     },
     "generatedExample": {
       "name": "inspect_object_properties_effects",
@@ -1646,7 +1646,7 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": false,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 8822
+      "line": 8831
     },
     "generatedExample": {
       "name": "inspect_project_properties_resources",
@@ -1664,7 +1664,7 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": false,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 7736
+      "line": 7745
     },
     "generatedExample": {
       "name": "inspect_scene_properties_layers_effects",
@@ -1707,7 +1707,7 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": false,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 10031
+      "line": 10372
     },
     "generatedExample": {
       "name": "inspect_variables",
@@ -1818,7 +1818,7 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": true,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 4192
+      "line": 4201
     },
     "generatedExample": {
       "name": "put_2d_instances",
@@ -1906,7 +1906,7 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": true,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 5165
+      "line": 5174
     },
     "generatedExample": {
       "name": "put_3d_instances",
@@ -1964,7 +1964,7 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": false,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 6243
+      "line": 6252
     },
     "generatedExample": {
       "name": "read_events_source",
@@ -1989,7 +1989,7 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": false,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 10168
+      "line": 10509
     },
     "generatedExample": {
       "name": "read_full_docs",
@@ -2050,7 +2050,7 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": false,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 10403
+      "line": 10744
     },
     "generatedExample": {
       "name": "read_game_project_json",
@@ -2068,7 +2068,7 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": false,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 6068
+      "line": 6077
     },
     "generatedExample": {
       "name": "read_scene_events",
@@ -2099,7 +2099,7 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": true,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 3329
+      "line": 3338
     },
     "generatedExample": {
       "name": "remove_behavior",
@@ -2120,7 +2120,7 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": false,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 10158
+      "line": 10499
     },
     "generatedExample": {
       "name": "report_fulfilment_problem",
@@ -2145,7 +2145,7 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": true,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 10360
+      "line": 10701
     },
     "generatedExample": {
       "name": "run_edit_agent",
@@ -2170,7 +2170,7 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": false,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 10340
+      "line": 10681
     },
     "generatedExample": {
       "name": "run_explorer_agent",
@@ -2265,7 +2265,7 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": true,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 10482
+      "line": 10823
     },
     "generatedExample": {
       "name": "run_script",
@@ -2296,7 +2296,7 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": false,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 10380
+      "line": 10721
     },
     "generatedExample": {
       "name": "run_tests",
@@ -2314,7 +2314,7 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": false,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 10187
+      "line": 10528
     },
     "generatedExample": {
       "name": "search_docs",
@@ -2332,7 +2332,7 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": false,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 10459
+      "line": 10800
     },
     "generatedExample": {
       "name": "search_object_asset_store",
@@ -2357,7 +2357,7 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": false,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 10548
+      "line": 10889
     },
     "generatedExample": {
       "name": "search_resource_store",

@@ -3,6 +3,9 @@ import { serializeToJSObject } from '../Utils/Serializer';
 import {
   applyVariableChange,
   applyVariableDeletion,
+  applyVariableRename,
+  applyVariableReorder,
+  VariableMutationError,
 } from './ApplyVariableChange';
 
 const gd: libGDevelop = global.gd;
@@ -774,6 +777,166 @@ describe('applyVariableDeletion', () => {
 
   afterEach(() => {
     variablesContainer.delete();
+  });
+
+  describe('rename and reorder', () => {
+    beforeEach(() => {
+      applyVariableChange({
+        variablePath: 'PublicA',
+        forcedVariableType: 'string',
+        variablesContainer,
+        value: 'alpha',
+      });
+      applyVariableChange({
+        variablePath: '__Internal',
+        forcedVariableType: 'number',
+        variablesContainer,
+        value: '7',
+      });
+      applyVariableChange({
+        variablePath: 'PublicB',
+        forcedVariableType: 'boolean',
+        variablesContainer,
+        value: 'true',
+      });
+    });
+
+    it('renames a root variable in place without losing UUID, type or value', () => {
+      variablesContainer.ensurePersistentUuids();
+      const before = variablesContainer.get('PublicA');
+      const uuid = before.getPersistentUuid();
+
+      const result = applyVariableRename({
+        variablePath: 'PublicA',
+        newVariableName: 'DisplayName',
+        variablesContainer,
+      });
+
+      expect(result).toEqual({
+        renamed: true,
+        oldPath: 'PublicA',
+        newPath: 'DisplayName',
+      });
+      expect(variablesContainer.has('PublicA')).toBe(false);
+      const renamed = variablesContainer.get('DisplayName');
+      expect(renamed.getPersistentUuid()).toBe(uuid);
+      expect(renamed.getType()).toBe(gd.Variable.String);
+      expect(renamed.getString()).toBe('alpha');
+    });
+
+    it('renames a nested structure child without rebuilding its value', () => {
+      applyVariableChange({
+        variablePath: 'Config',
+        forcedVariableType: null,
+        variablesContainer,
+        value: '{"Speed":12,"Label":"Fast"}',
+      });
+      const config = variablesContainer.get('Config');
+      const beforeValue = config.getChild('Speed').getValue();
+
+      const result = applyVariableRename({
+        variablePath: 'Config.Speed',
+        newVariableName: 'MoveSpeed',
+        variablesContainer,
+      });
+
+      expect(result.newPath).toBe('Config.MoveSpeed');
+      expect(config.hasChild('Speed')).toBe(false);
+      expect(config.getChild('MoveSpeed').getValue()).toBe(beforeValue);
+      expect(config.getChild('Label').getString()).toBe('Fast');
+    });
+
+    it('returns a structured duplicate-name conflict', () => {
+      try {
+        applyVariableRename({
+          variablePath: 'PublicA',
+          newVariableName: 'PublicB',
+          variablesContainer,
+        });
+        throw new Error('expected rename rejection');
+      } catch (error) {
+        expect(error).toBeInstanceOf(VariableMutationError);
+        expect(error.code).toBe('variable_name_conflict');
+      }
+    });
+
+    it('rejects renaming an array index', () => {
+      applyVariableChange({
+        variablePath: 'Items',
+        forcedVariableType: null,
+        variablesContainer,
+        value: '["A","B"]',
+      });
+      try {
+        applyVariableRename({
+          variablePath: 'Items[0]',
+          newVariableName: 'First',
+          variablesContainer,
+        });
+        throw new Error('expected rename rejection');
+      } catch (error) {
+        expect(error).toBeInstanceOf(VariableMutationError);
+        expect(error.code).toBe('variable_rename_array_index_unsupported');
+      }
+    });
+
+    it('moves declarations before/after and to a final zero-based index', () => {
+      expect(
+        Array.from({ length: variablesContainer.count() }, (_, index) =>
+          variablesContainer.getNameAt(index)
+        )
+      ).toEqual(['PublicB', '__Internal', 'PublicA']);
+
+      expect(
+        applyVariableReorder({
+          variablePath: '__Internal',
+          variablesContainer,
+          moveAfterVariable: 'PublicA',
+        })
+      ).toMatchObject({ moved: true });
+      expect(
+        Array.from({ length: variablesContainer.count() }, (_, index) =>
+          variablesContainer.getNameAt(index)
+        )
+      ).toEqual(['PublicB', 'PublicA', '__Internal']);
+
+      applyVariableReorder({
+        variablePath: 'PublicB',
+        variablesContainer,
+        moveToIndex: 1,
+      });
+      expect(
+        Array.from({ length: variablesContainer.count() }, (_, index) =>
+          variablesContainer.getNameAt(index)
+        )
+      ).toEqual(['PublicA', 'PublicB', '__Internal']);
+
+      applyVariableReorder({
+        variablePath: 'PublicB',
+        variablesContainer,
+        moveBeforeVariable: 'PublicA',
+      });
+      expect(
+        Array.from({ length: variablesContainer.count() }, (_, index) =>
+          variablesContainer.getNameAt(index)
+        )
+      ).toEqual(['PublicB', 'PublicA', '__Internal']);
+    });
+
+    it('rejects ambiguous reorder positions with a stable code', () => {
+      try {
+        applyVariableReorder({
+          variablePath: 'PublicA',
+          variablesContainer,
+          moveBeforeVariable: 'PublicB',
+          moveAfterVariable: '__Internal',
+        });
+        throw new Error('expected reorder rejection');
+      } catch (error) {
+        expect(error).toBeInstanceOf(VariableMutationError);
+        expect(error.code).toBe('variable_reorder_position_conflict');
+      }
+    });
   });
 
   it('should remove a top-level variable', () => {

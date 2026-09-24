@@ -142,6 +142,12 @@ Project-owned extensions use that same typed EditorFunction surface: `editor.fun
 
 After declaration mutations, generated metadata is refreshed by the native EditorFunction implementation; discover the resulting action/condition/expression with `events.instructions.search/describe` and use the returned `callForms` rather than guessing names. Author a function body through the ordinary event tools with `target: { kind: "extension-function", extensionName, functionName }` (and owner fields for behavior/object methods). These typed tools inherit the normal MCP `expectedRevision` and `idempotencyKey` preconditions; use `safety.transactions.*`, `validation.run` and explicit `project.save`/`project.save-as` exactly as for other project mutations.
 
+### Variable rename and ordering
+
+`editor.functions.add-or-edit-variable` supports non-destructive declaration rename and reorder in addition to create/update/delete. Use `new_variable_name` for an in-place rename; top-level and nested structure-property renames preserve the existing variable value/type/UUID, and the native `WholeProjectRefactorer` rewrites affected event references for global, scene, object and instance-owned declarations. Array indexes are values, not declaration names, and cannot be renamed.
+
+Top-level declaration ordering is explicit and deterministic: specify exactly one of `move_before_variable`, `move_after_variable`, or `move_to_index` (a final zero-based index). Rename and reorder may be combined in one operation; the reorder addresses the post-rename name. These operations do not delete/recreate the declaration, so public-first / `__internal`-last ordering can be achieved without value/type loss. Duplicate names, missing targets, invalid paths and ambiguous positioning return stable structured `operationErrors`. Group variables remain create/update/delete-only until a concrete group refactor target can be made equally safe.
+
 ## Current command families
 
 The registry currently exposes command families for:
