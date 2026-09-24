@@ -4,6 +4,7 @@ import {
   editorFunctionsWithoutProject,
 } from '../EditorFunctions';
 import { makeFakeLaunchFunctionOptionsWithProject } from '../EditorFunctions/TestHelpers';
+import { getNonScriptableFunctionReason } from '../EditorFunctions/ScriptExecution/NonScriptableFunctionNames';
 import {
   getFunctionMetadata,
   getFunctionMetadataStats,
@@ -70,6 +71,92 @@ describe('AgentIntegration FunctionMetadata', () => {
     expect(getFunctionMetadata('search_docs')).toMatchObject({
       executableInEmbeddedApi: false,
       executionScope: 'generation-service',
+    });
+  });
+
+  it('publishes machine-readable exposure parity for direct, typed and script surfaces', () => {
+    listFunctionMetadata().forEach(metadata => {
+      expect(metadata.exposure.discovery).toEqual({
+        listed: true,
+        describable: true,
+      });
+      expect(metadata.exposure.genericCall.available).toBe(
+        metadata.executableInEmbeddedApi
+      );
+      expect(metadata.exposure.typedTool.available).toBe(
+        metadata.executableInEmbeddedApi
+      );
+      expect(metadata.exposure.typedTool.toolName).toBe(
+        metadata.executableInEmbeddedApi
+          ? `editor.functions.${metadata.name.replace(/_/g, '-')}`
+          : null
+      );
+
+      const policyReason = getNonScriptableFunctionReason(metadata.name);
+      const expectedScriptReason = metadata.executableInEmbeddedApi
+        ? policyReason
+        : 'generation-service-only';
+      expect(metadata.exposure.runScript.hiddenReason).toBe(
+        expectedScriptReason
+      );
+      expect(metadata.exposure.runScript.available).toBe(
+        expectedScriptReason === null
+      );
+
+      const expectedReadOnlyScriptReason =
+        expectedScriptReason ||
+        (!metadata.readOnly ? 'mutating-function-in-read-only-script' : null);
+      expect(metadata.exposure.readOnlyRunScript.hiddenReason).toBe(
+        expectedReadOnlyScriptReason
+      );
+      expect(metadata.exposure.readOnlyRunScript.available).toBe(
+        expectedReadOnlyScriptReason === null
+      );
+    });
+
+    const stats = getFunctionMetadataStats();
+    expect(stats.directlyCallable).toBe(stats.executableInEmbeddedApi);
+    expect(stats.typedTools).toBe(stats.executableInEmbeddedApi);
+    expect(stats.runScript).toBeGreaterThan(0);
+    expect(stats.runScript).toBeLessThan(stats.directlyCallable);
+    expect(stats.readOnlyRunScript).toBeLessThan(stats.runScript);
+  });
+
+  it('keeps extension-authoring and variable capabilities truthful', () => {
+    for (const name of ['create_extension', 'create_custom_function']) {
+      expect(getFunctionMetadata(name)).toMatchObject({
+        executableInEmbeddedApi: true,
+        exposure: {
+          genericCall: { available: true, hiddenReason: null },
+          typedTool: {
+            available: true,
+            hiddenReason: null,
+            toolName: `editor.functions.${name.replace(/_/g, '-')}`,
+          },
+          runScript: { available: true, hiddenReason: null },
+          readOnlyRunScript: {
+            available: false,
+            hiddenReason: 'mutating-function-in-read-only-script',
+          },
+        },
+      });
+    }
+
+    const variables = getFunctionMetadata('add_or_edit_variable');
+    expect(variables).not.toBeNull();
+    if (!variables) return;
+    expect(variables.description).toBe(
+      'Create, update or delete project, scene, object or instance variables.'
+    );
+    expect(variables.capabilities).toEqual(
+      expect.arrayContaining(['create', 'update', 'delete'])
+    );
+    expect(variables.capabilities).not.toEqual(
+      expect.arrayContaining(['rename', 'move'])
+    );
+    expect(variables.exposure.runScript).toEqual({
+      available: true,
+      hiddenReason: null,
     });
   });
 

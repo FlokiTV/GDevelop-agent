@@ -4,6 +4,7 @@ import {
   editorFunctionsWithoutProject,
 } from '../EditorFunctions';
 import { generatedFunctionMetadata } from './FunctionMetadata.generated';
+import { getNonScriptableFunctionReason } from '../EditorFunctions/ScriptExecution/NonScriptableFunctionNames';
 
 export type AgentFunctionArgumentMetadata = {|
   name: string,
@@ -12,6 +13,12 @@ export type AgentFunctionArgumentMetadata = {|
   provenance: string,
   enum?: Array<any>,
   description?: string,
+|};
+
+export type AgentFunctionExposure = {|
+  available: boolean,
+  hiddenReason: ?string,
+  toolName?: ?string,
 |};
 
 export type AgentFunctionMetadata = {|
@@ -31,11 +38,21 @@ export type AgentFunctionMetadata = {|
   source: ?{| file: string, line: ?number |},
   examples: Array<Object>,
   capabilities: Array<string>,
+  exposure: {|
+    discovery: {|
+      listed: boolean,
+      describable: boolean,
+    |},
+    genericCall: AgentFunctionExposure,
+    typedTool: AgentFunctionExposure,
+    runScript: AgentFunctionExposure,
+    readOnlyRunScript: AgentFunctionExposure,
+  |},
 |};
 
 const descriptionOverrides = {
   add_or_edit_variable:
-    'Create, update, move, rename or delete project, scene, object or instance variables.',
+    'Create, update or delete project, scene, object or instance variables.',
   change_project_properties_resources:
     'Change project properties and resource configuration.',
   change_scene_properties_layers_effects_groups:
@@ -161,6 +178,53 @@ const generationServiceOnlyFunctions = new Set([
   'search_object_asset_store',
   'search_resource_store',
 ]);
+
+const getTypedToolName = (functionName: string): string =>
+  `editor.functions.${functionName.replace(/_/g, '-')}`;
+
+const makeExposureMetadata = ({
+  name,
+  executableInEmbeddedApi,
+  readOnly,
+}: {|
+  name: string,
+  executableInEmbeddedApi: boolean,
+  readOnly: boolean,
+|}) => {
+  const embeddedHiddenReason = executableInEmbeddedApi
+    ? null
+    : 'generation-service-only';
+  const nonScriptableReason = getNonScriptableFunctionReason(name);
+  const runScriptHiddenReason =
+    embeddedHiddenReason || nonScriptableReason || null;
+  const readOnlyRunScriptHiddenReason =
+    runScriptHiddenReason ||
+    (!readOnly ? 'mutating-function-in-read-only-script' : null);
+
+  return {
+    discovery: {
+      listed: true,
+      describable: true,
+    },
+    genericCall: {
+      available: executableInEmbeddedApi,
+      hiddenReason: embeddedHiddenReason,
+    },
+    typedTool: {
+      available: executableInEmbeddedApi,
+      hiddenReason: embeddedHiddenReason,
+      toolName: executableInEmbeddedApi ? getTypedToolName(name) : null,
+    },
+    runScript: {
+      available: !runScriptHiddenReason,
+      hiddenReason: runScriptHiddenReason,
+    },
+    readOnlyRunScript: {
+      available: !readOnlyRunScriptHiddenReason,
+      hiddenReason: readOnlyRunScriptHiddenReason,
+    },
+  };
+};
 
 const capabilityStopWords = new Set([
   'a',
@@ -315,6 +379,11 @@ generatedFunctionMetadata.forEach(generated => {
     source: generated.source || null,
     examples: generated.generatedExample ? [generated.generatedExample] : [],
     capabilities: [],
+    exposure: makeExposureMetadata({
+      name: generated.name,
+      executableInEmbeddedApi,
+      readOnly: !mayModifyProject,
+    }),
   };
   entry.capabilities = makeCapabilities(entry);
   metadataByName.set(entry.name, entry);
@@ -344,7 +413,14 @@ export const listFunctionMetadata = ({
           entry.description
         } ${entry.aliases.join(' ')} ${entry.capabilities.join(
           ' '
-        )} ${entry.arguments.map(argument => argument.name).join(' ')}`
+        )} ${entry.arguments.map(argument => argument.name).join(' ')} ${[
+          entry.exposure.genericCall.hiddenReason,
+          entry.exposure.typedTool.hiddenReason,
+          entry.exposure.runScript.hiddenReason,
+          entry.exposure.readOnlyRunScript.hiddenReason,
+        ]
+          .filter(Boolean)
+          .join(' ')}`
       );
       return terms.every(term => haystack.includes(term));
     });
@@ -361,6 +437,18 @@ export const getFunctionMetadataStats = () => {
     ).length,
     generationServiceOnly: functions.filter(
       functionMetadata => !functionMetadata.executableInEmbeddedApi
+    ).length,
+    directlyCallable: functions.filter(
+      functionMetadata => functionMetadata.exposure.genericCall.available
+    ).length,
+    typedTools: functions.filter(
+      functionMetadata => functionMetadata.exposure.typedTool.available
+    ).length,
+    runScript: functions.filter(
+      functionMetadata => functionMetadata.exposure.runScript.available
+    ).length,
+    readOnlyRunScript: functions.filter(
+      functionMetadata => functionMetadata.exposure.readOnlyRunScript.available
     ).length,
     withSource: functions.filter(functionMetadata => !!functionMetadata.source)
       .length,

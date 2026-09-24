@@ -127,6 +127,67 @@ describe('EditorFunctionCommands', () => {
     expect(run).toHaveBeenCalledWith({ signal: undefined, calls, save: true });
   });
 
+  test('describes unavailable functions with the same hidden reason used by call rejection', async () => {
+    const { host, run } = makeHost();
+    const described = await host.execute('editor.functions.describe', {
+      name: 'search_docs',
+    });
+    expect(described.data.function).toMatchObject({
+      executableInEmbeddedApi: false,
+      exposure: {
+        genericCall: {
+          available: false,
+          hiddenReason: 'generation-service-only',
+        },
+        typedTool: {
+          available: false,
+          hiddenReason: 'generation-service-only',
+          toolName: null,
+        },
+        runScript: {
+          available: false,
+          hiddenReason: 'generation-service-only',
+        },
+      },
+    });
+
+    await expect(
+      host.execute('editor.functions.call', {
+        name: 'search_docs',
+        arguments: { query: 'camera' },
+      })
+    ).rejects.toMatchObject({
+      code: 'function_not_executable',
+      details: {
+        name: 'search_docs',
+        hiddenReason: 'generation-service-only',
+        exposure: described.data.function.exposure,
+      },
+    });
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  test('exposes extension-authoring functions through generic and typed paths from the same metadata', () => {
+    const { host } = makeHost();
+    const names = host.listCommands().map(descriptor => descriptor.name);
+    for (const functionName of [
+      'create_extension',
+      'create_custom_function',
+      'change_custom_function',
+    ]) {
+      const metadata = getFunctionMetadata(functionName);
+      expect(metadata).not.toBeNull();
+      if (!metadata) continue;
+      expect(metadata.exposure.genericCall.available).toBe(true);
+      expect(metadata.exposure.typedTool).toEqual({
+        available: true,
+        hiddenReason: null,
+        toolName: getTypedEditorFunctionCommandName(functionName),
+      });
+      expect(names).toContain(metadata.exposure.typedTool.toolName);
+    }
+  });
+
   test('rejects generation-service-only functions before execution', async () => {
     const { host, run } = makeHost();
     await expect(

@@ -21,12 +21,6 @@ export const generatedFunctionMetadata: Array<any> = [
         "provenance": "source"
       },
       {
-        "name": "scene_name",
-        "type": "string",
-        "required": true,
-        "provenance": "source"
-      },
-      {
         "name": "behavior_name",
         "type": "string",
         "required": false,
@@ -36,18 +30,17 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": true,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 2523
+      "line": 3025
     },
     "generatedExample": {
       "name": "add_behavior",
       "arguments": {
         "behavior_type": "BehaviorType",
-        "object_name": "Player",
-        "scene_name": "Scene"
+        "object_name": "Player"
       }
     },
     "aliases": [],
-    "searchText": "add_behavior addbehavior adds a behavior to an object (or to all objects of a group) in a scene. behavior_type object_name scene_name behavior_name"
+    "searchText": "add_behavior addbehavior adds a behavior to an object (or to all objects of a group) in a scene. behavior_type object_name behavior_name"
   },
   {
     "name": "add_or_edit_variable",
@@ -72,18 +65,12 @@ export const generatedFunctionMetadata: Array<any> = [
         "type": "string",
         "required": false,
         "provenance": "source"
-      },
-      {
-        "name": "scene_name",
-        "type": "string",
-        "required": false,
-        "provenance": "source"
       }
     ],
     "modifiesProjectFromSource": true,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 8162
+      "line": 9685
     },
     "generatedExample": {
       "name": "add_or_edit_variable",
@@ -92,22 +79,16 @@ export const generatedFunctionMetadata: Array<any> = [
       }
     },
     "aliases": [],
-    "searchText": "add_or_edit_variable addoreditvariable  variable_scope instance_id object_name scene_name"
+    "searchText": "add_or_edit_variable addoreditvariable  variable_scope instance_id object_name"
   },
   {
     "name": "add_scene_events",
     "implementation": "addSceneEvents",
     "requiresProject": true,
-    "description": "Adds a new event to a scene's event sheet",
+    "description": "Generates events with the AI and applies them: in the events sheet of a scene, or in the events of a function of an extension (`function_name`).",
     "arguments": [
       {
         "name": "extension_names_list",
-        "type": "string",
-        "required": true,
-        "provenance": "source"
-      },
-      {
-        "name": "scene_name",
         "type": "string",
         "required": true,
         "provenance": "source"
@@ -138,6 +119,12 @@ export const generatedFunctionMetadata: Array<any> = [
       },
       {
         "name": "expected_event_source",
+        "type": "string",
+        "required": false,
+        "provenance": "source"
+      },
+      {
+        "name": "function_name",
         "type": "string",
         "required": false,
         "provenance": "source"
@@ -182,19 +169,18 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": true,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 5431
+      "line": 6447
     },
     "generatedExample": {
       "name": "add_scene_events",
       "arguments": {
-        "extension_names_list": "<extension_names_list>",
-        "scene_name": "Scene"
+        "extension_names_list": "<extension_names_list>"
       }
     },
     "aliases": [
       "generate_events"
     ],
-    "searchText": "add_scene_events addsceneevents adds a new event to a scene's event sheet extension_names_list scene_name estimated_complexity event_batches event_script events_description expected_event_source objects_list placement_expected_parent_event_id placement_hint placement_rationale placement_relation placement_target_event_id"
+    "searchText": "add_scene_events addsceneevents generates events with the ai and applies them: in the events sheet of a scene, or in the events of a function of an extension (`function_name`). extension_names_list estimated_complexity event_batches event_script events_description expected_event_source function_name objects_list placement_expected_parent_event_id placement_hint placement_rationale placement_relation placement_target_event_id"
   },
   {
     "name": "change_behavior_property",
@@ -210,12 +196,6 @@ export const generatedFunctionMetadata: Array<any> = [
       },
       {
         "name": "object_name",
-        "type": "string",
-        "required": true,
-        "provenance": "source"
-      },
-      {
-        "name": "scene_name",
         "type": "string",
         "required": true,
         "provenance": "source"
@@ -248,18 +228,265 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": true,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 2944
+      "line": 3548
     },
     "generatedExample": {
       "name": "change_behavior_property",
       "arguments": {
         "behavior_name": "Behavior",
-        "object_name": "Player",
-        "scene_name": "Scene"
+        "object_name": "Player"
       }
     },
     "aliases": [],
-    "searchText": "change_behavior_property changebehaviorproperty changes a property of a specific behavior attached to an object behavior_name object_name scene_name changed_properties delete_this_behavior new_value property_name"
+    "searchText": "change_behavior_property changebehaviorproperty changes a property of a specific behavior attached to an object behavior_name object_name changed_properties delete_this_behavior new_value property_name"
+  },
+  {
+    "name": "change_custom_behavior",
+    "implementation": "changeCustomBehavior",
+    "requiresProject": true,
+    "description": "",
+    "arguments": [
+      {
+        "name": "custom_behavior_name",
+        "type": "string",
+        "required": true,
+        "provenance": "source"
+      },
+      {
+        "name": "extension_name",
+        "type": "string",
+        "required": true,
+        "provenance": "source"
+      },
+      {
+        "name": "changed_properties",
+        "type": "array",
+        "required": false,
+        "provenance": "source"
+      },
+      {
+        "name": "changed_settings",
+        "type": "array",
+        "required": false,
+        "provenance": "source"
+      },
+      {
+        "name": "changed_shared_properties",
+        "type": "array",
+        "required": false,
+        "provenance": "source"
+      },
+      {
+        "name": "delete_even_if_used",
+        "type": "boolean",
+        "required": false,
+        "provenance": "source"
+      },
+      {
+        "name": "delete_this_custom_behavior",
+        "type": "boolean",
+        "required": false,
+        "provenance": "source"
+      }
+    ],
+    "modifiesProjectFromSource": true,
+    "source": {
+      "file": "EditorFunctions/Extensions/CustomBehaviorFunctions.js",
+      "line": 565
+    },
+    "generatedExample": {
+      "name": "change_custom_behavior",
+      "arguments": {
+        "custom_behavior_name": "<custom_behavior_name>",
+        "extension_name": "<extension_name>"
+      }
+    },
+    "aliases": [],
+    "searchText": "change_custom_behavior changecustombehavior  custom_behavior_name extension_name changed_properties changed_settings changed_shared_properties delete_even_if_used delete_this_custom_behavior"
+  },
+  {
+    "name": "change_custom_function",
+    "implementation": "changeCustomFunction",
+    "requiresProject": true,
+    "description": "",
+    "arguments": [
+      {
+        "name": "function_name",
+        "type": "string",
+        "required": true,
+        "provenance": "source"
+      },
+      {
+        "name": "changed_parameters",
+        "type": "array",
+        "required": false,
+        "provenance": "source"
+      },
+      {
+        "name": "changed_settings",
+        "type": "array",
+        "required": false,
+        "provenance": "source"
+      },
+      {
+        "name": "delete_this_function",
+        "type": "boolean",
+        "required": false,
+        "provenance": "source"
+      }
+    ],
+    "modifiesProjectFromSource": true,
+    "source": {
+      "file": "EditorFunctions/Extensions/CustomFunctionFunctions.js",
+      "line": 1280
+    },
+    "generatedExample": {
+      "name": "change_custom_function",
+      "arguments": {
+        "function_name": "<function_name>"
+      }
+    },
+    "aliases": [],
+    "searchText": "change_custom_function changecustomfunction  function_name changed_parameters changed_settings delete_this_function"
+  },
+  {
+    "name": "change_custom_object",
+    "implementation": "changeCustomObject",
+    "requiresProject": true,
+    "description": "",
+    "arguments": [
+      {
+        "name": "custom_object_name",
+        "type": "string",
+        "required": true,
+        "provenance": "source"
+      },
+      {
+        "name": "extension_name",
+        "type": "string",
+        "required": true,
+        "provenance": "source"
+      },
+      {
+        "name": "changed_properties",
+        "type": "array",
+        "required": false,
+        "provenance": "source"
+      },
+      {
+        "name": "changed_settings",
+        "type": "array",
+        "required": false,
+        "provenance": "source"
+      },
+      {
+        "name": "changed_variants",
+        "type": "array",
+        "required": false,
+        "provenance": "source"
+      },
+      {
+        "name": "delete_even_if_used",
+        "type": "boolean",
+        "required": false,
+        "provenance": "source"
+      },
+      {
+        "name": "delete_this_custom_object",
+        "type": "boolean",
+        "required": false,
+        "provenance": "source"
+      },
+      {
+        "name": "fit_area_to_children",
+        "type": "string",
+        "required": false,
+        "provenance": "source"
+      },
+      {
+        "name": "forward_child_object_functions",
+        "type": "string[]",
+        "required": false,
+        "provenance": "source"
+      }
+    ],
+    "modifiesProjectFromSource": true,
+    "source": {
+      "file": "EditorFunctions/Extensions/CustomObjectFunctions.js",
+      "line": 660
+    },
+    "generatedExample": {
+      "name": "change_custom_object",
+      "arguments": {
+        "custom_object_name": "<custom_object_name>",
+        "extension_name": "<extension_name>"
+      }
+    },
+    "aliases": [],
+    "searchText": "change_custom_object changecustomobject  custom_object_name extension_name changed_properties changed_settings changed_variants delete_even_if_used delete_this_custom_object fit_area_to_children forward_child_object_functions"
+  },
+  {
+    "name": "change_extension_properties",
+    "implementation": "changeExtensionProperties",
+    "requiresProject": true,
+    "description": "",
+    "arguments": [
+      {
+        "name": "extension_name",
+        "type": "string",
+        "required": true,
+        "provenance": "source"
+      },
+      {
+        "name": "changed_dependencies",
+        "type": "array",
+        "required": false,
+        "provenance": "source"
+      },
+      {
+        "name": "changed_properties",
+        "type": "array",
+        "required": false,
+        "provenance": "source"
+      },
+      {
+        "name": "delete_even_if_used",
+        "type": "boolean",
+        "required": false,
+        "provenance": "source"
+      },
+      {
+        "name": "delete_this_extension",
+        "type": "boolean",
+        "required": false,
+        "provenance": "source"
+      },
+      {
+        "name": "new_value",
+        "type": "string",
+        "required": false,
+        "provenance": "source"
+      },
+      {
+        "name": "property_name",
+        "type": "string",
+        "required": false,
+        "provenance": "source"
+      }
+    ],
+    "modifiesProjectFromSource": true,
+    "source": {
+      "file": "EditorFunctions/Extensions/ExtensionFunctions.js",
+      "line": 503
+    },
+    "generatedExample": {
+      "name": "change_extension_properties",
+      "arguments": {
+        "extension_name": "<extension_name>"
+      }
+    },
+    "aliases": [],
+    "searchText": "change_extension_properties changeextensionproperties  extension_name changed_dependencies changed_properties delete_even_if_used delete_this_extension new_value property_name"
   },
   {
     "name": "change_gameplay_tests",
@@ -283,7 +510,7 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": true,
     "source": {
       "file": "EditorFunctions/GameplayTestTools.js",
-      "line": 190
+      "line": 214
     },
     "generatedExample": {
       "name": "change_gameplay_tests",
@@ -305,12 +532,6 @@ export const generatedFunctionMetadata: Array<any> = [
         "provenance": "source"
       },
       {
-        "name": "scene_name",
-        "type": "string",
-        "required": true,
-        "provenance": "source"
-      },
-      {
         "name": "changed_effects",
         "type": "array",
         "required": false,
@@ -344,19 +565,18 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": true,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 2131
+      "line": 2489
     },
     "generatedExample": {
       "name": "change_object_properties_effects",
       "arguments": {
-        "object_name": "Player",
-        "scene_name": "Scene"
+        "object_name": "Player"
       }
     },
     "aliases": [
       "change_object_property"
     ],
-    "searchText": "change_object_properties_effects changeobjectpropertieseffects changes properties and/or effects of a specific object (global or in a scene). effects are only applied if the object type supports them (see `objectsupportseffects`). object_name scene_name changed_effects changed_properties delete_this_object new_value property_name"
+    "searchText": "change_object_properties_effects changeobjectpropertieseffects changes properties and/or effects of a specific object (global or in a scene). effects are only applied if the object type supports them (see `objectsupportseffects`). object_name changed_effects changed_properties delete_this_object new_value property_name"
   },
   {
     "name": "change_object_property",
@@ -371,12 +591,6 @@ export const generatedFunctionMetadata: Array<any> = [
         "provenance": "source"
       },
       {
-        "name": "scene_name",
-        "type": "string",
-        "required": true,
-        "provenance": "source"
-      },
-      {
         "name": "changed_effects",
         "type": "array",
         "required": false,
@@ -410,19 +624,18 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": true,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 2131
+      "line": 2489
     },
     "generatedExample": {
       "name": "change_object_property",
       "arguments": {
-        "object_name": "Player",
-        "scene_name": "Scene"
+        "object_name": "Player"
       }
     },
     "aliases": [
       "change_object_properties_effects"
     ],
-    "searchText": "change_object_property changeobjectpropertieseffects changes properties and/or effects of a specific object (global or in a scene). effects are only applied if the object type supports them (see `objectsupportseffects`). object_name scene_name changed_effects changed_properties delete_this_object new_value property_name"
+    "searchText": "change_object_property changeobjectpropertieseffects changes properties and/or effects of a specific object (global or in a scene). effects are only applied if the object type supports them (see `objectsupportseffects`). object_name changed_effects changed_properties delete_this_object new_value property_name"
   },
   {
     "name": "change_project_properties_resources",
@@ -476,7 +689,7 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": true,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 7549
+      "line": 8946
     },
     "generatedExample": {
       "name": "change_project_properties_resources",
@@ -491,12 +704,6 @@ export const generatedFunctionMetadata: Array<any> = [
     "requiresProject": true,
     "description": "",
     "arguments": [
-      {
-        "name": "scene_name",
-        "type": "string",
-        "required": true,
-        "provenance": "source"
-      },
       {
         "name": "changed_groups",
         "type": "array",
@@ -609,16 +816,238 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": true,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 6573
+      "line": 7921
     },
     "generatedExample": {
       "name": "change_scene_properties_layers_effects_groups",
+      "arguments": {}
+    },
+    "aliases": [],
+    "searchText": "change_scene_properties_layers_effects_groups changescenepropertieslayerseffectsgroups  changed_groups changed_layer_effects changed_layers changed_properties delete_this_group delete_this_layer delete_this_scene group_name layer_name move_instances_to_layer new_group_name new_layer_name new_layer_position new_value new_visibility objects_to_add objects_to_remove property_name"
+  },
+  {
+    "name": "create_custom_behavior",
+    "implementation": "createCustomBehavior",
+    "requiresProject": true,
+    "description": "---------------------------------------------------------------------------",
+    "arguments": [
+      {
+        "name": "custom_behavior_name",
+        "type": "string",
+        "required": true,
+        "provenance": "source"
+      },
+      {
+        "name": "extension_name",
+        "type": "string",
+        "required": true,
+        "provenance": "source"
+      },
+      {
+        "name": "description",
+        "type": "string",
+        "required": false,
+        "provenance": "source"
+      },
+      {
+        "name": "duplicated_custom_behavior_name",
+        "type": "string",
+        "required": false,
+        "provenance": "source"
+      },
+      {
+        "name": "duplicated_from_extension_name",
+        "type": "string",
+        "required": false,
+        "provenance": "source"
+      },
+      {
+        "name": "full_name",
+        "type": "string",
+        "required": false,
+        "provenance": "source"
+      },
+      {
+        "name": "object_type",
+        "type": "string",
+        "required": false,
+        "provenance": "source"
+      }
+    ],
+    "modifiesProjectFromSource": true,
+    "source": {
+      "file": "EditorFunctions/Extensions/CustomBehaviorFunctions.js",
+      "line": 251
+    },
+    "generatedExample": {
+      "name": "create_custom_behavior",
       "arguments": {
-        "scene_name": "Scene"
+        "custom_behavior_name": "<custom_behavior_name>",
+        "extension_name": "<extension_name>"
       }
     },
     "aliases": [],
-    "searchText": "change_scene_properties_layers_effects_groups changescenepropertieslayerseffectsgroups  scene_name changed_groups changed_layer_effects changed_layers changed_properties delete_this_group delete_this_layer delete_this_scene group_name layer_name move_instances_to_layer new_group_name new_layer_name new_layer_position new_value new_visibility objects_to_add objects_to_remove property_name"
+    "searchText": "create_custom_behavior createcustombehavior --------------------------------------------------------------------------- custom_behavior_name extension_name description duplicated_custom_behavior_name duplicated_from_extension_name full_name object_type"
+  },
+  {
+    "name": "create_custom_function",
+    "implementation": "createCustomFunction",
+    "requiresProject": true,
+    "description": "---------------------------------------------------------------------------",
+    "arguments": [
+      {
+        "name": "function_name",
+        "type": "string",
+        "required": true,
+        "provenance": "source"
+      },
+      {
+        "name": "description",
+        "type": "string",
+        "required": false,
+        "provenance": "source"
+      },
+      {
+        "name": "duplicated_function_name",
+        "type": "string",
+        "required": false,
+        "provenance": "source"
+      },
+      {
+        "name": "full_name",
+        "type": "string",
+        "required": false,
+        "provenance": "source"
+      },
+      {
+        "name": "function_type",
+        "type": "unknown",
+        "required": false,
+        "provenance": "direct-args-access"
+      },
+      {
+        "name": "getter_name",
+        "type": "string",
+        "required": false,
+        "provenance": "source"
+      },
+      {
+        "name": "group",
+        "type": "string",
+        "required": false,
+        "provenance": "source"
+      },
+      {
+        "name": "parameters",
+        "type": "array",
+        "required": false,
+        "provenance": "source"
+      },
+      {
+        "name": "sentence",
+        "type": "string",
+        "required": false,
+        "provenance": "source"
+      }
+    ],
+    "modifiesProjectFromSource": true,
+    "source": {
+      "file": "EditorFunctions/Extensions/CustomFunctionFunctions.js",
+      "line": 798
+    },
+    "generatedExample": {
+      "name": "create_custom_function",
+      "arguments": {
+        "function_name": "<function_name>"
+      }
+    },
+    "aliases": [],
+    "searchText": "create_custom_function createcustomfunction --------------------------------------------------------------------------- function_name description duplicated_function_name full_name function_type getter_name group parameters sentence"
+  },
+  {
+    "name": "create_custom_object",
+    "implementation": "createCustomObject",
+    "requiresProject": true,
+    "description": "",
+    "arguments": [
+      {
+        "name": "custom_object_name",
+        "type": "string",
+        "required": true,
+        "provenance": "source"
+      },
+      {
+        "name": "extension_name",
+        "type": "string",
+        "required": true,
+        "provenance": "source"
+      },
+      {
+        "name": "area",
+        "type": "object",
+        "required": false,
+        "provenance": "source"
+      },
+      {
+        "name": "duplicated_custom_object_name",
+        "type": "string",
+        "required": false,
+        "provenance": "source"
+      },
+      {
+        "name": "duplicated_from_extension_name",
+        "type": "string",
+        "required": false,
+        "provenance": "source"
+      }
+    ],
+    "modifiesProjectFromSource": true,
+    "source": {
+      "file": "EditorFunctions/Extensions/CustomObjectFunctions.js",
+      "line": 440
+    },
+    "generatedExample": {
+      "name": "create_custom_object",
+      "arguments": {
+        "custom_object_name": "<custom_object_name>",
+        "extension_name": "<extension_name>"
+      }
+    },
+    "aliases": [],
+    "searchText": "create_custom_object createcustomobject  custom_object_name extension_name area duplicated_custom_object_name duplicated_from_extension_name"
+  },
+  {
+    "name": "create_extension",
+    "implementation": "createExtension",
+    "requiresProject": true,
+    "description": "",
+    "arguments": [
+      {
+        "name": "extension_name",
+        "type": "string",
+        "required": true,
+        "provenance": "source"
+      },
+      {
+        "name": "duplicated_extension_name",
+        "type": "string",
+        "required": false,
+        "provenance": "source"
+      }
+    ],
+    "modifiesProjectFromSource": true,
+    "source": {
+      "file": "EditorFunctions/Extensions/ExtensionFunctions.js",
+      "line": 387
+    },
+    "generatedExample": {
+      "name": "create_extension",
+      "arguments": {
+        "extension_name": "<extension_name>"
+      }
+    },
+    "aliases": [],
+    "searchText": "create_extension createextension  extension_name duplicated_extension_name"
   },
   {
     "name": "create_object",
@@ -633,12 +1062,6 @@ export const generatedFunctionMetadata: Array<any> = [
         "provenance": "source"
       },
       {
-        "name": "scene_name",
-        "type": "string",
-        "required": true,
-        "provenance": "source"
-      },
-      {
         "name": "asset_id",
         "type": "string",
         "required": false,
@@ -658,9 +1081,15 @@ export const generatedFunctionMetadata: Array<any> = [
       },
       {
         "name": "duplicated_object_scene",
-        "type": "string",
+        "type": "unknown",
         "required": false,
-        "provenance": "source"
+        "provenance": "direct-args-access"
+      },
+      {
+        "name": "duplicated_object_scope",
+        "type": "unknown",
+        "required": false,
+        "provenance": "direct-args-access"
       },
       {
         "name": "object_type",
@@ -696,19 +1125,18 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": true,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 1017
+      "line": 1177
     },
     "generatedExample": {
       "name": "create_object",
       "arguments": {
-        "object_name": "Player",
-        "scene_name": "Scene"
+        "object_name": "Player"
       }
     },
     "aliases": [
       "create_or_replace_object"
     ],
-    "searchText": "create_object createorreplaceobject creates a new object (in the specified scene or globally), or replaces an existing one, or duplicates an existing one. object_name scene_name asset_id description duplicated_object_name duplicated_object_scene object_type replace_existing_object search_terms target_object_scope two_dimensional_view_kind"
+    "searchText": "create_object createorreplaceobject creates a new object (in the specified scene or globally), or replaces an existing one, or duplicates an existing one. object_name asset_id description duplicated_object_name duplicated_object_scene duplicated_object_scope object_type replace_existing_object search_terms target_object_scope two_dimensional_view_kind"
   },
   {
     "name": "create_or_replace_object",
@@ -723,12 +1151,6 @@ export const generatedFunctionMetadata: Array<any> = [
         "provenance": "source"
       },
       {
-        "name": "scene_name",
-        "type": "string",
-        "required": true,
-        "provenance": "source"
-      },
-      {
         "name": "asset_id",
         "type": "string",
         "required": false,
@@ -748,9 +1170,15 @@ export const generatedFunctionMetadata: Array<any> = [
       },
       {
         "name": "duplicated_object_scene",
-        "type": "string",
+        "type": "unknown",
         "required": false,
-        "provenance": "source"
+        "provenance": "direct-args-access"
+      },
+      {
+        "name": "duplicated_object_scope",
+        "type": "unknown",
+        "required": false,
+        "provenance": "direct-args-access"
       },
       {
         "name": "object_type",
@@ -786,19 +1214,18 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": true,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 1017
+      "line": 1177
     },
     "generatedExample": {
       "name": "create_or_replace_object",
       "arguments": {
-        "object_name": "Player",
-        "scene_name": "Scene"
+        "object_name": "Player"
       }
     },
     "aliases": [
       "create_object"
     ],
-    "searchText": "create_or_replace_object createorreplaceobject creates a new object (in the specified scene or globally), or replaces an existing one, or duplicates an existing one. object_name scene_name asset_id description duplicated_object_name duplicated_object_scene object_type replace_existing_object search_terms target_object_scope two_dimensional_view_kind"
+    "searchText": "create_or_replace_object createorreplaceobject creates a new object (in the specified scene or globally), or replaces an existing one, or duplicates an existing one. object_name asset_id description duplicated_object_name duplicated_object_scene duplicated_object_scope object_type replace_existing_object search_terms target_object_scope two_dimensional_view_kind"
   },
   {
     "name": "create_or_update_plan",
@@ -809,7 +1236,7 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": false,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 8525
+      "line": 10147
     },
     "generatedExample": {
       "name": "create_or_update_plan",
@@ -852,7 +1279,7 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": true,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 6095
+      "line": 7288
     },
     "generatedExample": {
       "name": "create_scene",
@@ -870,12 +1297,6 @@ export const generatedFunctionMetadata: Array<any> = [
     "description": "",
     "arguments": [
       {
-        "name": "scene_name",
-        "type": "string",
-        "required": true,
-        "provenance": "source"
-      },
-      {
         "name": "filter_by_object_name",
         "type": "string",
         "required": false,
@@ -885,31 +1306,23 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": false,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 3317
+      "line": 4021
     },
     "generatedExample": {
       "name": "describe_instances",
-      "arguments": {
-        "scene_name": "Scene"
-      }
+      "arguments": {}
     },
     "aliases": [],
-    "searchText": "describe_instances describeinstances  scene_name filter_by_object_name"
+    "searchText": "describe_instances describeinstances  filter_by_object_name"
   },
   {
     "name": "generate_events",
     "implementation": "addSceneEvents",
     "requiresProject": true,
-    "description": "Adds a new event to a scene's event sheet",
+    "description": "Generates events with the AI and applies them: in the events sheet of a scene, or in the events of a function of an extension (`function_name`).",
     "arguments": [
       {
         "name": "extension_names_list",
-        "type": "string",
-        "required": true,
-        "provenance": "source"
-      },
-      {
-        "name": "scene_name",
         "type": "string",
         "required": true,
         "provenance": "source"
@@ -940,6 +1353,12 @@ export const generatedFunctionMetadata: Array<any> = [
       },
       {
         "name": "expected_event_source",
+        "type": "string",
+        "required": false,
+        "provenance": "source"
+      },
+      {
+        "name": "function_name",
         "type": "string",
         "required": false,
         "provenance": "source"
@@ -984,19 +1403,18 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": true,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 5431
+      "line": 6447
     },
     "generatedExample": {
       "name": "generate_events",
       "arguments": {
-        "extension_names_list": "<extension_names_list>",
-        "scene_name": "Scene"
+        "extension_names_list": "<extension_names_list>"
       }
     },
     "aliases": [
       "add_scene_events"
     ],
-    "searchText": "generate_events addsceneevents adds a new event to a scene's event sheet extension_names_list scene_name estimated_complexity event_batches event_script events_description expected_event_source objects_list placement_expected_parent_event_id placement_hint placement_rationale placement_relation placement_target_event_id"
+    "searchText": "generate_events addsceneevents generates events with the ai and applies them: in the events sheet of a scene, or in the events of a function of an extension (`function_name`). extension_names_list estimated_complexity event_batches event_script events_description expected_event_source function_name objects_list placement_expected_parent_event_id placement_hint placement_rationale placement_relation placement_target_event_id"
   },
   {
     "name": "get_game_starter_summary",
@@ -1014,7 +1432,7 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": false,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 8579
+      "line": 10201
     },
     "generatedExample": {
       "name": "get_game_starter_summary",
@@ -1051,7 +1469,7 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": true,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 8622
+      "line": 10244
     },
     "generatedExample": {
       "name": "initialize_project",
@@ -1080,29 +1498,73 @@ export const generatedFunctionMetadata: Array<any> = [
         "type": "string",
         "required": true,
         "provenance": "source"
-      },
-      {
-        "name": "scene_name",
-        "type": "string",
-        "required": true,
-        "provenance": "source"
       }
     ],
     "modifiesProjectFromSource": false,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 2843
+      "line": 3431
     },
     "generatedExample": {
       "name": "inspect_behavior_properties",
       "arguments": {
         "behavior_name": "Behavior",
-        "object_name": "Player",
-        "scene_name": "Scene"
+        "object_name": "Player"
       }
     },
     "aliases": [],
-    "searchText": "inspect_behavior_properties inspectbehaviorproperties retrieves the properties of a specific behavior attached to an object (or to the objects of a group). behavior_name object_name scene_name"
+    "searchText": "inspect_behavior_properties inspectbehaviorproperties retrieves the properties of a specific behavior attached to an object (or to the objects of a group). behavior_name object_name"
+  },
+  {
+    "name": "inspect_extension",
+    "implementation": "inspectExtension",
+    "requiresProject": true,
+    "description": "",
+    "arguments": [
+      {
+        "name": "extension_name",
+        "type": "string",
+        "required": true,
+        "provenance": "source"
+      },
+      {
+        "name": "custom_behavior_name",
+        "type": "string",
+        "required": false,
+        "provenance": "source"
+      },
+      {
+        "name": "custom_object_name",
+        "type": "string",
+        "required": false,
+        "provenance": "source"
+      },
+      {
+        "name": "function_name",
+        "type": "string",
+        "required": false,
+        "provenance": "source"
+      },
+      {
+        "name": "variant_name",
+        "type": "string",
+        "required": false,
+        "provenance": "source"
+      }
+    ],
+    "modifiesProjectFromSource": false,
+    "source": {
+      "file": "EditorFunctions/Extensions/InspectExtension.js",
+      "line": 837
+    },
+    "generatedExample": {
+      "name": "inspect_extension",
+      "arguments": {
+        "extension_name": "<extension_name>"
+      }
+    },
+    "aliases": [],
+    "searchText": "inspect_extension inspectextension  extension_name custom_behavior_name custom_object_name function_name variant_name"
   },
   {
     "name": "inspect_object_properties",
@@ -1115,30 +1577,23 @@ export const generatedFunctionMetadata: Array<any> = [
         "type": "string",
         "required": true,
         "provenance": "source"
-      },
-      {
-        "name": "scene_name",
-        "type": "string",
-        "required": true,
-        "provenance": "source"
       }
     ],
     "modifiesProjectFromSource": false,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 1978
+      "line": 2317
     },
     "generatedExample": {
       "name": "inspect_object_properties",
       "arguments": {
-        "object_name": "Player",
-        "scene_name": "Scene"
+        "object_name": "Player"
       }
     },
     "aliases": [
       "inspect_object_properties_effects"
     ],
-    "searchText": "inspect_object_properties inspectobjectpropertieseffects retrieves the properties, behaviors and effects of a specific object (global or in a scene). an object has its own effects container, just like a layer does — effects are only listed if the object type supports them (see `objectsupportseffects`). object_name scene_name"
+    "searchText": "inspect_object_properties inspectobjectpropertieseffects retrieves the properties, behaviors and effects of a specific object (global or in a scene). an object has its own effects container, just like a layer does — effects are only listed if the object type supports them (see `objectsupportseffects`). object_name"
   },
   {
     "name": "inspect_object_properties_effects",
@@ -1151,30 +1606,23 @@ export const generatedFunctionMetadata: Array<any> = [
         "type": "string",
         "required": true,
         "provenance": "source"
-      },
-      {
-        "name": "scene_name",
-        "type": "string",
-        "required": true,
-        "provenance": "source"
       }
     ],
     "modifiesProjectFromSource": false,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 1978
+      "line": 2317
     },
     "generatedExample": {
       "name": "inspect_object_properties_effects",
       "arguments": {
-        "object_name": "Player",
-        "scene_name": "Scene"
+        "object_name": "Player"
       }
     },
     "aliases": [
       "inspect_object_properties"
     ],
-    "searchText": "inspect_object_properties_effects inspectobjectpropertieseffects retrieves the properties, behaviors and effects of a specific object (global or in a scene). an object has its own effects container, just like a layer does — effects are only listed if the object type supports them (see `objectsupportseffects`). object_name scene_name"
+    "searchText": "inspect_object_properties_effects inspectobjectpropertieseffects retrieves the properties, behaviors and effects of a specific object (global or in a scene). an object has its own effects container, just like a layer does — effects are only listed if the object type supports them (see `objectsupportseffects`). object_name"
   },
   {
     "name": "inspect_project_properties_resources",
@@ -1198,7 +1646,7 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": false,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 7425
+      "line": 8822
     },
     "generatedExample": {
       "name": "inspect_project_properties_resources",
@@ -1212,27 +1660,18 @@ export const generatedFunctionMetadata: Array<any> = [
     "implementation": "inspectScenePropertiesLayersEffects",
     "requiresProject": true,
     "description": "",
-    "arguments": [
-      {
-        "name": "scene_name",
-        "type": "string",
-        "required": true,
-        "provenance": "source"
-      }
-    ],
+    "arguments": [],
     "modifiesProjectFromSource": false,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 6470
+      "line": 7736
     },
     "generatedExample": {
       "name": "inspect_scene_properties_layers_effects",
-      "arguments": {
-        "scene_name": "Scene"
-      }
+      "arguments": {}
     },
     "aliases": [],
-    "searchText": "inspect_scene_properties_layers_effects inspectscenepropertieslayerseffects  scene_name"
+    "searchText": "inspect_scene_properties_layers_effects inspectscenepropertieslayerseffects "
   },
   {
     "name": "inspect_variables",
@@ -1259,12 +1698,6 @@ export const generatedFunctionMetadata: Array<any> = [
         "provenance": "source"
       },
       {
-        "name": "scene_name",
-        "type": "string",
-        "required": false,
-        "provenance": "source"
-      },
-      {
         "name": "variable_names_or_paths",
         "type": "array",
         "required": false,
@@ -1274,7 +1707,7 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": false,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 8432
+      "line": 10031
     },
     "generatedExample": {
       "name": "inspect_variables",
@@ -1283,7 +1716,7 @@ export const generatedFunctionMetadata: Array<any> = [
       }
     },
     "aliases": [],
-    "searchText": "inspect_variables inspectvariables  variable_scope instance_id object_name scene_name variable_names_or_paths"
+    "searchText": "inspect_variables inspectvariables  variable_scope instance_id object_name variable_names_or_paths"
   },
   {
     "name": "put_2d_instances",
@@ -1299,12 +1732,6 @@ export const generatedFunctionMetadata: Array<any> = [
       },
       {
         "name": "layer_name",
-        "type": "string",
-        "required": true,
-        "provenance": "source"
-      },
-      {
-        "name": "scene_name",
         "type": "string",
         "required": true,
         "provenance": "source"
@@ -1391,18 +1818,17 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": true,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 3494
+      "line": 4192
     },
     "generatedExample": {
       "name": "put_2d_instances",
       "arguments": {
         "brush_kind": "point",
-        "layer_name": "",
-        "scene_name": "Scene"
+        "layer_name": ""
       }
     },
     "aliases": [],
-    "searchText": "put_2d_instances put2dinstances places new instance(s), or move/erase existing instances, of an existing object onto a specified 2d layer within a scene using a virtual brush at given x, y coordinates. can also be used to resize, rotate, change opacity or z order of existing 2d instance(s). existing instances identifiers can be found by calling `describe_instances` (`id` field for each instance). brush_kind layer_name scene_name brush_end_position brush_position brush_size column_count existing_instance_ids instances_hidden instances_opacity instances_rotation instances_size instances_z_order new_instances_count object_name row_count"
+    "searchText": "put_2d_instances put2dinstances places new instance(s), or move/erase existing instances, of an existing object onto a specified 2d layer within a scene using a virtual brush at given x, y coordinates. can also be used to resize, rotate, change opacity or z order of existing 2d instance(s). existing instances identifiers can be found by calling `describe_instances` (`id` field for each instance). brush_kind layer_name brush_end_position brush_position brush_size column_count existing_instance_ids instances_hidden instances_opacity instances_rotation instances_size instances_z_order new_instances_count object_name row_count"
   },
   {
     "name": "put_3d_instances",
@@ -1418,12 +1844,6 @@ export const generatedFunctionMetadata: Array<any> = [
       },
       {
         "name": "layer_name",
-        "type": "string",
-        "required": true,
-        "provenance": "source"
-      },
-      {
-        "name": "scene_name",
         "type": "string",
         "required": true,
         "provenance": "source"
@@ -1486,18 +1906,17 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": true,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 4386
+      "line": 5165
     },
     "generatedExample": {
       "name": "put_3d_instances",
       "arguments": {
         "brush_kind": "point",
-        "layer_name": "",
-        "scene_name": "Scene"
+        "layer_name": ""
       }
     },
     "aliases": [],
-    "searchText": "put_3d_instances put3dinstances places new instance(s), or move/erase existing instances, of an existing object onto a specified 3d layer within a scene using a virtual brush at given x, y, z coordinates. can also be used to resize, rotate existing 3d instance(s). existing instances identifiers can be found by calling `describe_instances` (`id` field for each instance). brush_kind layer_name scene_name brush_end_position brush_position brush_size existing_instance_ids instances_hidden instances_rotation instances_size new_instances_count object_name"
+    "searchText": "put_3d_instances put3dinstances places new instance(s), or move/erase existing instances, of an existing object onto a specified 3d layer within a scene using a virtual brush at given x, y, z coordinates. can also be used to resize, rotate existing 3d instance(s). existing instances identifiers can be found by calling `describe_instances` (`id` field for each instance). brush_kind layer_name brush_end_position brush_position brush_size existing_instance_ids instances_hidden instances_rotation instances_size new_instances_count object_name"
   },
   {
     "name": "read_events_source",
@@ -1506,14 +1925,14 @@ export const generatedFunctionMetadata: Array<any> = [
     "description": "Reads the events of a scene as EventScript source (the exact syntax accepted by the `event_script` field of events generation), with filters to keep the output small.",
     "arguments": [
       {
-        "name": "scene_name",
-        "type": "string",
-        "required": true,
+        "name": "event_ids",
+        "type": "string[]",
+        "required": false,
         "provenance": "source"
       },
       {
-        "name": "event_ids",
-        "type": "string[]",
+        "name": "function_name",
+        "type": "string",
         "required": false,
         "provenance": "source"
       },
@@ -1545,16 +1964,14 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": false,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 5288
+      "line": 6243
     },
     "generatedExample": {
       "name": "read_events_source",
-      "arguments": {
-        "scene_name": "Scene"
-      }
+      "arguments": {}
     },
     "aliases": [],
-    "searchText": "read_events_source readeventssource reads the events of a scene as eventscript source (the exact syntax accepted by the `event_script` field of events generation), with filters to keep the output small. scene_name event_ids max_chars object_names search sub_events_depth"
+    "searchText": "read_events_source readeventssource reads the events of a scene as eventscript source (the exact syntax accepted by the `event_script` field of events generation), with filters to keep the output small. event_ids function_name max_chars object_names search sub_events_depth"
   },
   {
     "name": "read_full_docs",
@@ -1572,7 +1989,7 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": false,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 8546
+      "line": 10168
     },
     "generatedExample": {
       "name": "read_full_docs",
@@ -1633,7 +2050,7 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": false,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 8781
+      "line": 10403
     },
     "generatedExample": {
       "name": "read_game_project_json",
@@ -1647,27 +2064,18 @@ export const generatedFunctionMetadata: Array<any> = [
     "implementation": "readSceneEvents",
     "requiresProject": true,
     "description": "Retrieves the event sheet structure for a scene",
-    "arguments": [
-      {
-        "name": "scene_name",
-        "type": "string",
-        "required": true,
-        "provenance": "source"
-      }
-    ],
+    "arguments": [],
     "modifiesProjectFromSource": false,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 5213
+      "line": 6068
     },
     "generatedExample": {
       "name": "read_scene_events",
-      "arguments": {
-        "scene_name": "Scene"
-      }
+      "arguments": {}
     },
     "aliases": [],
-    "searchText": "read_scene_events readsceneevents retrieves the event sheet structure for a scene scene_name"
+    "searchText": "read_scene_events readsceneevents retrieves the event sheet structure for a scene"
   },
   {
     "name": "remove_behavior",
@@ -1686,29 +2094,22 @@ export const generatedFunctionMetadata: Array<any> = [
         "type": "string",
         "required": true,
         "provenance": "source"
-      },
-      {
-        "name": "scene_name",
-        "type": "string",
-        "required": true,
-        "provenance": "source"
       }
     ],
     "modifiesProjectFromSource": true,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 2763
+      "line": 3329
     },
     "generatedExample": {
       "name": "remove_behavior",
       "arguments": {
         "behavior_name": "Behavior",
-        "object_name": "Player",
-        "scene_name": "Scene"
+        "object_name": "Player"
       }
     },
     "aliases": [],
-    "searchText": "remove_behavior removebehavior removes a behavior from an object (or from all objects of a group) in a scene. not offered to the ai anymore since toolsversion v6 (see `delete_this_behavior` in `changebehaviorproperty`), kept only for older toolsversions. behavior_name object_name scene_name"
+    "searchText": "remove_behavior removebehavior removes a behavior from an object (or from all objects of a group) in a scene. not offered to the ai anymore since toolsversion v6 (see `delete_this_behavior` in `changebehaviorproperty`), kept only for older toolsversions. behavior_name object_name"
   },
   {
     "name": "report_fulfilment_problem",
@@ -1719,7 +2120,7 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": false,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 8536
+      "line": 10158
     },
     "generatedExample": {
       "name": "report_fulfilment_problem",
@@ -1744,7 +2145,7 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": true,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 8738
+      "line": 10360
     },
     "generatedExample": {
       "name": "run_edit_agent",
@@ -1769,7 +2170,7 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": false,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 8718
+      "line": 10340
     },
     "generatedExample": {
       "name": "run_explorer_agent",
@@ -1833,7 +2234,7 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": false,
     "source": {
       "file": "EditorFunctions/GameplayTestTools.js",
-      "line": 73
+      "line": 93
     },
     "generatedExample": {
       "name": "run_gameplay_test",
@@ -1864,7 +2265,7 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": true,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 8860
+      "line": 10482
     },
     "generatedExample": {
       "name": "run_script",
@@ -1895,7 +2296,7 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": false,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 8758
+      "line": 10380
     },
     "generatedExample": {
       "name": "run_tests",
@@ -1913,7 +2314,7 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": false,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 8565
+      "line": 10187
     },
     "generatedExample": {
       "name": "search_docs",
@@ -1931,7 +2332,7 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": false,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 8837
+      "line": 10459
     },
     "generatedExample": {
       "name": "search_object_asset_store",
@@ -1956,7 +2357,7 @@ export const generatedFunctionMetadata: Array<any> = [
     "modifiesProjectFromSource": false,
     "source": {
       "file": "EditorFunctions/index.js",
-      "line": 8926
+      "line": 10548
     },
     "generatedExample": {
       "name": "search_resource_store",

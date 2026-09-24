@@ -130,6 +130,12 @@ MCP tools are generated from the live command registry. Useful discovery command
 
 Do not maintain a separate hard-coded tool catalog in clients. Call `tools/list` or the registry discovery commands so the client sees the exact build it is connected to.
 
+### EditorFunction exposure policy
+
+`editor.functions.list` and `editor.functions.describe` project the native EditorFunction registry into one machine-readable contract. Each function reports `exposure.discovery`, `exposure.genericCall`, `exposure.typedTool`, `exposure.runScript` and `exposure.readOnlyRunScript`; unavailable surfaces include a stable `hiddenReason`. Embedded-executable functions are callable through `editor.functions.call` and receive a deterministic typed tool such as `editor.functions.create-extension`. Generation-service-only functions remain discoverable with `executableOnly: false` but are not falsely advertised as callable.
+
+`run_script` uses the same native registry but intentionally excludes recursive script execution, project bootstrap, generation-service/orchestrator-only flows and long-running gameplay-test lifecycle calls. Read-only scripts additionally hide all functions that may mutate the project. Mutating EditorFunctions must therefore be exposed through the generated metadata/typed-tool path rather than ad hoc script allowlists, and metadata generation is checked against every exported native EditorFunction so newly added functions cannot silently disappear from the external API.
+
 ## Current command families
 
 The registry currently exposes command families for:

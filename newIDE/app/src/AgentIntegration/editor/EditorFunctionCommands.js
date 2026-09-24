@@ -66,7 +66,12 @@ const assertExecutableFunction = (name: string, project: ?gdProject) => {
     throw new AgentError({
       code: 'function_not_executable',
       message: `${name} is not executable in the embedded editor integration.`,
-      details: { name, executionScope: metadata.executionScope },
+      details: {
+        name,
+        executionScope: metadata.executionScope,
+        hiddenReason: metadata.exposure.genericCall.hiddenReason,
+        exposure: metadata.exposure,
+      },
     });
   }
   if (metadata.requiresProject && !project) {
@@ -322,7 +327,7 @@ export const createEditorFunctionCommandDescriptors = ({
   {
     name: 'editor.functions.list',
     description:
-      'List GDevelop EditorFunctions available to the embedded integration, with generated schemas and capability metadata.',
+      'Inventory GDevelop EditorFunctions with generated schemas, truthful capability metadata and machine-readable exposure status for discovery, generic calls, typed tools and run_script.',
     inputSchema: LIST_SCHEMA,
     metadata: EDITOR_FUNCTION_DISCOVERY_METADATA,
     validateInput: input => {
@@ -349,7 +354,7 @@ export const createEditorFunctionCommandDescriptors = ({
   {
     name: 'editor.functions.describe',
     description:
-      'Describe one GDevelop EditorFunction, including its input schema and mutation metadata.',
+      'Describe one GDevelop EditorFunction, including input schema, mutation metadata and per-surface exposure/hidden reasons.',
     inputSchema: {
       type: 'object',
       additionalProperties: false,
