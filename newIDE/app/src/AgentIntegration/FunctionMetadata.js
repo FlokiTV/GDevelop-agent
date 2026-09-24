@@ -329,7 +329,7 @@ const argumentOverrides: {
         items: variableMutationOperationSchema,
       },
       description:
-        'Ordered variable mutations. Each item can create/update, rename, move/reorder or delete one declaration. Group scope keeps create/update/delete only; rename/reorder requires a concrete declaration.',
+        'Ordered variable mutations. Create/update/delete use the native EditorFunction path. Rename/reorder items may combine rename plus one ordering field, but must be sent separately from value/type/delete mutations. Group scope keeps create/update/delete only; rename/reorder requires a concrete declaration.',
     },
     variable_name_or_path: {
       type: 'string',

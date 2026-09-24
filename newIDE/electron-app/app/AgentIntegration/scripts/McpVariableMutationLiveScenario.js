@@ -283,17 +283,19 @@ const run = async ({
       {
         variable_scope: 'scene',
         scene_name: SCENE_NAME,
-        variables: [
-          {
-            variable_name_or_path: 'Wave',
-            value: '2',
-            variable_type: 'number',
-          },
-          {
-            variable_name_or_path: 'Wave',
-            new_variable_name: 'WaveIndex',
-          },
-        ],
+        variable_name_or_path: 'Wave',
+        value: '2',
+        variable_type: 'number',
+      },
+      'dx11-scene-create'
+    );
+    await mutate(
+      'editor.functions.add-or-edit-variable',
+      {
+        variable_scope: 'scene',
+        scene_name: SCENE_NAME,
+        variable_name_or_path: 'Wave',
+        new_variable_name: 'WaveIndex',
       },
       'dx11-scene-rename'
     );
@@ -325,15 +327,22 @@ const run = async ({
             variable_type: 'number',
           },
           {
-            variable_name_or_path: 'Health',
-            new_variable_name: 'HitPoints',
-          },
-          {
             variable_name_or_path: 'Access',
             value: '1',
             variable_type: 'number',
           },
         ],
+      },
+      'dx11-object-create'
+    );
+    await mutate(
+      'editor.functions.add-or-edit-variable',
+      {
+        variable_scope: 'object',
+        scene_name: SCENE_NAME,
+        object_name: OBJECT_NAME,
+        variable_name_or_path: 'Health',
+        new_variable_name: 'HitPoints',
       },
       'dx11-object-rename'
     );

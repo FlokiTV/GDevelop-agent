@@ -4,6 +4,10 @@ import {
   doExtensionChangesNeedCodeRegeneration,
   makeExtensionsOutsideEditorChangesAccumulator,
 } from '../../AiGeneration/ExtensionsOutsideEditorChangesAccumulator';
+import {
+  hasVariableRenameOrReorder,
+  runVariableRenameOrReorder,
+} from './VariableMutationService';
 
 export type AgentFunctionCall = {|
   name: string,
@@ -164,6 +168,65 @@ export const createEditorFunctionService = ({
     throwIfCancelled();
     if (calls.length === 0) throw new Error('no_function_calls');
     if (calls.length > 100) throw new Error('too_many_function_calls');
+
+    const variableRenameOrReorderCalls = calls.filter(
+      call =>
+        call &&
+        call.name === 'add_or_edit_variable' &&
+        hasVariableRenameOrReorder(call.arguments || {})
+    );
+    if (variableRenameOrReorderCalls.length > 0) {
+      if (calls.length !== 1 || variableRenameOrReorderCalls.length !== 1) {
+        throw new AgentError({
+          code: 'variable_rename_reorder_requires_single_call',
+          message:
+            'Variable rename/reorder must be sent as a single add_or_edit_variable call. Apply create/update/delete operations in separate calls.',
+          retryable: false,
+        });
+      }
+      if (!project) throw new Error('project_required');
+
+      const call = variableRenameOrReorderCalls[0];
+      const mutation = runVariableRenameOrReorder({
+        project,
+        args:
+          call.arguments && typeof call.arguments === 'object'
+            ? call.arguments
+            : {},
+      });
+
+      if (mutation.didModifyProject) {
+        triggerUnsavedChanges();
+        forceUpdate();
+      }
+
+      throwIfCancelled();
+
+      let saved = false;
+      if (save) {
+        const fileMetadata = await saveProject({
+          skipNewVersionWarning: true,
+        });
+        if (!fileMetadata) throw new Error('project_save_failed');
+        saved = true;
+      }
+
+      return {
+        results: [
+          {
+            status: 'finished',
+            call_id: call.callId || makeCallId(0),
+            didModifyProject: mutation.didModifyProject,
+            success: mutation.output.success,
+            output: mutation.output,
+          },
+        ],
+        createdSceneNames: [],
+        didModifyProject: mutation.didModifyProject,
+        saved,
+        createdProject: null,
+      };
+    }
 
     const functionCalls = calls.map((call, index) => {
       if (!call || typeof call.name !== 'string' || !call.name) {

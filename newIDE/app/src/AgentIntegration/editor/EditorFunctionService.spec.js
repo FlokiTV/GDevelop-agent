@@ -127,6 +127,64 @@ describe('EditorFunctionService', () => {
     });
   });
 
+  it('handles variable rename/reorder inside AgentIntegration without invoking the upstream EditorFunction', async () => {
+    // $FlowFixMe[invalid-constructor]
+    const project = new gd.ProjectHelper.createNewGDJSProject();
+    const variables = project.getVariables();
+    variables.insertNew('PublicA', 0).setString('alpha');
+    variables.insertNew('__Internal', 1).setValue(7);
+    variables.insertNew('PublicB', 2).setBool(true);
+
+    const {
+      service,
+      processEditorFunctionCalls,
+      triggerUnsavedChanges,
+      forceUpdate,
+    } = createService({ project });
+
+    try {
+      const result = await service.run({
+        calls: [
+          {
+            name: 'add_or_edit_variable',
+            arguments: {
+              variable_scope: 'global',
+              variables: [
+                {
+                  variable_name_or_path: 'PublicA',
+                  new_variable_name: 'DisplayName',
+                },
+                {
+                  variable_name_or_path: '__Internal',
+                  move_to_index: 2,
+                },
+              ],
+            },
+          },
+        ],
+      });
+
+      expect(processEditorFunctionCalls).not.toHaveBeenCalled();
+      expect(result.didModifyProject).toBe(true);
+      expect(result.results[0]).toMatchObject({
+        status: 'finished',
+        success: true,
+        didModifyProject: true,
+      });
+      expect(
+        Array.from({ length: variables.count() }, (_, index) =>
+          variables.getNameAt(index)
+        )
+      ).toEqual(['DisplayName', 'PublicB', '__Internal']);
+      expect(variables.get('DisplayName').getString()).toBe('alpha');
+      expect(variables.get('__Internal').getValue()).toBe(7);
+      expect(triggerUnsavedChanges).toHaveBeenCalledTimes(1);
+      expect(forceUpdate).toHaveBeenCalledTimes(1);
+    } finally {
+      project.delete();
+    }
+  });
+
   it('treats granular live invalidation as a project mutation even when result metadata omits it', async () => {
     const scene = {};
     const onInstancesModifiedOutsideEditor = jest.fn();

@@ -16,7 +16,7 @@
   },
   "source": {
     "ok": true,
-    "label": "source",
+    "label": "source-final",
     "globalOrder": [
       "DisplayName",
       "PublicB",
@@ -80,6 +80,7 @@
     }
   },
   "notes": [
+    "Create/update/delete remain on the native add_or_edit_variable EditorFunction path; AgentIntegration intercepts only rename/reorder operations so upstream EditorFunctions require no DX-11 hook.",
     "Unit regressions additionally prove persistent UUID preservation and event-reference rewriting for global, scene, object and instance-owned declarations.",
     "Group variables remain create/update/delete-only; rename/reorder returns a stable structured unsupported error rather than applying an ambiguous refactor."
   ]
