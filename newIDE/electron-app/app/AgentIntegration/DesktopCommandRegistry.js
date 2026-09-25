@@ -34,7 +34,7 @@ const DESCRIPTORS = [
   {
     name: 'desktop.window.capture',
     description:
-      'Capture one GDevelop editor or preview window as a PNG image. Uses the focused window when windowId is omitted.',
+      'Capture one GDevelop editor or preview window as PNG with bounded readiness/retry and desktop-capture fallback. Uses the focused window when windowId is omitted.',
     inputSchema: {
       type: 'object',
       additionalProperties: false,
@@ -60,6 +60,26 @@ const DESCRIPTORS = [
         },
         maxWidth: { type: 'integer', minimum: 1, maximum: 8192 },
         maxHeight: { type: 'integer', minimum: 1, maximum: 8192 },
+        captureAttempts: {
+          type: 'integer',
+          minimum: 1,
+          maximum: 8,
+          description:
+            'Bounded capture attempts before returning a persistent empty-capture diagnostic.',
+        },
+        retryDelayMs: {
+          type: 'integer',
+          minimum: 0,
+          maximum: 2000,
+          description: 'Delay between empty capture attempts.',
+        },
+        readyTimeoutMs: {
+          type: 'integer',
+          minimum: 0,
+          maximum: 10000,
+          description:
+            'Maximum time to wait for preview content loading to settle before capture attempts.',
+        },
       },
     },
     metadata: metadata({ readOnly: true, idempotent: true }),
@@ -484,6 +504,13 @@ const createDesktopCommandRegistry = ({
         region: captured.region || null,
         maxWidth: captured.maxWidth || null,
         maxHeight: captured.maxHeight || null,
+        captureMethod: captured.captureMethod,
+        attempts: captured.attempts,
+        readiness: captured.readiness,
+        windowState: captured.windowState,
+        sourceSize: captured.sourceSize,
+        outputSize: captured.outputSize,
+        fallback: captured.fallback,
         imageBuffer: captured.data,
       };
     },

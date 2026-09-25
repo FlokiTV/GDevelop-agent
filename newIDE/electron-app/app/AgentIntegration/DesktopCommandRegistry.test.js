@@ -26,6 +26,22 @@ test('lists deterministic desktop command descriptors without protocol metadata'
   assert.equal(registry.has('project.status'), false);
 });
 
+test('desktop.window.capture advertises bounded readiness and retry controls', () => {
+  const descriptor = DESCRIPTORS.find(
+    candidate => candidate.name === 'desktop.window.capture'
+  );
+  assert.ok(descriptor);
+  assert.deepEqual(descriptor.inputSchema.properties.captureAttempts, {
+    type: 'integer',
+    minimum: 1,
+    maximum: 8,
+    description:
+      'Bounded capture attempts before returning a persistent empty-capture diagnostic.',
+  });
+  assert.equal(descriptor.inputSchema.properties.retryDelayMs.maximum, 2000);
+  assert.equal(descriptor.inputSchema.properties.readyTimeoutMs.maximum, 10000);
+});
+
 test('executes windows, capture and preview input through injected services', async () => {
   const calls = [];
   const registry = createDesktopCommandRegistry({

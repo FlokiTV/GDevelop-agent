@@ -172,7 +172,7 @@ The registry currently exposes command families for:
 - opt-in publication: `publication.integrations.list`, `publication.prepare`, `publication.publish`; the gd.games adapter uses only the editor session, requires explicit publication intent plus MCP destructive confirmation, and never accepts or returns credentials;
 - local HTML5 output: `export.html5`.
 
-`desktop.window.capture` is returned as MCP `image/png` content instead of embedding PNG bytes in a JSON text payload.
+`desktop.window.capture` is returned as MCP `image/png` content instead of embedding PNG bytes in a JSON text payload. Capture waits boundedly for page loading to settle, retries empty captures a small bounded number of times, and falls back from Electron `capturePage()` to `desktopCapturer` by media source id/title. Success metadata reports `captureMethod`, `attempts`, readiness, window state and source/output dimensions. Persistent empty captures keep the stable `window_capture_empty` error code but include an actionable reason such as `window_minimized`, `window_hidden`, `loading`, `desktop_source_not_found` or `persistent_empty_capture`; retries never hide a persistent failure.
 
 `preview.qa.capabilities` is capability-driven: normalized keyboard/mouse record/replay, runtime reset and exact PNG SHA-256 baselines are available. Fixed timestep, seeded randomness, decoded pixel-tolerance/ignore-region comparison and content viewport/DPR/orientation/safe-area emulation are reported as unsupported until the preview runtime exposes reliable primitives for them.
 

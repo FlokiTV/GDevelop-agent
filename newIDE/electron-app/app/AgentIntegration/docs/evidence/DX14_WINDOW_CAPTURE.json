@@ -1,0 +1,91 @@
+{
+  "kind": "dx14-window-capture-acceptance",
+  "recordedAt": "2026-09-25",
+  "protocolVersion": "2026-07-28",
+  "contract": {
+    "primaryCapture": "Electron webContents.capturePage",
+    "fallback": "desktopCapturer matched by mediaSourceId then title",
+    "readiness": "bounded wait for loading/blank-url state before capture attempts",
+    "retryPolicy": {
+      "defaultAttempts": 4,
+      "defaultDelayMs": 120,
+      "maxAttempts": 8
+    },
+    "successMetadata": [
+      "captureMethod",
+      "attempts",
+      "readiness",
+      "windowState",
+      "sourceSize",
+      "outputSize",
+      "fallback"
+    ],
+    "persistentFailure": {
+      "code": "window_capture_empty",
+      "reasons": [
+        "window_minimized",
+        "window_hidden",
+        "loading",
+        "blank_url",
+        "desktop_source_not_found",
+        "desktop_thumbnail_empty",
+        "persistent_empty_capture"
+      ]
+    },
+    "projectReadOnly": true
+  },
+  "regressions": {
+    "focusedNodeTests": "14/14 PASS",
+    "syntaxChecks": "PASS",
+    "diffCheck": "PASS",
+    "architectureGuard": "PASS",
+    "note": "A broader pre-existing MCP hot-reload test fails before any capture call because structuredContent.meta.projectRevision is absent; DX-14-specific tests and live source/package acceptance pass."
+  },
+  "source": {
+    "ok": true,
+    "label": "source-final",
+    "captureMethod": "capturePage",
+    "attempts": 1,
+    "firstPngSize": {
+      "width": 613,
+      "height": 480
+    },
+    "secondPngSize": {
+      "width": 306,
+      "height": 240
+    },
+    "projectRevision": {
+      "before": 1,
+      "after": 1,
+      "unchanged": true
+    },
+    "validationErrors": 0
+  },
+  "winUnpacked": {
+    "ok": true,
+    "label": "win-unpacked-final",
+    "captureMethod": "capturePage",
+    "attempts": 1,
+    "firstPngSize": {
+      "width": 613,
+      "height": 480
+    },
+    "secondPngSize": {
+      "width": 306,
+      "height": 240
+    },
+    "projectRevision": {
+      "before": 1,
+      "after": 1,
+      "unchanged": true
+    },
+    "validationErrors": 0,
+    "executable": "newIDE/electron-app/dist/win-unpacked/GDevelop.exe"
+  },
+  "notes": [
+    "Source and packaged acceptance both captured a runtime-ready preview immediately without window_capture_empty.",
+    "Scaling preserved aspect ratio and respected maxWidth/maxHeight in both 640x480 and 320x240 captures.",
+    "Direct capture is independent of screen placement; unit regression covers negative multi-monitor/offscreen bounds without invoking desktopCapturer fallback.",
+    "Persistent empty/minimized cases are covered by deterministic service regressions with structured diagnostics."
+  ]
+}
