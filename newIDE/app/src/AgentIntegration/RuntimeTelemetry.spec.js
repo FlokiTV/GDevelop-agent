@@ -662,7 +662,27 @@ describe('AgentIntegration RuntimeTelemetry', () => {
     const snapshotProvider = jest.fn(async () => {
       throw providerError;
     });
-    const telemetry = createRuntimeTelemetry(server, { snapshotProvider });
+    const previewLifecycleTracker = {
+      refreshWindows: jest.fn(async () => {}),
+      getStatus: jest.fn(() => ({
+        state: 'ready',
+        targets: [
+          {
+            debuggerId: 'preview-1',
+            windowId: 12,
+            ready: true,
+            windowState: {
+              contentBounds: { x: 10, y: 20, width: 1280, height: 720 },
+              bounds: { x: 2, y: 3, width: 1296, height: 759 },
+            },
+          },
+        ],
+      })),
+    };
+    const telemetry = createRuntimeTelemetry(server, {
+      snapshotProvider,
+      previewLifecycleTracker,
+    });
 
     const snapshot = await telemetry.getSnapshot({
       maxInstances: 2,
@@ -675,7 +695,16 @@ describe('AgentIntegration RuntimeTelemetry', () => {
       snapshotProviderErrorCode: 'preview_runtime_snapshot_failed',
       scene: { name: 'New scene' },
       objects: { Player: { count: 1 } },
+      viewport: {
+        width: 1280,
+        height: 720,
+        devicePixelRatio: null,
+        units: 'device-independent-pixels',
+        source: 'electron-content-bounds',
+        outerBounds: { x: 2, y: 3, width: 1296, height: 759 },
+      },
     });
+    expect(previewLifecycleTracker.refreshWindows).toHaveBeenCalledTimes(1);
     expect(snapshotProvider).toHaveBeenCalledTimes(1);
     expect(server.sendMessage).toHaveBeenCalledWith('preview-1', {
       command: 'refresh',

@@ -6,6 +6,9 @@ const {
 const { createWindowCaptureService } = require('./WindowCaptureService');
 const { createPreviewQaService } = require('./PreviewQaService');
 const {
+  createPreviewViewportService,
+} = require('./PreviewViewportService');
+const {
   createMultiplayerPreviewService,
 } = require('./MultiplayerPreviewService');
 const {
@@ -55,9 +58,15 @@ const createDesktopIntegrationHost = ({
     windowRegistry,
     isRegisteredPreviewWindow,
   });
+  const previewViewportService = createPreviewViewportService({
+    BrowserWindow,
+    windowRegistry,
+    isRegisteredPreviewWindow,
+  });
   const previewQaService = createPreviewQaService({
     windowCaptureService,
     previewInteractionService,
+    previewViewportService,
   });
   const multiplayerPreviewService = createMultiplayerPreviewService({
     BrowserWindow,
@@ -74,6 +83,7 @@ const createDesktopIntegrationHost = ({
   const desktopCommandRegistry = createDesktopCommandRegistry({
     windowCaptureService,
     previewInteractionService,
+    previewViewportService,
     previewQaService,
     multiplayerPreviewService,
     previewNetworkDiagnosticsService,
@@ -98,6 +108,7 @@ const createDesktopIntegrationHost = ({
     previewRuntimeSnapshotIpc,
     previewLifecycleIpc,
     previewQaService,
+    previewViewportService,
     multiplayerPreviewService,
     previewNetworkDiagnosticsService,
     windowCaptureService,

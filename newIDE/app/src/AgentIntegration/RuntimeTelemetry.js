@@ -901,6 +901,26 @@ export const createRuntimeTelemetry = (
     };
   };
 
+  const getViewportFromLifecycleTarget = (target: any): ?any => {
+    const windowState = target && target.windowState;
+    const contentBounds = windowState && windowState.contentBounds;
+    if (
+      !contentBounds ||
+      !Number.isFinite(contentBounds.width) ||
+      !Number.isFinite(contentBounds.height)
+    ) {
+      return null;
+    }
+    return {
+      width: Math.round(contentBounds.width),
+      height: Math.round(contentBounds.height),
+      devicePixelRatio: null,
+      units: 'device-independent-pixels',
+      source: 'electron-content-bounds',
+      outerBounds: windowState.bounds || null,
+    };
+  };
+
   const makeUnavailableError = (): Error => {
     const { lifecycle } = getLifecycleContext();
     if (lifecycle && lifecycle.state === 'failed') {
@@ -1019,9 +1039,18 @@ export const createRuntimeTelemetry = (
 
   const getSnapshot = async (request: any = {}): Promise<any> => {
     const debuggerId = selectDebuggerId(request.debuggerId);
+    if (
+      previewLifecycleTracker &&
+      typeof previewLifecycleTracker.refreshWindows === 'function'
+    ) {
+      try {
+        await previewLifecycleTracker.refreshWindows();
+      } catch (_) {}
+    }
     const { lifecycle, target, previewWindowId } = getLifecycleContext(
       debuggerId
     );
+    const lifecycleViewport = getViewportFromLifecycleTarget(target);
     const snapshotRequest =
       previewWindowId !== null && request.previewWindowId == null
         ? { ...request, previewWindowId }
@@ -1039,6 +1068,9 @@ export const createRuntimeTelemetry = (
           ...(previewWindowId !== null ? { previewWindowId } : {}),
           ...(lifecycle ? { lifecycleState: lifecycle.state } : {}),
           ...(target ? { lifecycleTarget: target } : {}),
+          ...(lifecycleViewport && !snapshot.viewport
+            ? { viewport: lifecycleViewport }
+            : {}),
           ...snapshot,
         };
       } catch (error) {
@@ -1073,6 +1105,7 @@ export const createRuntimeTelemetry = (
           }
         : {}),
       ...summarizeRuntimeDump(dump, request),
+      ...(lifecycleViewport ? { viewport: lifecycleViewport } : {}),
     };
   };
 

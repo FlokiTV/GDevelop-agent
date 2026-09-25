@@ -148,7 +148,9 @@ const runPreviewQaLiveScenario = async ({ allowMutate, env = process.env }) => {
       capabilities.visualRegression.exactPngHashComparison.supported !== true ||
       capabilities.visualRegression.pixelToleranceComparison.supported !==
         false ||
-      capabilities.deviceSimulation.viewportResize.supported !== false
+      capabilities.deviceSimulation.viewportResize.supported !== true ||
+      capabilities.deviceSimulation.viewportResize.units !==
+        'device-independent-pixels'
     )
       throw new Error('preview_qa_capabilities_invalid');
 

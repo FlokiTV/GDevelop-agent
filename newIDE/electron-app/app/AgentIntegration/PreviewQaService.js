@@ -18,6 +18,7 @@ const sha256 = buffer =>
 const createPreviewQaService = ({
   windowCaptureService,
   previewInteractionService,
+  previewViewportService,
 }) => {
   const recordings = new Map();
   const baselines = new Map();
@@ -52,10 +53,12 @@ const createPreviewQaService = ({
       },
     },
     deviceSimulation: {
-      viewportResize: {
-        supported: false,
-        reason: 'content_viewport_emulation_not_exposed',
-      },
+      viewportResize: previewViewportService
+        ? previewViewportService.capabilities()
+        : {
+            supported: false,
+            reason: 'content_viewport_emulation_not_exposed',
+          },
       devicePixelRatio: {
         supported: false,
         reason: 'device_scale_factor_emulation_not_exposed',

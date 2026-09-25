@@ -161,7 +161,7 @@ The registry currently exposes command families for:
 - diagnostics and aggregate validation: `diagnostics.inspect`, `validation.run`;
 - preview lifecycle: `preview.status`, `preview.start`, `preview.hot-reload`, `preview.control`, `preview.close-all`;
 - runtime observation: `runtime.status`, `runtime.snapshot`, targeted `runtime.inspect`, `runtime.logs`, `runtime.assert`, `runtime.wait-for`;
-- desktop windows/capture: `desktop.windows.list`, `desktop.window.capture`;
+- desktop windows/capture: `desktop.windows.list`, `desktop.window.capture`; preview content viewport: `preview.viewport.status`, `preview.viewport.set`;
 - preview input: `preview.input.*`;
 - preview QA: `preview.qa.capabilities`, `preview.input.record.*`, `preview.input.replay`, `preview.visual.baseline.*`;
 - multiplayer preview orchestration: `preview.multiplayer.capabilities`, `preview.multiplayer.clients.*`, `preview.multiplayer.batch`, `preview.multiplayer.runtime-status`;
@@ -176,7 +176,7 @@ The registry currently exposes command families for:
 
 `desktop.window.capture` is returned as MCP `image/png` content instead of embedding PNG bytes in a JSON text payload. Capture waits boundedly for page loading to settle, retries empty captures a small bounded number of times, and falls back from Electron `capturePage()` to `desktopCapturer` by media source id/title. Success metadata reports `captureMethod`, `attempts`, readiness, window state and source/output dimensions. Persistent empty captures keep the stable `window_capture_empty` error code but include an actionable reason such as `window_minimized`, `window_hidden`, `loading`, `desktop_source_not_found` or `persistent_empty_capture`; retries never hide a persistent failure.
 
-`preview.qa.capabilities` is capability-driven: normalized keyboard/mouse record/replay, runtime reset and exact PNG SHA-256 baselines are available. Fixed timestep, seeded randomness, decoded pixel-tolerance/ignore-region comparison and content viewport/DPR/orientation/safe-area emulation are reported as unsupported until the preview runtime exposes reliable primitives for them.
+`preview.qa.capabilities` is capability-driven: normalized keyboard/mouse record/replay, runtime reset, exact PNG SHA-256 baselines and exact content-viewport resize are available. `preview.viewport.set` uses Electron `setContentSize()` and verifies `getContentBounds()` plus renderer `window.innerWidth/innerHeight` when available, so callers specify logical content size directly in device-independent pixels without compensating for title bars, DPI scaling or OS chrome. It can restore minimized/maximized/fullscreen/hidden previews before sizing, waits boundedly for the requested viewport, and returns requested/actual content viewport separately from outer bounds. Fixed timestep, seeded randomness, decoded pixel-tolerance/ignore-region comparison, devicePixelRatio emulation, orientation emulation and safe-area emulation remain reported as unsupported until reliable primitives exist.
 
 `preview.multiplayer.*` discovers the live external preview BrowserWindows already created by GDevelop (including `preview.start({ numberOfWindows: N })`), then lets a client assign bounded stable aliases such as `host`/`guest` and address ordered input/runtime-status batches by alias. Aliases are process-local orchestration state and are pruned when their preview closes; they do not modify or persist in the project.
 

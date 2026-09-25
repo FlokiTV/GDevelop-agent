@@ -65,6 +65,11 @@ const makeHarness = () => {
   context.window = context;
   context.window.scrollX = 0;
   context.window.scrollY = 0;
+  context.window.innerWidth = 1280;
+  context.window.innerHeight = 720;
+  context.window.outerWidth = 1296;
+  context.window.outerHeight = 759;
+  context.window.devicePixelRatio = 1.25;
   context.window.screenX = 0;
   context.window.screenY = 0;
   context.window.dispatchEvent = event => {
@@ -276,6 +281,13 @@ test('captures a bounded structured runtime snapshot without serializing Runtime
   });
   const snapshot = response.result;
   assert.equal(snapshot.snapshotSource, 'bounded-preview-runtime');
+  assert.deepEqual(JSON.parse(JSON.stringify(snapshot.viewport)), {
+    width: 1280,
+    height: 720,
+    outerWidth: 1296,
+    outerHeight: 759,
+    devicePixelRatio: 1.25,
+  });
   assert.equal(snapshot.scene.name, 'Snapshot scene');
   assert.equal(snapshot.scene.variables.Score.value, 7);
   assert.equal(snapshot.globalVariables.GlobalScore.value, 11);

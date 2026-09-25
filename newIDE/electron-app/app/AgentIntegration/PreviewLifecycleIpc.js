@@ -39,6 +39,24 @@ const createPreviewLifecycleIpc = ({
           typeof window.isDestroyed === 'function'
             ? window.isDestroyed()
             : false,
+        bounds:
+          typeof window.getBounds === 'function' ? window.getBounds() : null,
+        contentBounds:
+          typeof window.getContentBounds === 'function'
+            ? window.getContentBounds()
+            : null,
+        minimized:
+          typeof window.isMinimized === 'function'
+            ? window.isMinimized()
+            : null,
+        maximized:
+          typeof window.isMaximized === 'function'
+            ? window.isMaximized()
+            : null,
+        fullScreen:
+          typeof window.isFullScreen === 'function'
+            ? window.isFullScreen()
+            : null,
       }));
 
   const handle = async () => {

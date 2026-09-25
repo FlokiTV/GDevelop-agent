@@ -10,6 +10,13 @@ const makeService = () => {
     windowCaptureService: {
       capture: async input => ({ data: capture, region: input.region || null }),
     },
+    previewViewportService: {
+      capabilities: () => ({
+        supported: true,
+        units: 'device-independent-pixels',
+        exactContentViewport: true,
+      }),
+    },
     previewInteractionService: {
       sendInput: input => {
         const result = {
@@ -66,7 +73,11 @@ test('reports truthful deterministic and device capability gaps', () => {
     capabilities.visualRegression.pixelToleranceComparison.supported,
     false
   );
-  assert.equal(capabilities.deviceSimulation.viewportResize.supported, false);
+  assert.equal(capabilities.deviceSimulation.viewportResize.supported, true);
+  assert.equal(
+    capabilities.deviceSimulation.viewportResize.units,
+    'device-independent-pixels'
+  );
 });
 
 test('records normalized sent events and replays with reset by default', async () => {

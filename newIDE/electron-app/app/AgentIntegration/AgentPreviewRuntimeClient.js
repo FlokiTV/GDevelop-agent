@@ -402,6 +402,20 @@
         : null;
     return {
       snapshotSource: 'bounded-preview-runtime',
+      viewport: {
+        width:
+          typeof window.innerWidth === 'number' ? window.innerWidth : null,
+        height:
+          typeof window.innerHeight === 'number' ? window.innerHeight : null,
+        outerWidth:
+          typeof window.outerWidth === 'number' ? window.outerWidth : null,
+        outerHeight:
+          typeof window.outerHeight === 'number' ? window.outerHeight : null,
+        devicePixelRatio:
+          typeof window.devicePixelRatio === 'number'
+            ? window.devicePixelRatio
+            : null,
+      },
       paused:
         typeof runtimeGame.isPaused === 'function'
           ? !!runtimeGame.isPaused()

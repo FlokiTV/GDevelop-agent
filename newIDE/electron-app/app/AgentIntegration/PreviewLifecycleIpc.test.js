@@ -5,11 +5,27 @@ const {
   createPreviewLifecycleIpc,
 } = require('./PreviewLifecycleIpc');
 
-const makeWindow = ({ id, title, url, visible = true, focused = false }) => ({
+const makeWindow = ({
+  id,
+  title,
+  url,
+  visible = true,
+  focused = false,
+  bounds = { x: 20, y: 30, width: 816, height: 639 },
+  contentBounds = { x: 28, y: 61, width: 800, height: 600 },
+  minimized = false,
+  maximized = false,
+  fullScreen = false,
+}) => ({
   id,
   isDestroyed: () => false,
   isVisible: () => visible,
   isFocused: () => focused,
+  isMinimized: () => minimized,
+  isMaximized: () => maximized,
+  isFullScreen: () => fullScreen,
+  getBounds: () => ({ ...bounds }),
+  getContentBounds: () => ({ ...contentBounds }),
   getTitle: () => title,
   webContents: { getURL: () => url },
 });
@@ -66,6 +82,11 @@ test('lists preview windows and activates runtime identity without editor window
     visible: true,
     focused: true,
     destroyed: false,
+    bounds: { x: 20, y: 30, width: 816, height: 639 },
+    contentBounds: { x: 28, y: 61, width: 800, height: 600 },
+    minimized: false,
+    maximized: false,
+    fullScreen: false,
   });
   assert.deepEqual(calls, [{ previewWindowId: 12 }]);
   assert.deepEqual(response.data.activated, [

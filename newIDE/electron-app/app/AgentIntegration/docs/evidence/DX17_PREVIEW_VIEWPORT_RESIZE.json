@@ -1,0 +1,332 @@
+{
+  "kind": "dx17-preview-viewport-resize-acceptance",
+  "recordedAt": "2026-09-25",
+  "protocolVersion": "2026-07-28",
+  "contract": {
+    "commands": [
+      "preview.viewport.status",
+      "preview.viewport.set"
+    ],
+    "units": "device-independent-pixels",
+    "bounds": {
+      "minimum": 64,
+      "maximum": 8192
+    },
+    "commonQaSizes": [
+      {
+        "width": 1280,
+        "height": 720
+      },
+      {
+        "width": 1366,
+        "height": 768
+      },
+      {
+        "width": 1440,
+        "height": 900
+      },
+      {
+        "width": 1600,
+        "height": 900
+      },
+      {
+        "width": 1920,
+        "height": 1080
+      }
+    ],
+    "implementation": "Electron BrowserWindow.setContentSize/getContentBounds",
+    "exactContentViewport": true,
+    "callerChromeCompensationRequired": false,
+    "waitUntilApplied": true,
+    "rendererBarrier": "window.innerWidth/window.innerHeight when executeJavaScript is available",
+    "restores": [
+      "fullscreen",
+      "maximized",
+      "minimized",
+      "hidden"
+    ],
+    "optionalFocus": true,
+    "unsupportedDeviceSimulation": [
+      "devicePixelRatio emulation",
+      "orientation emulation",
+      "safe-area emulation"
+    ]
+  },
+  "source": {
+    "ok": true,
+    "label": "source-final",
+    "sizes": [
+      {
+        "requested": {
+          "width": 1280,
+          "height": 720
+        },
+        "applied": {
+          "width": 1280,
+          "height": 720
+        },
+        "runtime": {
+          "width": 1280,
+          "height": 720
+        },
+        "capture": {
+          "width": 1280,
+          "height": 720
+        },
+        "rendererViewport": {
+          "width": 1280,
+          "height": 720
+        }
+      },
+      {
+        "requested": {
+          "width": 1366,
+          "height": 768
+        },
+        "applied": {
+          "width": 1366,
+          "height": 768
+        },
+        "runtime": {
+          "width": 1366,
+          "height": 768
+        },
+        "capture": {
+          "width": 1366,
+          "height": 768
+        },
+        "rendererViewport": {
+          "width": 1366,
+          "height": 768
+        }
+      },
+      {
+        "requested": {
+          "width": 1440,
+          "height": 900
+        },
+        "applied": {
+          "width": 1440,
+          "height": 900
+        },
+        "runtime": {
+          "width": 1440,
+          "height": 900
+        },
+        "capture": {
+          "width": 1440,
+          "height": 900
+        },
+        "rendererViewport": {
+          "width": 1440,
+          "height": 900
+        }
+      },
+      {
+        "requested": {
+          "width": 1600,
+          "height": 900
+        },
+        "applied": {
+          "width": 1600,
+          "height": 900
+        },
+        "runtime": {
+          "width": 1600,
+          "height": 900
+        },
+        "capture": {
+          "width": 1600,
+          "height": 900
+        },
+        "rendererViewport": {
+          "width": 1600,
+          "height": 900
+        }
+      },
+      {
+        "requested": {
+          "width": 1920,
+          "height": 1080
+        },
+        "applied": {
+          "width": 1920,
+          "height": 1080
+        },
+        "runtime": {
+          "width": 1920,
+          "height": 1080
+        },
+        "capture": {
+          "width": 1920,
+          "height": 1080
+        },
+        "rendererViewport": {
+          "width": 1920,
+          "height": 1080
+        }
+      }
+    ],
+    "rendererDevicePixelRatio": 1,
+    "runtimeViewportSource": "electron-content-bounds",
+    "idempotentRepeat": {
+      "requested": {
+        "width": 1920,
+        "height": 1080
+      },
+      "actual": {
+        "width": 1920,
+        "height": 1080
+      },
+      "exact": true
+    },
+    "validationErrors": 0
+  },
+  "winUnpacked": {
+    "ok": true,
+    "label": "win-unpacked-final",
+    "sizes": [
+      {
+        "requested": {
+          "width": 1280,
+          "height": 720
+        },
+        "applied": {
+          "width": 1280,
+          "height": 720
+        },
+        "runtime": {
+          "width": 1280,
+          "height": 720
+        },
+        "capture": {
+          "width": 1280,
+          "height": 720
+        },
+        "rendererViewport": {
+          "width": 1280,
+          "height": 720
+        }
+      },
+      {
+        "requested": {
+          "width": 1366,
+          "height": 768
+        },
+        "applied": {
+          "width": 1366,
+          "height": 768
+        },
+        "runtime": {
+          "width": 1366,
+          "height": 768
+        },
+        "capture": {
+          "width": 1366,
+          "height": 768
+        },
+        "rendererViewport": {
+          "width": 1366,
+          "height": 768
+        }
+      },
+      {
+        "requested": {
+          "width": 1440,
+          "height": 900
+        },
+        "applied": {
+          "width": 1440,
+          "height": 900
+        },
+        "runtime": {
+          "width": 1440,
+          "height": 900
+        },
+        "capture": {
+          "width": 1440,
+          "height": 900
+        },
+        "rendererViewport": {
+          "width": 1440,
+          "height": 900
+        }
+      },
+      {
+        "requested": {
+          "width": 1600,
+          "height": 900
+        },
+        "applied": {
+          "width": 1600,
+          "height": 900
+        },
+        "runtime": {
+          "width": 1600,
+          "height": 900
+        },
+        "capture": {
+          "width": 1600,
+          "height": 900
+        },
+        "rendererViewport": {
+          "width": 1600,
+          "height": 900
+        }
+      },
+      {
+        "requested": {
+          "width": 1920,
+          "height": 1080
+        },
+        "applied": {
+          "width": 1920,
+          "height": 1080
+        },
+        "runtime": {
+          "width": 1920,
+          "height": 1080
+        },
+        "capture": {
+          "width": 1920,
+          "height": 1080
+        },
+        "rendererViewport": {
+          "width": 1920,
+          "height": 1080
+        }
+      }
+    ],
+    "rendererDevicePixelRatio": 1,
+    "runtimeViewportSource": "electron-content-bounds",
+    "idempotentRepeat": {
+      "requested": {
+        "width": 1920,
+        "height": 1080
+      },
+      "actual": {
+        "width": 1920,
+        "height": 1080
+      },
+      "exact": true
+    },
+    "validationErrors": 0,
+    "executable": "newIDE/electron-app/dist/win-unpacked/GDevelop.exe"
+  },
+  "regressions": {
+    "renderer": "21/21 PASS",
+    "electronQaCanonical": "25/25 PASS",
+    "eslint": "PASS",
+    "liveScenarioSyntax": "PASS",
+    "diffCheck": "PASS",
+    "architectureGuard": "PASS",
+    "productionBuild": "PASS",
+    "windowsPackage": "PASS"
+  },
+  "notes": [
+    "Source and win-unpacked both matched requested viewport, preview.viewport.status, renderer innerWidth/innerHeight, desktop capture content bounds and runtime.snapshot viewport for all five QA sizes.",
+    "The runtime snapshot can use lifecycle Electron content bounds as a truthful fallback when the structured preview runtime snapshot provider is unavailable; this preserves exact logical viewport reporting without OS-specific automation.",
+    "Outer BrowserWindow bounds are intentionally different from content viewport bounds and are returned separately; callers never add title-bar or DPI compensation.",
+    "No PowerShell, Win32 HWND lookup or SetWindowPos manipulation was used by the live acceptance."
+  ]
+}

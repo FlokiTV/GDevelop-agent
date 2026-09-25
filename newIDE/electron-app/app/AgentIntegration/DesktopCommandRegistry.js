@@ -85,6 +85,38 @@ const DESCRIPTORS = [
     metadata: metadata({ readOnly: true, idempotent: true }),
   },
   {
+    name: 'preview.viewport.status',
+    description:
+      'Read the requested and actual Electron preview content viewport separately from outer window bounds.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['previewWindowId'],
+      properties: { previewWindowId: PREVIEW_WINDOW_SCHEMA },
+    },
+    metadata: metadata({ readOnly: true, idempotent: true }),
+  },
+  {
+    name: 'preview.viewport.set',
+    description:
+      'Set an exact preview content viewport in device-independent pixels using Electron content sizing, without caller compensation for title bars, DPI or OS chrome.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['previewWindowId', 'width', 'height'],
+      properties: {
+        previewWindowId: PREVIEW_WINDOW_SCHEMA,
+        width: { type: 'integer', minimum: 64, maximum: 8192 },
+        height: { type: 'integer', minimum: 64, maximum: 8192 },
+        waitUntilApplied: { type: 'boolean' },
+        timeoutMs: { type: 'integer', minimum: 0, maximum: 10000 },
+        restoreWindowState: { type: 'boolean' },
+        focus: { type: 'boolean' },
+      },
+    },
+    metadata: metadata({ idempotent: true, longRunning: true }),
+  },
+  {
     name: 'preview.input.send',
     description:
       'Send one validated keyboard or mouse input event to a running preview window.',
@@ -490,6 +522,7 @@ const makeResult = (descriptor, data) => ({
 const createDesktopCommandRegistry = ({
   windowCaptureService,
   previewInteractionService,
+  previewViewportService,
   previewQaService,
   multiplayerPreviewService,
   previewNetworkDiagnosticsService,
@@ -514,6 +547,10 @@ const createDesktopCommandRegistry = ({
         imageBuffer: captured.data,
       };
     },
+    'preview.viewport.status': input =>
+      previewViewportService.status(input || {}),
+    'preview.viewport.set': input =>
+      previewViewportService.setViewport(input || {}),
     'preview.input.send': input =>
       previewInteractionService.sendInput(input || {}),
     'preview.input.sequence': input =>

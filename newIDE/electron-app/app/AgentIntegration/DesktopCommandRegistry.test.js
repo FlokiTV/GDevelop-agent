@@ -42,7 +42,22 @@ test('desktop.window.capture advertises bounded readiness and retry controls', (
   assert.equal(descriptor.inputSchema.properties.readyTimeoutMs.maximum, 10000);
 });
 
-test('executes windows, capture and preview input through injected services', async () => {
+test('preview.viewport.set advertises exact bounded content sizing', () => {
+  const descriptor = DESCRIPTORS.find(
+    candidate => candidate.name === 'preview.viewport.set'
+  );
+  assert.ok(descriptor);
+  assert.deepEqual(descriptor.inputSchema.required, [
+    'previewWindowId',
+    'width',
+    'height',
+  ]);
+  assert.equal(descriptor.inputSchema.properties.width.maximum, 8192);
+  assert.equal(descriptor.inputSchema.properties.timeoutMs.maximum, 10000);
+  assert.equal(descriptor.metadata.idempotent, true);
+});
+
+test('executes windows, viewport, capture and preview input through injected services', async () => {
   const calls = [];
   const registry = createDesktopCommandRegistry({
     windowCaptureService: {
@@ -53,6 +68,24 @@ test('executes windows, capture and preview input through injected services', as
           windowId: Number(input.windowId),
           mimeType: 'image/png',
           data: Buffer.from('png-data'),
+        };
+      },
+    },
+    previewViewportService: {
+      status: input => {
+        calls.push(['viewportStatus', input]);
+        return {
+          previewWindowId: input.previewWindowId,
+          actualViewport: { width: 800, height: 600 },
+        };
+      },
+      setViewport: async input => {
+        calls.push(['viewportSet', input]);
+        return {
+          previewWindowId: input.previewWindowId,
+          requestedViewport: { width: input.width, height: input.height },
+          actualViewport: { width: input.width, height: input.height },
+          exact: true,
         };
       },
     },
@@ -148,6 +181,20 @@ test('executes windows, capture and preview input through injected services', as
   assert.equal(capture.data.mimeType, 'image/png');
   assert.deepEqual(capture.data.imageBuffer, Buffer.from('png-data'));
 
+  const viewportStatus = await registry.execute({
+    command: 'preview.viewport.status',
+    input: { previewWindowId: 2 },
+  });
+  assert.deepEqual(viewportStatus.data.actualViewport, {
+    width: 800,
+    height: 600,
+  });
+  const viewportSet = await registry.execute({
+    command: 'preview.viewport.set',
+    input: { previewWindowId: 2, width: 1280, height: 720 },
+  });
+  assert.equal(viewportSet.data.exact, true);
+
   await registry.execute({
     command: 'preview.input.send',
     input: { previewWindowId: 2, event: { type: 'keyDown', keyCode: 'W' } },
@@ -236,6 +283,8 @@ test('executes windows, capture and preview input through injected services', as
 
   assert.deepEqual(calls.map(call => call[0]), [
     'capture',
+    'viewportStatus',
+    'viewportSet',
     'sendInput',
     'sendSequence',
     'resetInput',

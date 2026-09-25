@@ -107,10 +107,16 @@ export const createPreviewLifecycleTracker = ({
     const targets = debuggerIds.map(debuggerId => {
       const status = debuggerStatuses.get(debuggerId) || null;
       const windowId = debuggerWindowIds.get(debuggerId) || null;
+      const windowState =
+        Number.isInteger(windowId)
+          ? windows.find(window => window && window.windowId === windowId) ||
+            null
+          : null;
       return {
         debuggerId,
         windowId,
         ready: isDebuggerReady(debuggerId),
+        ...(windowState ? { windowState } : {}),
         ...(status || {}),
       };
     });
@@ -119,10 +125,13 @@ export const createPreviewLifecycleTracker = ({
     );
     previewWindowIds.forEach(windowId => {
       if (mappedWindowIds.has(windowId)) return;
+      const windowState =
+        windows.find(window => window && window.windowId === windowId) || null;
       targets.push({
         debuggerId: null,
         windowId,
         ready: false,
+        ...(windowState ? { windowState } : {}),
       });
     });
     return {
