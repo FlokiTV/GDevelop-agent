@@ -156,7 +156,7 @@ The registry currently exposes command families for:
 - native GDevelop EditorFunctions: `editor.functions.*`;
 - scene/editor visual context: `scene.open`, `editor.visual.status`, `editor.instances.select`, `editor.selection.focus`;
 - deterministic events: `events.read`, localized `events.insert/update/style.update/move/delete`, and bulk `events.apply`;
-- resources/assets: `resources.*`, including bounded remote URL import/replace with persisted provenance plus deterministic local image/WAV processing (`resources.processing.capabilities`, `resources.image.transform`, `resources.image.slice-spritesheet`, `resources.audio.transform`);
+- resources/assets: `resources.*`, including project-aware UTF-8/JSON authoring (`resources.text.create/read/update`, `resources.packaging.inspect`), bounded remote URL import/replace with persisted provenance, and deterministic local image/WAV processing (`resources.processing.capabilities`, `resources.image.transform`, `resources.image.slice-spritesheet`, `resources.audio.transform`);
 - checkpoints and transactions: `safety.*`;
 - diagnostics and aggregate validation: `diagnostics.inspect`, `validation.run`;
 - preview lifecycle: `preview.status`, `preview.start`, `preview.hot-reload`, `preview.control`, `preview.close-all`;
@@ -171,6 +171,8 @@ The registry currently exposes command families for:
 - build target/configuration discovery and authenticated remote build lifecycle: `build.targets.list`, `build.configuration.*`, `build.start`, `build.status`, `build.cancel`, `build.result`, including the separate `web-online` artifact target;
 - opt-in publication: `publication.integrations.list`, `publication.prepare`, `publication.publish`; the gd.games adapter uses only the editor session, requires explicit publication intent plus MCP destructive confirmation, and never accepts or returns credentials;
 - local HTML5 output: `export.html5`.
+
+`resources.text.create` and `resources.text.update` write project-local UTF-8 files atomically and register/update the matching native GDevelop resource in the same operation. JSON is parsed before any file/resource mutation; invalid JSON therefore leaves both project revision and file bytes unchanged. Generic `.txt` is not a native GDevelop resource kind, so plain-text authoring requires an explicit compatible native kind such as `javascript`, `atlas` or `bitmapFont`. `resources.packaging.inspect` distinguishes registration from actual object/event usage: a registered file-backed resource can be `userAdded=true`, `usedInProject=false`/`orphaned=true` and still be packaged because the native exporter exposes all registered file-backed resources. Runtime APIs address the registered resource name; export flattens the backing path to a game-root-relative filename with deterministic collision suffixes (`name.ext`, `name2.ext`, ...). The write operation itself can roll back its file/resource change on failure, but a later `safety.transactions.rollback` restores project data only and does not restore physical file bytes.
 
 `desktop.window.capture` is returned as MCP `image/png` content instead of embedding PNG bytes in a JSON text payload. Capture waits boundedly for page loading to settle, retries empty captures a small bounded number of times, and falls back from Electron `capturePage()` to `desktopCapturer` by media source id/title. Success metadata reports `captureMethod`, `attempts`, readiness, window state and source/output dimensions. Persistent empty captures keep the stable `window_capture_empty` error code but include an actionable reason such as `window_minimized`, `window_hidden`, `loading`, `desktop_source_not_found` or `persistent_empty_capture`; retries never hide a persistent failure.
 
@@ -313,6 +315,13 @@ node app/AgentIntegration/scripts/McpRemoteResourcesProcessingLiveScenario.js --
 ```
 
 The scenario writes only sanitized replay/export evidence to its output directory; use `--output <dir>` to choose that directory. `--keep-project` preserves the otherwise temporary saved project for diagnosis.
+
+For DX-16, `McpTextResourcesLiveScenario.js` is a clean-room project-resource acceptance. It creates a saved temporary project, adds `locales/es.json` entirely through MCP, reads and updates it, proves invalid JSON changes neither revision nor file bytes, verifies the actual flattened resource in a live preview and local HTML5 export, saves the clean project, and removes the temporary project directory after the editor closes it. The scenario does not use direct filesystem orchestration to create or register the locale file.
+
+```text
+cd newIDE/electron-app
+node app/AgentIntegration/scripts/McpTextResourcesLiveScenario.js --label live
+```
 
 For CAP-14, `McpBuildTargetsLiveScenario.js` validates capability-driven target discovery, an explicit machine-readable unsupported iOS target, native package/version/orientation/loading-screen round-trip and local HTML5 export. Remote installable builds are deliberately separate: `--allow-remote-build` opts in to consuming one available build quota slot with `payWithCredits=false`, and `--require-installable` turns a completed Windows EXE into a mandatory acceptance gate. Provider credentials, user ids, upload bucket keys and log keys are sanitized from tool results/replays.
 

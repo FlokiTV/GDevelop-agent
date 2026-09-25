@@ -18,6 +18,7 @@ const fs = optionalRequire('fs');
 const path = optionalRequire('path');
 
 export const DEFAULT_MAX_LOCAL_RESOURCE_FILE_BYTES = 256 * 1024 * 1024;
+export const DEFAULT_MAX_TEXT_RESOURCE_BYTES = 4 * 1024 * 1024;
 export const AGENT_RESOURCE_PROVENANCE_METADATA_KEY =
   'agentIntegrationProvenance';
 
@@ -354,6 +355,255 @@ const ensurePhysicalDeleteIsSafe = (
   return localFile;
 };
 
+const TEXT_COMPATIBLE_RESOURCE_KINDS = new Set([
+  'json',
+  'javascript',
+  'tilemap',
+  'tileset',
+  'bitmapFont',
+  'atlas',
+  'spine',
+]);
+
+const getUtf8ByteLength = (value: string): number =>
+  unescape(encodeURIComponent(value)).length;
+
+const assertTextResourceKind = (kind: string) => {
+  if (!TEXT_COMPATIBLE_RESOURCE_KINDS.has(kind)) {
+    throw new Error(`unsupported_text_resource_kind:${kind}`);
+  }
+};
+
+const resolveProjectTextPath = (
+  project: gdProject,
+  relativePath: string
+): {| fullPath: string, storedFilePath: string |} => {
+  if (!fs || !path) throw new Error('local_filesystem_unavailable');
+  const projectFolder = getProjectFolder(project);
+  if (!projectFolder) throw new Error('project_must_be_saved_locally');
+  if (
+    !relativePath ||
+    typeof relativePath !== 'string' ||
+    relativePath.includes('\u0000') ||
+    path.isAbsolute(relativePath)
+  ) {
+    throw new Error('invalid_project_resource_relative_path');
+  }
+
+  const normalized = path.normalize(relativePath.replace(/\\/g, '/'));
+  if (
+    normalized === '..' ||
+    normalized.startsWith(`..${path.sep}`) ||
+    normalized === '.' ||
+    path.isAbsolute(normalized)
+  ) {
+    throw new Error('resource_file_outside_project_folder');
+  }
+
+  const fullPath = path.resolve(projectFolder, normalized);
+  if (!isPathInside(path.resolve(projectFolder), fullPath)) {
+    throw new Error('resource_file_outside_project_folder');
+  }
+
+  let current = path.resolve(projectFolder);
+  const relativeSegments = path
+    .relative(projectFolder, fullPath)
+    .split(path.sep)
+    .filter(Boolean);
+  relativeSegments.forEach(segment => {
+    current = path.join(current, segment);
+    if (fs.existsSync(current) && fs.lstatSync(current).isSymbolicLink()) {
+      throw new Error('resource_text_path_contains_symlink');
+    }
+  });
+
+  return {
+    fullPath,
+    storedFilePath: path
+      .relative(projectFolder, fullPath)
+      .replace(/\\/g, '/'),
+  };
+};
+
+const generateExportedFilename = (
+  filename: string,
+  usedFilenames: Set<string>
+): string => {
+  if (!path) return filename;
+  const extension = path.extname(filename);
+  const baseName = filename.slice(
+    0,
+    extension ? filename.length - extension.length : filename.length
+  );
+  if (!usedFilenames.has(filename)) return filename;
+  let index = 2;
+  let candidate = `${baseName}${index}${extension}`;
+  while (usedFilenames.has(candidate)) {
+    index += 1;
+    candidate = `${baseName}${index}${extension}`;
+  }
+  return candidate;
+};
+
+const getResourcePackagingEntries = (project: gdProject): Array<any> => {
+  const resourcesManager = project.getResourcesManager();
+  const resourceNames = resourcesManager.getAllResourceNames().toJSArray();
+  const projectFolder = getProjectFolder(project);
+  const usedFilenames: Set<string> = new Set();
+  const exportedBySource: Map<string, string> = new Map();
+
+  return resourceNames.map(resourceName => {
+    const resource = resourcesManager.getResource(resourceName);
+    const info = getResourceInfo(project, resourceName);
+    if (!resource.useFile()) {
+      return {
+        ...info,
+        packagingStatus: 'not-file-backed',
+        willPackage: false,
+        exportedFilename: null,
+        runtimeResolution: null,
+      };
+    }
+
+    const file = resource.getFile();
+    if (isURL(file)) {
+      return {
+        ...info,
+        packagingStatus: 'remote-resource',
+        willPackage: false,
+        exportedFilename: null,
+        runtimeResolution: null,
+      };
+    }
+
+    if (!path || !projectFolder) {
+      return {
+        ...info,
+        packagingStatus: 'project-path-unresolved',
+        willPackage: false,
+        exportedFilename: null,
+        runtimeResolution: null,
+      };
+    }
+
+    const fullPath = path.resolve(projectFolder, file);
+    const sourceKey =
+      process.platform === 'win32' ? fullPath.toLowerCase() : fullPath;
+    let exportedFilename = exportedBySource.get(sourceKey) || null;
+    if (!exportedFilename) {
+      const basename = path.basename(fullPath);
+      exportedFilename = generateExportedFilename(basename, usedFilenames);
+      usedFilenames.add(exportedFilename);
+      exportedBySource.set(sourceKey, exportedFilename);
+    }
+
+    const exists = fs ? fs.existsSync(fullPath) : null;
+    const willPackage = exists === true;
+    return {
+      ...info,
+      packagingStatus: willPackage ? 'will-package' : 'missing-source',
+      willPackage,
+      exportedFilename,
+      runtimeResolution: {
+        strategy: 'registered-resource-name-to-game-root-file',
+        resourceName,
+        loaderReference: resourceName,
+        exportedFile: exportedFilename,
+        preview: exportedFilename,
+        web: exportedFilename,
+        desktop: exportedFilename,
+        mobile: exportedFilename,
+        note:
+          'GDevelop runtime resource managers resolve the registered resource name to this exported game-root-relative file.',
+      },
+      packagingSemantics: {
+        registered: true,
+        userAdded: resource.isUserAdded(),
+        usedInProject: info.usedInProject,
+        orphaned: info.orphaned,
+        note:
+          'Registered file-backed resources are exported even when orphaned. usedInProject tracks object/event/effect references; userAdded tracks user intent, not usage.',
+      },
+    };
+  });
+};
+
+const replaceUtf8FileAtomically = ({
+  fullPath,
+  content,
+}: {|
+  fullPath: string,
+  content: string,
+|}): {|
+  commit: () => void,
+  rollback: () => void,
+  existed: boolean,
+|} => {
+  if (!fs || !path) throw new Error('local_filesystem_unavailable');
+  const directory = path.dirname(fullPath);
+  fs.mkdirSync(directory, { recursive: true });
+  if (fs.existsSync(fullPath) && !fs.statSync(fullPath).isFile()) {
+    throw new Error('resource_text_target_not_file');
+  }
+
+  const nonce = `${process.pid}-${Date.now()}-${Math.random()
+    .toString(16)
+    .slice(2)}`;
+  const tempPath = path.join(
+    directory,
+    `.${path.basename(fullPath)}.agent-write-${nonce}.tmp`
+  );
+  const backupPath = path.join(
+    directory,
+    `.${path.basename(fullPath)}.agent-backup-${nonce}.tmp`
+  );
+  const existed = fs.existsSync(fullPath);
+  let backupCreated = false;
+  let targetReplaced = false;
+
+  try {
+    fs.writeFileSync(tempPath, content, { encoding: 'utf8', flag: 'wx' });
+    if (existed) {
+      fs.renameSync(fullPath, backupPath);
+      backupCreated = true;
+    }
+    fs.renameSync(tempPath, fullPath);
+    targetReplaced = true;
+  } catch (error) {
+    try {
+      if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+      if (targetReplaced && fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
+      if (backupCreated && fs.existsSync(backupPath)) {
+        fs.renameSync(backupPath, fullPath);
+      }
+    } catch (_) {}
+    throw error;
+  }
+
+  let completed = false;
+  return {
+    existed,
+    commit: () => {
+      if (completed) return;
+      completed = true;
+      if (backupCreated && fs.existsSync(backupPath)) fs.unlinkSync(backupPath);
+    },
+    rollback: () => {
+      if (completed) return;
+      completed = true;
+      try {
+        if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
+        if (backupCreated && fs.existsSync(backupPath)) {
+          fs.renameSync(backupPath, fullPath);
+        }
+      } finally {
+        if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+        if (fs.existsSync(backupPath)) fs.unlinkSync(backupPath);
+      }
+    },
+  };
+};
+
 export const createAssetTools = ({
   project,
   resourceManagementProps,
@@ -405,6 +655,321 @@ export const createAssetTools = ({
         project,
         resourceName
       ),
+    };
+  };
+
+  const inspectResourcePackaging = (request: any = {}) => {
+    const entries = getResourcePackagingEntries(project);
+    const selected =
+      request.resourceName && typeof request.resourceName === 'string'
+        ? entries.filter(entry => entry.name === request.resourceName)
+        : entries;
+    if (request.resourceName && selected.length === 0) {
+      throw new Error(`resource_not_found:${request.resourceName}`);
+    }
+
+    return {
+      exportStrategy: {
+        resourceSelection: 'all-registered-file-backed-resources',
+        directoryStructure: 'flattened',
+        collisionPolicy: 'basename-then-numeric-suffix-starting-at-2',
+        updatesExportedProjectOnly: true,
+        portableRuntimeResolution:
+          'Runtime APIs should use the registered resource name. Export rewrites its backing file to a game-root-relative filename shared by preview, web, desktop and mobile outputs.',
+      },
+      transactionSemantics: {
+        projectCheckpointRestoresFileBytes: false,
+        writeOperationAtomic: true,
+        note:
+          'resources.text.write rolls back its own file/resource mutation on operation failure. safety.transactions snapshots project data only and does not restore physical file bytes after a later rollback.',
+      },
+      resources: selected,
+      summary: {
+        total: selected.length,
+        willPackage: selected.filter(entry => entry.willPackage).length,
+        missingSource: selected.filter(
+          entry => entry.packagingStatus === 'missing-source'
+        ).length,
+        orphanedButPackaged: selected.filter(
+          entry => entry.orphaned && entry.willPackage
+        ).length,
+      },
+    };
+  };
+
+  const readTextResource = (request: any) => {
+    if (!fs || !path) throw new Error('local_filesystem_unavailable');
+    if (
+      !request ||
+      !request.resourceName ||
+      typeof request.resourceName !== 'string'
+    ) {
+      throw new Error('missing_resource_name');
+    }
+
+    const resourcesManager = project.getResourcesManager();
+    if (!resourcesManager.hasResource(request.resourceName)) {
+      throw new Error(`resource_not_found:${request.resourceName}`);
+    }
+    const resource = resourcesManager.getResource(request.resourceName);
+    assertTextResourceKind(resource.getKind());
+    const localFile = getLocalFileDetails(project, resource);
+    if (!localFile.isLocalFile || !localFile.fullPath) {
+      throw new Error('resource_file_path_unresolved');
+    }
+    if (localFile.insideProjectFolder !== true) {
+      throw new Error('resource_file_outside_project_folder');
+    }
+    if (localFile.exists !== true) {
+      throw new Error('resource_file_not_found');
+    }
+
+    const stat = fs.statSync(localFile.fullPath);
+    if (stat.size > DEFAULT_MAX_TEXT_RESOURCE_BYTES) {
+      throw new Error(
+        `resource_text_file_too_large:${stat.size}:${DEFAULT_MAX_TEXT_RESOURCE_BYTES}`
+      );
+    }
+    const content = fs.readFileSync(localFile.fullPath, 'utf8');
+    const shouldParseJson =
+      request.parseJson === true || resource.getKind() === 'json';
+    let json = null;
+    let jsonValid = null;
+    let jsonError = null;
+    if (shouldParseJson) {
+      try {
+        json = JSON.parse(content);
+        jsonValid = true;
+      } catch (error) {
+        jsonValid = false;
+        jsonError = String((error && error.message) || error);
+      }
+    }
+
+    return {
+      resource: getResourceInfo(project, request.resourceName),
+      content,
+      byteLength: getUtf8ByteLength(content),
+      encoding: 'utf8',
+      json,
+      jsonValid,
+      jsonError,
+    };
+  };
+
+  const writeTextResource = (request: any) => {
+    if (!fs || !path) throw new Error('local_filesystem_unavailable');
+    if (
+      !request ||
+      !request.resourceName ||
+      typeof request.resourceName !== 'string'
+    ) {
+      throw new Error('missing_resource_name');
+    }
+    if (typeof request.content !== 'string') {
+      throw new Error('missing_resource_text_content');
+    }
+
+    const format =
+      request.format === 'json' || request.format === 'text'
+        ? request.format
+        : request.resourceName.toLowerCase().endsWith('.json')
+        ? 'json'
+        : 'text';
+    if (
+      request.format !== undefined &&
+      request.format !== 'json' &&
+      request.format !== 'text'
+    ) {
+      throw new Error('unsupported_resource_text_format');
+    }
+
+    const byteLength = getUtf8ByteLength(request.content);
+    if (byteLength > DEFAULT_MAX_TEXT_RESOURCE_BYTES) {
+      throw new Error(
+        `resource_text_file_too_large:${byteLength}:${DEFAULT_MAX_TEXT_RESOURCE_BYTES}`
+      );
+    }
+
+    let parsedJson = null;
+    if (format === 'json') {
+      try {
+        parsedJson = JSON.parse(request.content);
+      } catch (error) {
+        const invalidJsonError: any = new Error('invalid_resource_json');
+        invalidJsonError.code = 'invalid_resource_json';
+        invalidJsonError.details = {
+          message: String((error && error.message) || error),
+        };
+        throw invalidJsonError;
+      }
+    }
+
+    const resourcesManager = project.getResourcesManager();
+    const exists = resourcesManager.hasResource(request.resourceName);
+    if (request.createOnly === true && exists) {
+      throw new Error(`resource_already_exists:${request.resourceName}`);
+    }
+    if (request.updateOnly === true && !exists) {
+      throw new Error(`resource_not_found:${request.resourceName}`);
+    }
+    const existingResource = exists
+      ? resourcesManager.getResource(request.resourceName)
+      : null;
+    const requestedKind =
+      typeof request.resourceKind === 'string' && request.resourceKind
+        ? request.resourceKind
+        : null;
+    const kind = existingResource
+      ? existingResource.getKind()
+      : requestedKind || (format === 'json' ? 'json' : null);
+    if (!kind) throw new Error('text_resource_kind_required');
+    assertTextResourceKind(kind);
+    if (
+      existingResource &&
+      requestedKind &&
+      requestedKind !== existingResource.getKind()
+    ) {
+      throw new Error(
+        `resource_kind_mismatch:${existingResource.getKind()}:${requestedKind}`
+      );
+    }
+
+    let target;
+    if (request.relativePath !== undefined) {
+      if (
+        !request.relativePath ||
+        typeof request.relativePath !== 'string'
+      ) {
+        throw new Error('invalid_project_resource_relative_path');
+      }
+      target = resolveProjectTextPath(project, request.relativePath);
+    } else if (existingResource) {
+      const localFile = getLocalFileDetails(project, existingResource);
+      if (
+        !localFile.isLocalFile ||
+        !localFile.fullPath ||
+        localFile.insideProjectFolder !== true
+      ) {
+        throw new Error('resource_file_outside_project_folder');
+      }
+      const projectFolder = getProjectFolder(project);
+      if (!projectFolder) throw new Error('project_must_be_saved_locally');
+      target = resolveProjectTextPath(
+        project,
+        path.relative(projectFolder, localFile.fullPath)
+      );
+    } else {
+      target = resolveProjectTextPath(project, request.resourceName);
+    }
+
+    const targetKey =
+      process.platform === 'win32'
+        ? target.fullPath.toLowerCase()
+        : target.fullPath;
+    const sharedTargetNames = resourcesManager
+      .getAllResourceNames()
+      .toJSArray()
+      .filter(name => name !== request.resourceName)
+      .filter(name => {
+        const candidate = resourcesManager.getResource(name);
+        const details = getLocalFileDetails(project, candidate);
+        if (!details.fullPath) return false;
+        const candidateKey =
+          process.platform === 'win32'
+            ? details.fullPath.toLowerCase()
+            : details.fullPath;
+        return candidateKey === targetKey;
+      });
+    if (sharedTargetNames.length) {
+      throw new Error(
+        `resource_file_shared_by:${sharedTargetNames.join(',')}`
+      );
+    }
+
+    let resourceForCreate = null;
+    if (!existingResource) {
+      resourceForCreate = createNewResource(kind);
+      if (!resourceForCreate) {
+        throw new Error(`unsupported_resource_kind:${kind}`);
+      }
+    }
+
+    const oldResourceState = existingResource
+      ? {
+          file: existingResource.useFile() ? existingResource.getFile() : null,
+          userAdded: existingResource.isUserAdded(),
+          metadata: existingResource.getMetadata(),
+          originName: existingResource.getOriginName(),
+          originIdentifier: existingResource.getOriginIdentifier(),
+        }
+      : null;
+    const fileMutation = replaceUtf8FileAtomically({
+      fullPath: target.fullPath,
+      content: request.content,
+    });
+    let resourceAdded = false;
+
+    try {
+      if (existingResource) {
+        existingResource.setFile(target.storedFilePath);
+        existingResource.setUserAdded(true);
+      } else if (resourceForCreate) {
+        resourceForCreate.setName(request.resourceName);
+        resourceForCreate.setFile(target.storedFilePath);
+        resourceForCreate.setUserAdded(true);
+        applyResourceDefaults(project, resourceForCreate);
+        if (!resourcesManager.addResource(resourceForCreate)) {
+          throw new Error(
+            `resource_registration_failed:${request.resourceName}`
+          );
+        }
+        resourceAdded = true;
+      }
+
+      notifyChanged(existingResource ? 'usage' : 'added');
+      fileMutation.commit();
+    } catch (error) {
+      if (resourceAdded) {
+        resourcesManager.removeResource(request.resourceName);
+      } else if (existingResource && oldResourceState) {
+        if (oldResourceState.file !== null) {
+          existingResource.setFile(oldResourceState.file);
+        }
+        existingResource.setUserAdded(oldResourceState.userAdded);
+        existingResource.setMetadata(oldResourceState.metadata);
+        existingResource.setOrigin(
+          oldResourceState.originName,
+          oldResourceState.originIdentifier
+        );
+      }
+      fileMutation.rollback();
+      throw error;
+    } finally {
+      if (resourceForCreate) resourceForCreate.delete();
+    }
+
+    return {
+      written: true,
+      created: !exists,
+      updated: exists,
+      format,
+      jsonValidated: format === 'json',
+      jsonType:
+        format === 'json'
+          ? Array.isArray(parsedJson)
+            ? 'array'
+            : parsedJson === null
+            ? 'null'
+            : typeof parsedJson
+          : null,
+      byteLength,
+      encoding: 'utf8',
+      operationAtomic: true,
+      resource: getResourceInfo(project, request.resourceName),
+      packaging: inspectResourcePackaging({
+        resourceName: request.resourceName,
+      }).resources[0],
     };
   };
 
@@ -705,6 +1270,9 @@ export const createAssetTools = ({
   return {
     listResources,
     inspectResource,
+    inspectResourcePackaging,
+    readTextResource,
+    writeTextResource,
     importLocalResource,
     importStoreResource,
     replaceLocalResource,

@@ -18,6 +18,24 @@ const RESOURCE_NAME_SCHEMA = {
   properties: { resourceName: { type: 'string', minLength: 1 } },
 };
 
+const TEXT_RESOURCE_KINDS = [
+  'json',
+  'javascript',
+  'tilemap',
+  'tileset',
+  'bitmapFont',
+  'atlas',
+  'spine',
+];
+
+const TEXT_RESOURCE_WRITE_PROPERTIES = {
+  resourceName: { type: 'string', minLength: 1 },
+  relativePath: { type: 'string', minLength: 1 },
+  format: { type: 'string', enum: ['json', 'text'] },
+  resourceKind: { type: 'string', enum: TEXT_RESOURCE_KINDS },
+  content: { type: 'string' },
+};
+
 const assertResourceName = (value: any) => {
   if (!value || typeof value !== 'string') {
     throw new AgentError({ code: 'missing_resource_name' });
@@ -27,6 +45,12 @@ const assertResourceName = (value: any) => {
 const assertFilePath = (value: any) => {
   if (!value || typeof value !== 'string') {
     throw new AgentError({ code: 'missing_resource_file_path' });
+  }
+};
+
+const assertTextContent = (value: any) => {
+  if (typeof value !== 'string') {
+    throw new AgentError({ code: 'missing_resource_text_content' });
   }
 };
 
@@ -51,6 +75,84 @@ export const createResourceCommandDescriptors = ({
     metadata: makeCommandMetadata({ requiresProject: true }),
     validateInput: input => assertResourceName(input.resourceName),
     execute: ({ input }) => assetTools.inspectResource(input.resourceName),
+  },
+  {
+    name: 'resources.text.read',
+    description:
+      'Read one project-local UTF-8 resource file. JSON resources are parsed and report syntax validity.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['resourceName'],
+      properties: {
+        resourceName: { type: 'string', minLength: 1 },
+        parseJson: { type: 'boolean' },
+      },
+    },
+    metadata: makeCommandMetadata({ requiresProject: true }),
+    validateInput: input => assertResourceName(input.resourceName),
+    execute: ({ input }) => assetTools.readTextResource(input),
+  },
+  {
+    name: 'resources.text.create',
+    description:
+      'Create a project-local UTF-8/JSON file and register it as a project resource in one atomic operation. JSON defaults to resource kind json; plain text requires an explicit compatible resourceKind.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['resourceName', 'content'],
+      properties: TEXT_RESOURCE_WRITE_PROPERTIES,
+    },
+    metadata: makeCommandMetadata({
+      readOnly: false,
+      idempotent: false,
+      requiresProject: true,
+      modifiesProject: true,
+    }),
+    validateInput: input => {
+      assertResourceName(input.resourceName);
+      assertTextContent(input.content);
+    },
+    execute: ({ input }) =>
+      assetTools.writeTextResource({ ...input, createOnly: true }),
+  },
+  {
+    name: 'resources.text.update',
+    description:
+      'Atomically update the project-local UTF-8/JSON file backing an existing compatible resource, optionally moving it to another project-relative path.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['resourceName', 'content'],
+      properties: TEXT_RESOURCE_WRITE_PROPERTIES,
+    },
+    metadata: makeCommandMetadata({
+      readOnly: false,
+      destructive: true,
+      idempotent: true,
+      requiresProject: true,
+      modifiesProject: true,
+    }),
+    validateInput: input => {
+      assertResourceName(input.resourceName);
+      assertTextContent(input.content);
+    },
+    execute: ({ input }) =>
+      assetTools.writeTextResource({ ...input, updateOnly: true }),
+  },
+  {
+    name: 'resources.packaging.inspect',
+    description:
+      'Explain how registered file-backed resources map from source paths to flattened preview/export filenames and portable runtime paths.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        resourceName: { type: 'string', minLength: 1 },
+      },
+    },
+    metadata: makeCommandMetadata({ requiresProject: true }),
+    execute: ({ input }) => assetTools.inspectResourcePackaging(input),
   },
   {
     name: 'resources.import-local',

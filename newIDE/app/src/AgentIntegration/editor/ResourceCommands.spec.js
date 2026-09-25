@@ -6,6 +6,9 @@ const makeHost = (project: any = {}) => {
   const assetTools = {
     listResources: jest.fn(() => ({ resources: [] })),
     inspectResource: jest.fn(resourceName => ({ name: resourceName })),
+    inspectResourcePackaging: jest.fn(input => ({ resources: [], input })),
+    readTextResource: jest.fn(input => ({ content: 'ok', input })),
+    writeTextResource: jest.fn(input => ({ written: true, input })),
     importLocalResource: jest.fn(async input => ({ imported: true, input })),
     replaceLocalResource: jest.fn(async input => ({ replaced: true, input })),
     renameResource: jest.fn(input => ({ renamed: true, input })),
@@ -32,6 +35,66 @@ describe('ResourceCommands', () => {
     expect(host.describeCommand('resources.remove').metadata).toMatchObject({
       destructive: true,
       modifiesProject: true,
+    });
+  });
+
+  test('exposes text authoring and packaging metadata with correct safety', () => {
+    const { host } = makeHost();
+    expect(host.describeCommand('resources.text.read').metadata.readOnly).toBe(
+      true
+    );
+    expect(
+      host.describeCommand('resources.packaging.inspect').metadata.readOnly
+    ).toBe(true);
+    expect(host.describeCommand('resources.text.create').metadata).toMatchObject({
+      modifiesProject: true,
+      destructive: false,
+    });
+    expect(host.describeCommand('resources.text.update').metadata).toMatchObject({
+      modifiesProject: true,
+      destructive: true,
+      idempotent: true,
+    });
+  });
+
+  test('routes text create/update/read and packaging inspection', async () => {
+    const { host, assetTools } = makeHost();
+    const createInput = {
+      resourceName: 'locales/es.json',
+      relativePath: 'locales/es.json',
+      format: 'json',
+      content: '{"hello":"Hola"}',
+    };
+    const updateInput = {
+      resourceName: 'locales/es.json',
+      format: 'json',
+      content: '{"hello":"Buenas"}',
+    };
+
+    await host.execute('resources.text.create', createInput);
+    await host.execute('resources.text.update', updateInput);
+    await host.execute('resources.text.read', {
+      resourceName: 'locales/es.json',
+      parseJson: true,
+    });
+    await host.execute('resources.packaging.inspect', {
+      resourceName: 'locales/es.json',
+    });
+
+    expect(assetTools.writeTextResource).toHaveBeenNthCalledWith(1, {
+      ...createInput,
+      createOnly: true,
+    });
+    expect(assetTools.writeTextResource).toHaveBeenNthCalledWith(2, {
+      ...updateInput,
+      updateOnly: true,
+    });
+    expect(assetTools.readTextResource).toHaveBeenCalledWith({
+      resourceName: 'locales/es.json',
+      parseJson: true,
+    });
+    expect(assetTools.inspectResourcePackaging).toHaveBeenCalledWith({
+      resourceName: 'locales/es.json',
     });
   });
 

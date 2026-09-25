@@ -1,0 +1,119 @@
+{
+  "kind": "dx16-text-resource-authoring-acceptance",
+  "recordedAt": "2026-09-25",
+  "protocolVersion": "2026-07-28",
+  "contract": {
+    "commands": [
+      "resources.text.create",
+      "resources.text.read",
+      "resources.text.update",
+      "resources.packaging.inspect"
+    ],
+    "maxTextBytes": 4194304,
+    "encoding": "utf8",
+    "nativeTextCompatibleKinds": [
+      "json",
+      "javascript",
+      "tilemap",
+      "tileset",
+      "bitmapFont",
+      "atlas",
+      "spine"
+    ],
+    "jsonValidation": "JSON is parsed before file or resource mutation; invalid JSON does not alter file bytes or project revision.",
+    "projectPathSafety": "Relative project-local paths only; absolute/path traversal/symlink traversal are rejected.",
+    "operationAtomicity": "File replacement and resource registration/update are rolled back together if the individual write operation fails.",
+    "safetyTransactionLimitation": "A later safety.transactions rollback restores project data but does not restore physical file bytes already written by a successful text resource operation.",
+    "packaging": {
+      "selection": "all registered file-backed resources",
+      "directoryStructure": "flattened",
+      "collisionPolicy": "basename with numeric suffix starting at 2",
+      "runtimeReference": "registered resource name",
+      "runtimeFile": "exported game-root-relative filename"
+    }
+  },
+  "regressions": {
+    "renderer": "25/25 PASS",
+    "liveScenarioUnit": "3/3 PASS",
+    "eslint": "PASS",
+    "diffCheck": "PASS",
+    "architectureGuard": "PASS",
+    "productionBuild": "PASS",
+    "windowsPackage": "PASS"
+  },
+  "source": {
+    "ok": true,
+    "label": "source-final",
+    "locale": {
+      "resourceName": "locales/es.json",
+      "file": "locales/es.json",
+      "jsonValid": true,
+      "updatedGreeting": "Buenas",
+      "byteLength": 88
+    },
+    "packaging": {
+      "status": "will-package",
+      "userAdded": true,
+      "usedInProject": false,
+      "orphaned": true,
+      "exportedFilename": "es.json",
+      "runtimeResolution": {
+        "strategy": "registered-resource-name-to-game-root-file",
+        "resourceName": "locales/es.json",
+        "loaderReference": "locales/es.json",
+        "exportedFile": "es.json",
+        "preview": "es.json",
+        "web": "es.json",
+        "desktop": "es.json",
+        "mobile": "es.json"
+      },
+      "previewContentVerified": true,
+      "html5ContentVerified": true
+    },
+    "invalidJsonUnchanged": true,
+    "validationErrors": 0
+  },
+  "winUnpacked": {
+    "ok": true,
+    "label": "win-unpacked-final",
+    "locale": {
+      "resourceName": "locales/es.json",
+      "file": "locales/es.json",
+      "jsonValid": true,
+      "updatedGreeting": "Buenas",
+      "byteLength": 88
+    },
+    "packaging": {
+      "status": "will-package",
+      "userAdded": true,
+      "usedInProject": false,
+      "orphaned": true,
+      "exportedFilename": "es.json",
+      "runtimeResolution": {
+        "strategy": "registered-resource-name-to-game-root-file",
+        "resourceName": "locales/es.json",
+        "loaderReference": "locales/es.json",
+        "exportedFile": "es.json",
+        "preview": "es.json",
+        "web": "es.json",
+        "desktop": "es.json",
+        "mobile": "es.json"
+      },
+      "previewContentVerified": true,
+      "html5ContentVerified": true
+    },
+    "invalidJsonUnchanged": true,
+    "validationErrors": 0,
+    "executable": "newIDE/electron-app/dist/win-unpacked/GDevelop.exe"
+  },
+  "removalCoverage": {
+    "command": "resources.remove",
+    "physicalDeleteOption": "deleteFile=true",
+    "coverage": "Existing AssetTools regressions cover safe project-local physical deletion plus used/shared/outside-project rejection."
+  },
+  "notes": [
+    "The live acceptance creates the Spanish locale exclusively through MCP after project.save-as; it does not pre-create or register the locale with filesystem orchestration.",
+    "An orphaned registered JSON resource is still copied by the native preview/export pipeline, matching gd::ResourceExposer and ResourcesMergingHelper behavior.",
+    "The actual preview URL is discovered from desktop.windows.list, and the packaged resource is resolved relative to that URL rather than by guessing the preview directory."
+  ]
+}

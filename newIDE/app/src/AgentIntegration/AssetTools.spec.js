@@ -385,6 +385,213 @@ describe('AgentIntegration AssetTools', () => {
     fs.rmSync(projectFolder, { recursive: true, force: true });
   });
 
+  it('creates, reads and updates project-local JSON without external file orchestration', () => {
+    const project = gd.ProjectHelper.createNewGDJSProject();
+    const projectFolder = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'gd-agent-text-resource-json-')
+    );
+    project.setProjectFile(path.join(projectFolder, 'game.json'));
+    const {
+      tools,
+      onNewResourcesAdded,
+      onResourceUsageChanged,
+      triggerUnsavedChanges,
+    } = makeTools(project);
+
+    const created = tools.writeTextResource({
+      resourceName: 'locales/es.json',
+      relativePath: 'locales/es.json',
+      format: 'json',
+      content: '{"hello":"Hola","count":1}',
+      createOnly: true,
+    });
+
+    expect(created).toMatchObject({
+      written: true,
+      created: true,
+      updated: false,
+      format: 'json',
+      jsonValidated: true,
+      operationAtomic: true,
+      resource: {
+        name: 'locales/es.json',
+        kind: 'json',
+        file: 'locales/es.json',
+        userAdded: true,
+        fileExists: true,
+        insideProjectFolder: true,
+      },
+      packaging: {
+        packagingStatus: 'will-package',
+        willPackage: true,
+      },
+    });
+    expect(
+      fs.readFileSync(path.join(projectFolder, 'locales', 'es.json'), 'utf8')
+    ).toBe('{"hello":"Hola","count":1}');
+    expect(onNewResourcesAdded).toHaveBeenCalledTimes(1);
+
+    const read = tools.readTextResource({
+      resourceName: 'locales/es.json',
+      parseJson: true,
+    });
+    expect(read).toMatchObject({
+      encoding: 'utf8',
+      jsonValid: true,
+      json: { hello: 'Hola', count: 1 },
+    });
+
+    const updated = tools.writeTextResource({
+      resourceName: 'locales/es.json',
+      format: 'json',
+      content: '{"hello":"Buenas","count":2}',
+      updateOnly: true,
+    });
+    expect(updated).toMatchObject({
+      created: false,
+      updated: true,
+      jsonValidated: true,
+    });
+    expect(
+      fs.readFileSync(path.join(projectFolder, 'locales', 'es.json'), 'utf8')
+    ).toBe('{"hello":"Buenas","count":2}');
+    expect(onResourceUsageChanged).toHaveBeenCalledTimes(1);
+    expect(triggerUnsavedChanges).toHaveBeenCalledTimes(2);
+
+    expect(() =>
+      tools.writeTextResource({
+        resourceName: 'locales/es.json',
+        format: 'json',
+        content: '{"broken":',
+        updateOnly: true,
+      })
+    ).toThrow(expect.objectContaining({ code: 'invalid_resource_json' }));
+    expect(
+      fs.readFileSync(path.join(projectFolder, 'locales', 'es.json'), 'utf8')
+    ).toBe('{"hello":"Buenas","count":2}');
+
+    project.delete();
+    fs.rmSync(projectFolder, { recursive: true, force: true });
+  });
+
+  it('supports plain UTF-8 text only with an explicit native file-backed resource kind', () => {
+    const project = gd.ProjectHelper.createNewGDJSProject();
+    const projectFolder = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'gd-agent-text-resource-plain-')
+    );
+    project.setProjectFile(path.join(projectFolder, 'game.json'));
+    const { tools } = makeTools(project);
+
+    expect(() =>
+      tools.writeTextResource({
+        resourceName: 'notes.txt',
+        format: 'text',
+        content: 'Olá UTF-8',
+        createOnly: true,
+      })
+    ).toThrow('text_resource_kind_required');
+
+    const created = tools.writeTextResource({
+      resourceName: 'notes.txt',
+      relativePath: 'data/notes.txt',
+      format: 'text',
+      resourceKind: 'javascript',
+      content: 'Olá UTF-8',
+      createOnly: true,
+    });
+    expect(created.resource).toMatchObject({
+      name: 'notes.txt',
+      kind: 'javascript',
+      file: 'data/notes.txt',
+      userAdded: true,
+    });
+    expect(tools.readTextResource({ resourceName: 'notes.txt' }).content).toBe(
+      'Olá UTF-8'
+    );
+
+    expect(() =>
+      tools.writeTextResource({
+        resourceName: 'escape.json',
+        relativePath: '../escape.json',
+        format: 'json',
+        content: '{}',
+        createOnly: true,
+      })
+    ).toThrow('resource_file_outside_project_folder');
+
+    project.delete();
+    fs.rmSync(projectFolder, { recursive: true, force: true });
+  });
+
+  it('predicts native flattened export names and packages orphaned user-added resources', () => {
+    const project = gd.ProjectHelper.createNewGDJSProject();
+    const projectFolder = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'gd-agent-resource-packaging-')
+    );
+    project.setProjectFile(path.join(projectFolder, 'game.json'));
+    const { tools } = makeTools(project);
+
+    tools.writeTextResource({
+      resourceName: 'locale-a',
+      relativePath: 'a/data.json',
+      format: 'json',
+      content: '{"locale":"a"}',
+      createOnly: true,
+    });
+    tools.writeTextResource({
+      resourceName: 'locale-b',
+      relativePath: 'b/data.json',
+      format: 'json',
+      content: '{"locale":"b"}',
+      createOnly: true,
+    });
+
+    const packaging = tools.inspectResourcePackaging();
+    const localeA = packaging.resources.find(
+      resource => resource.name === 'locale-a'
+    );
+    const localeB = packaging.resources.find(
+      resource => resource.name === 'locale-b'
+    );
+    expect(localeA).toMatchObject({
+      orphaned: true,
+      userAdded: true,
+      packagingStatus: 'will-package',
+      willPackage: true,
+      exportedFilename: 'data.json',
+      runtimeResolution: {
+        strategy: 'registered-resource-name-to-game-root-file',
+        resourceName: 'locale-a',
+        loaderReference: 'locale-a',
+        exportedFile: 'data.json',
+        preview: 'data.json',
+        web: 'data.json',
+        desktop: 'data.json',
+        mobile: 'data.json',
+      },
+    });
+    expect(localeB).toMatchObject({
+      orphaned: true,
+      userAdded: true,
+      packagingStatus: 'will-package',
+      willPackage: true,
+      exportedFilename: 'data2.json',
+    });
+    expect(packaging.summary.orphanedButPackaged).toBe(2);
+    expect(packaging.exportStrategy).toMatchObject({
+      resourceSelection: 'all-registered-file-backed-resources',
+      directoryStructure: 'flattened',
+      collisionPolicy: 'basename-then-numeric-suffix-starting-at-2',
+    });
+    expect(packaging.transactionSemantics).toMatchObject({
+      projectCheckpointRestoresFileBytes: false,
+      writeOperationAtomic: true,
+    });
+
+    project.delete();
+    fs.rmSync(projectFolder, { recursive: true, force: true });
+  });
+
   it('imports a public store resource with canonical provenance and defaults', () => {
     const project = gd.ProjectHelper.createNewGDJSProject();
     const { tools, onNewResourcesAdded, triggerUnsavedChanges } = makeTools(
