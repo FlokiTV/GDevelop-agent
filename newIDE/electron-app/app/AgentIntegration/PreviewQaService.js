@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const { comparePngBuffers } = require('./ImageComparison');
 
 const MAX_RECORDING_STEPS = 200;
 const MAX_BASELINES = 32;
@@ -44,12 +45,26 @@ const createPreviewQaService = ({
       screenshotBaseline: { supported: true, format: 'png' },
       exactPngHashComparison: { supported: true },
       pixelToleranceComparison: {
-        supported: false,
-        reason: 'decoded_pixel_diff_not_available',
+        supported: true,
+        configurableChannelThreshold: true,
+        configurableDifferentPixelRatio: true,
+        configurableMeanDifference: true,
       },
+      perceptualComparison: {
+        supported: true,
+        algorithm: 'block-luminance-mean-absolute-difference',
+        configurableSimilarityThreshold: true,
+        configurableDownscale: true,
+      },
+      divergentRegions: {
+        supported: true,
+        configurableRegionSize: true,
+        maxRegions: 64,
+      },
+      diffImage: { supported: true, format: 'png', kind: 'heatmap' },
       ignoreRegions: {
         supported: false,
-        reason: 'decoded_pixel_diff_not_available',
+        reason: 'ignore_region_mask_not_exposed',
       },
     },
     deviceSimulation: {
@@ -167,9 +182,17 @@ const createPreviewQaService = ({
       sha256: sha256(captured.data),
       bytes: captured.data.length,
       region: captured.region || null,
+      size: captured.outputSize || captured.sourceSize || null,
+      pngData: Buffer.from(captured.data),
     };
     baselines.set(input.baselineId, baseline);
-    return baseline;
+    return {
+      baselineId: baseline.baselineId,
+      sha256: baseline.sha256,
+      bytes: baseline.bytes,
+      region: baseline.region,
+      size: baseline.size,
+    };
   };
 
   const compareBaseline = async input => {
@@ -182,14 +205,40 @@ const createPreviewQaService = ({
       maxHeight: input.maxHeight,
     });
     const actualSha256 = sha256(captured.data);
+    const comparison = comparePngBuffers({
+      expectedPng: baseline.pngData,
+      actualPng: captured.data,
+      mode: input.mode || 'exact',
+      channelThreshold: input.channelThreshold,
+      maxDifferentPixelRatio: input.maxDifferentPixelRatio,
+      maxMeanDifference: input.maxMeanDifference,
+      minSimilarity: input.minSimilarity,
+      perceptualDownscale: input.perceptualDownscale,
+      regionSize: input.regionSize,
+      regionDifferenceRatioThreshold: input.regionDifferenceRatioThreshold,
+      maxRegions: input.maxRegions,
+      includeDiffImage: input.includeDiffImage === true,
+    });
+    const { diffImageBuffer, ...metrics } = comparison;
     return {
       baselineId: baseline.baselineId,
-      passed: actualSha256 === baseline.sha256,
-      comparison: 'exact-png-sha256',
+      comparison: comparison.mode,
       expectedSha256: baseline.sha256,
       actualSha256,
       expectedBytes: baseline.bytes,
       actualBytes: captured.data.length,
+      ...metrics,
+      ...(diffImageBuffer
+        ? {
+            mimeType: 'image/png',
+            imageBuffer: diffImageBuffer,
+            diffImage: {
+              included: true,
+              kind: 'heatmap',
+              byteLength: diffImageBuffer.length,
+            },
+          }
+        : { diffImage: { included: false } }),
     };
   };
 

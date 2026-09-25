@@ -1,0 +1,172 @@
+{
+  "kind": "dx18-perceptual-visual-diff-acceptance",
+  "recordedAt": "2026-09-25",
+  "protocolVersion": "2026-07-28",
+  "contract": {
+    "command": "preview.visual.baseline.compare",
+    "modes": [
+      "exact",
+      "pixel-tolerance",
+      "perceptual"
+    ],
+    "baselineStorage": "bounded process-local PNG baseline captured through preview.visual.baseline.capture",
+    "metrics": [
+      "passed",
+      "similarity",
+      "differentPixelRatio",
+      "meanDifference",
+      "maxDifference",
+      "divergentRegions"
+    ],
+    "exact": {
+      "default": true,
+      "semantics": "PNG byte identity plus decoded pixel metrics"
+    },
+    "pixelTolerance": {
+      "defaultChannelThreshold": 8,
+      "defaultMaxDifferentPixelRatio": 0.01,
+      "defaultMaxMeanDifference": 4
+    },
+    "perceptual": {
+      "algorithm": "block-luminance-mean-absolute-difference",
+      "defaultMinSimilarity": 0.98,
+      "defaultBlockSize": 4,
+      "blockSizeRange": [
+        1,
+        32
+      ]
+    },
+    "regions": {
+      "defaultRegionSize": 32,
+      "defaultDifferenceRatioThreshold": 0.02,
+      "defaultMaxRegions": 12,
+      "maximumRegions": 64
+    },
+    "diffImage": {
+      "optional": true,
+      "format": "image/png",
+      "kind": "heatmap",
+      "returnedAsMcpImageContent": true
+    },
+    "implementation": "Pure JavaScript with Node zlib PNG decode/encode; no Python, OpenCV or external service.",
+    "unsupported": [
+      "ignore-region masks"
+    ]
+  },
+  "scenario": {
+    "viewport": {
+      "width": 640,
+      "height": 360,
+      "units": "device-independent-pixels"
+    },
+    "baseline": {
+      "scene": "DX18Baseline",
+      "background": "#808080"
+    },
+    "visuallyClose": {
+      "scene": "DX18Close",
+      "background": "#828282"
+    },
+    "materiallyDifferent": {
+      "scene": "DX18Material",
+      "background": "#f00000"
+    }
+  },
+  "source": {
+    "ok": true,
+    "label": "source-final",
+    "exact": {
+      "passed": true,
+      "similarity": 1,
+      "differentPixelRatio": 0
+    },
+    "close": {
+      "pixelTolerance": {
+        "passed": true,
+        "similarity": 0.9921568627450981,
+        "differentPixelRatio": 0,
+        "meanDifference": 2,
+        "maxDifference": 2
+      },
+      "perceptual": {
+        "passed": true,
+        "similarity": 0.9921568627450981
+      }
+    },
+    "material": {
+      "passed": false,
+      "similarity": 0.6981333333333409,
+      "differentPixelRatio": 1,
+      "meanDifference": 128,
+      "maxDifference": 128,
+      "divergentRegionCount": 12,
+      "representativeRegion": {
+        "x": 0,
+        "y": 0,
+        "width": 32,
+        "height": 32,
+        "differenceRatio": 1,
+        "meanDifference": 128,
+        "maxDifference": 128,
+        "severity": 0.8505882352941176
+      },
+      "diffImageByteLength": 1751
+    },
+    "validationErrors": 0
+  },
+  "winUnpacked": {
+    "ok": true,
+    "label": "win-unpacked-final",
+    "exact": {
+      "passed": true,
+      "similarity": 1,
+      "differentPixelRatio": 0
+    },
+    "close": {
+      "pixelTolerance": {
+        "passed": true,
+        "similarity": 0.9921568627450981,
+        "differentPixelRatio": 0,
+        "meanDifference": 2,
+        "maxDifference": 2
+      },
+      "perceptual": {
+        "passed": true,
+        "similarity": 0.9921568627450981
+      }
+    },
+    "material": {
+      "passed": false,
+      "similarity": 0.6981333333333409,
+      "differentPixelRatio": 1,
+      "meanDifference": 128,
+      "maxDifference": 128,
+      "divergentRegionCount": 12,
+      "representativeRegion": {
+        "x": 0,
+        "y": 0,
+        "width": 32,
+        "height": 32,
+        "differenceRatio": 1,
+        "meanDifference": 128,
+        "maxDifference": 128,
+        "severity": 0.8505882352941176
+      },
+      "diffImageByteLength": 1751
+    },
+    "validationErrors": 0,
+    "executable": "newIDE/electron-app/dist/win-unpacked/GDevelop.exe"
+  },
+  "regressions": {
+    "imageComparisonAndQa": "17/17 PASS after capability harness update",
+    "sourceLiveAcceptance": "PASS",
+    "winUnpackedLiveAcceptance": "PASS",
+    "windowsPackage": "PASS",
+    "note": "A separate legacy McpHttpServer edit/hot-reload harness currently fails before DX-18 dispatch because its renderer stub does not satisfy the modern events.update preflight; isolated DX-18 MCP image delivery is proven by both live acceptances."
+  },
+  "notes": [
+    "A 2-level RGB difference passed both pixel-tolerance and perceptual modes with similarity 0.9921568627450981.",
+    "The material red-vs-gray change failed perceptual mode with similarity 0.6981333333333409, differentPixelRatio 1, mean/max difference 128, 12 bounded divergent regions and a 1751-byte PNG heatmap.",
+    "Both source and packaged editor produced identical quantitative results and validationErrors=0."
+  ]
+}

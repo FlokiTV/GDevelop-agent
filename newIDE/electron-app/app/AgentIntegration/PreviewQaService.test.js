@@ -1,9 +1,22 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const { createPreviewQaService } = require('./PreviewQaService');
+const { encodeRgbaPng } = require('./ImageComparison');
+
+const makePng = (value, width = 8, height = 8) => {
+  const data = Buffer.alloc(width * height * 4);
+  for (let pixel = 0; pixel < width * height; pixel++) {
+    const offset = pixel * 4;
+    data[offset] = value;
+    data[offset + 1] = value;
+    data[offset + 2] = value;
+    data[offset + 3] = 255;
+  }
+  return encodeRgbaPng({ width, height, data });
+};
 
 const makeService = () => {
-  let capture = Buffer.from('same-png');
+  let capture = makePng(80);
   const sent = [];
   const resets = [];
   const service = createPreviewQaService({
@@ -48,7 +61,7 @@ const makeService = () => {
     sent,
     resets,
     setCapture: value => {
-      capture = Buffer.from(value);
+      capture = Buffer.isBuffer(value) ? Buffer.from(value) : makePng(value);
     },
   };
 };
@@ -71,8 +84,13 @@ test('reports truthful deterministic and device capability gaps', () => {
   );
   assert.equal(
     capabilities.visualRegression.pixelToleranceComparison.supported,
-    false
+    true
   );
+  assert.equal(
+    capabilities.visualRegression.perceptualComparison.supported,
+    true
+  );
+  assert.equal(capabilities.visualRegression.diffImage.supported, true);
   assert.equal(capabilities.deviceSimulation.viewportResize.supported, true);
   assert.equal(
     capabilities.deviceSimulation.viewportResize.units,
@@ -104,18 +122,70 @@ test('captures and compares exact PNG baselines with structured evidence', async
     previewWindowId: 4,
     baselineId: 'menu',
   });
-  assert.equal(baseline.bytes, 8);
-  assert.equal(
-    (await service.compareBaseline({ previewWindowId: 4, baselineId: 'menu' }))
-      .passed,
-    true
-  );
-  setCapture('changed-png');
+  assert.ok(baseline.bytes > 8);
+  const same = await service.compareBaseline({
+    previewWindowId: 4,
+    baselineId: 'menu',
+  });
+  assert.equal(same.passed, true);
+  assert.equal(same.comparison, 'exact');
+  assert.equal(same.exactPngIdentity, true);
+  assert.equal(same.differentPixelRatio, 0);
+
+  setCapture(120);
   const changed = await service.compareBaseline({
     previewWindowId: 4,
     baselineId: 'menu',
   });
   assert.equal(changed.passed, false);
-  assert.equal(changed.comparison, 'exact-png-sha256');
+  assert.equal(changed.comparison, 'exact');
   assert.notEqual(changed.expectedSha256, changed.actualSha256);
+  assert.ok(changed.meanDifference > 0);
+});
+
+test('supports tolerant/perceptual baseline comparison and optional heatmap image', async () => {
+  const { service, setCapture } = makeService();
+  await service.captureBaseline({
+    previewWindowId: 4,
+    baselineId: 'menu',
+  });
+
+  setCapture(84);
+  const tolerant = await service.compareBaseline({
+    previewWindowId: 4,
+    baselineId: 'menu',
+    mode: 'pixel-tolerance',
+    channelThreshold: 8,
+    maxDifferentPixelRatio: 0.01,
+    maxMeanDifference: 5,
+  });
+  assert.equal(tolerant.passed, true);
+  assert.equal(tolerant.comparison, 'pixel-tolerance');
+  assert.ok(tolerant.similarity > 0.98);
+
+  const perceptual = await service.compareBaseline({
+    previewWindowId: 4,
+    baselineId: 'menu',
+    mode: 'perceptual',
+    minSimilarity: 0.98,
+    perceptualDownscale: 4,
+  });
+  assert.equal(perceptual.passed, true);
+  assert.ok(perceptual.perceptualSimilarity > 0.98);
+
+  setCapture(220);
+  const material = await service.compareBaseline({
+    previewWindowId: 4,
+    baselineId: 'menu',
+    mode: 'perceptual',
+    minSimilarity: 0.9,
+    regionSize: 4,
+    includeDiffImage: true,
+  });
+  assert.equal(material.passed, false);
+  assert.ok(material.differentPixelRatio > 0.9);
+  assert.ok(material.divergentRegions.length > 0);
+  assert.ok(Buffer.isBuffer(material.imageBuffer));
+  assert.equal(material.mimeType, 'image/png');
+  assert.equal(material.diffImage.included, true);
 });

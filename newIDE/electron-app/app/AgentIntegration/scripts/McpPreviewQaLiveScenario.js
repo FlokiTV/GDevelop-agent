@@ -147,7 +147,9 @@ const runPreviewQaLiveScenario = async ({ allowMutate, env = process.env }) => {
       capabilities.deterministicGameplay.seededRandomness.supported !== false ||
       capabilities.visualRegression.exactPngHashComparison.supported !== true ||
       capabilities.visualRegression.pixelToleranceComparison.supported !==
-        false ||
+        true ||
+      capabilities.visualRegression.perceptualComparison.supported !== true ||
+      capabilities.visualRegression.diffImage.supported !== true ||
       capabilities.deviceSimulation.viewportResize.supported !== true ||
       capabilities.deviceSimulation.viewportResize.units !==
         'device-independent-pixels'
@@ -206,7 +208,7 @@ const runPreviewQaLiveScenario = async ({ allowMutate, env = process.env }) => {
       maxHeight: 480,
     });
     if (
-      comparison.comparison !== 'exact-png-sha256' ||
+      comparison.comparison !== 'exact' ||
       comparison.passed !== true
     )
       throw new Error('preview_visual_compare_invalid');

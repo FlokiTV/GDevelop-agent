@@ -342,7 +342,7 @@ const DESCRIPTORS = [
   {
     name: 'preview.visual.baseline.compare',
     description:
-      'Capture the preview and compare it with a stored baseline using exact PNG SHA-256 equality.',
+      'Capture the preview and compare it with a stored baseline using exact, pixel-tolerance or perceptual modes, with quantitative metrics, divergent regions and an optional PNG heatmap.',
     inputSchema: {
       type: 'object',
       additionalProperties: false,
@@ -353,6 +353,24 @@ const DESCRIPTORS = [
         region: { type: 'object' },
         maxWidth: { type: 'integer', minimum: 1, maximum: 8192 },
         maxHeight: { type: 'integer', minimum: 1, maximum: 8192 },
+        mode: {
+          type: 'string',
+          enum: ['exact', 'pixel-tolerance', 'perceptual'],
+          description: 'Comparison mode. Defaults to exact for backwards compatibility.',
+        },
+        channelThreshold: { type: 'integer', minimum: 0, maximum: 255 },
+        maxDifferentPixelRatio: { type: 'number', minimum: 0, maximum: 1 },
+        maxMeanDifference: { type: 'number', minimum: 0, maximum: 255 },
+        minSimilarity: { type: 'number', minimum: 0, maximum: 1 },
+        perceptualDownscale: { type: 'integer', minimum: 1, maximum: 32 },
+        regionSize: { type: 'integer', minimum: 4, maximum: 256 },
+        regionDifferenceRatioThreshold: {
+          type: 'number',
+          minimum: 0,
+          maximum: 1,
+        },
+        maxRegions: { type: 'integer', minimum: 0, maximum: 64 },
+        includeDiffImage: { type: 'boolean' },
       },
     },
     metadata: metadata({ readOnly: true }),
