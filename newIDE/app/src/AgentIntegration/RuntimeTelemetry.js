@@ -769,6 +769,10 @@ export const createRuntimeTelemetry = (
     options && typeof options.snapshotProvider === 'function'
       ? options.snapshotProvider
       : null;
+  const previewLifecycleTracker =
+    options && options.previewLifecycleTracker
+      ? options.previewLifecycleTracker
+      : null;
   const logsByDebugger: Map<string, Array<any>> = new Map();
   const profilingByDebugger: Map<string, boolean> = new Map();
   const profilerOutputByDebugger: Map<string, any> = new Map();
@@ -879,14 +883,57 @@ export const createRuntimeTelemetry = (
     return Array.isArray(ids) ? ids : [];
   };
 
+  const getLifecycleContext = (debuggerId?: ?string): any => {
+    if (!previewLifecycleTracker) {
+      return { lifecycle: null, target: null, previewWindowId: null };
+    }
+    const lifecycle = previewLifecycleTracker.getStatus();
+    const target = debuggerId
+      ? (lifecycle.targets || []).find(
+          candidate => candidate && candidate.debuggerId === debuggerId
+        ) || null
+      : null;
+    return {
+      lifecycle,
+      target,
+      previewWindowId:
+        target && Number.isInteger(target.windowId) ? target.windowId : null,
+    };
+  };
+
+  const makeUnavailableError = (): Error => {
+    const { lifecycle } = getLifecycleContext();
+    if (lifecycle && lifecycle.state === 'failed') {
+      const error: any = makeError(
+        'preview_runtime_failed',
+        'Preview window/debugger lifecycle failed before runtime telemetry became ready.'
+      );
+      error.details = lifecycle;
+      return error;
+    }
+    if (lifecycle && lifecycle.state && lifecycle.state !== 'stopped') {
+      const error: any = makeError(
+        'preview_runtime_not_ready',
+        `Preview exists but runtime telemetry is not ready (state: ${
+          lifecycle.state
+        }).`
+      );
+      error.details = lifecycle;
+      return error;
+    }
+    return makeError('preview_not_running');
+  };
+
   const selectDebuggerId = (requestedId?: ?string): string => {
     const ids = getPreviewDebuggerIds();
     if (requestedId) {
-      if (!ids.includes(requestedId))
+      if (!ids.includes(requestedId)) {
+        if (!ids.length) throw makeUnavailableError();
         throw makeError('preview_debugger_not_found');
+      }
       return requestedId;
     }
-    if (!ids.length) throw makeError('preview_not_running');
+    if (!ids.length) throw makeUnavailableError();
     // Preview debugger ids are kept in connection order by the native preview
     // debugger server. During hot reload, the old websocket can overlap briefly
     // with the newly connected one. Prefer the newest connection so telemetry
@@ -958,21 +1005,40 @@ export const createRuntimeTelemetry = (
       'status',
       DEFAULT_REQUEST_TIMEOUT_MS
     );
-    return { debuggerId, ...status };
+    const { lifecycle, target, previewWindowId } = getLifecycleContext(
+      debuggerId
+    );
+    return {
+      debuggerId,
+      ...(previewWindowId !== null ? { previewWindowId } : {}),
+      ...(lifecycle ? { lifecycleState: lifecycle.state } : {}),
+      ...(target ? { lifecycleTarget: target } : {}),
+      ...status,
+    };
   };
 
   const getSnapshot = async (request: any = {}): Promise<any> => {
     const debuggerId = selectDebuggerId(request.debuggerId);
+    const { lifecycle, target, previewWindowId } = getLifecycleContext(
+      debuggerId
+    );
+    const snapshotRequest =
+      previewWindowId !== null && request.previewWindowId == null
+        ? { ...request, previewWindowId }
+        : request;
     let snapshotProviderError = null;
     if (snapshotProvider) {
       try {
-        const snapshot = await snapshotProvider(request);
+        const snapshot = await snapshotProvider(snapshotRequest);
         if (!snapshot || typeof snapshot !== 'object') {
           throw makeError('invalid_runtime_snapshot');
         }
         return {
           debuggerId,
           capturedAt: Date.now(),
+          ...(previewWindowId !== null ? { previewWindowId } : {}),
+          ...(lifecycle ? { lifecycleState: lifecycle.state } : {}),
+          ...(target ? { lifecycleTarget: target } : {}),
           ...snapshot,
         };
       } catch (error) {
@@ -993,6 +1059,9 @@ export const createRuntimeTelemetry = (
     return {
       debuggerId,
       capturedAt: Date.now(),
+      ...(previewWindowId !== null ? { previewWindowId } : {}),
+      ...(lifecycle ? { lifecycleState: lifecycle.state } : {}),
+      ...(target ? { lifecycleTarget: target } : {}),
       ...(snapshotProviderError
         ? {
             snapshotSource: 'debugger-dump-fallback',
@@ -1033,8 +1102,14 @@ export const createRuntimeTelemetry = (
     const limit = clampInteger(request.limit, 50, 1, MAX_LOGS_PER_DEBUGGER);
     const logs = logsByDebugger.get(debuggerId) || [];
     const selectedLogs = logs.slice(Math.max(0, logs.length - limit));
+    const { lifecycle, target, previewWindowId } = getLifecycleContext(
+      debuggerId
+    );
     return {
       debuggerId,
+      ...(previewWindowId !== null ? { previewWindowId } : {}),
+      ...(lifecycle ? { lifecycleState: lifecycle.state } : {}),
+      ...(target ? { lifecycleTarget: target } : {}),
       total: logs.length,
       logs: selectedLogs,
       errors: selectedLogs.filter(log => log && log.type === 'error').length,

@@ -85,6 +85,7 @@ type Options = {|
   launchNewPreview: (options?: any) => Promise<void>,
   launchHotReloadPreview: () => Promise<void>,
   previewDebuggerServer: ?any,
+  previewLifecycleTracker: ?any,
   runtimeTelemetry: ?any,
   ipcRenderer: ?any,
   pathModule: ?any,
@@ -137,6 +138,7 @@ export const createRendererIntegration = ({
   launchNewPreview,
   launchHotReloadPreview,
   previewDebuggerServer,
+  previewLifecycleTracker,
   runtimeTelemetry,
   ipcRenderer,
   pathModule,
@@ -362,6 +364,7 @@ export const createRendererIntegration = ({
     previewDebuggerServer,
     launchNewPreview,
     launchHotReloadPreview,
+    previewLifecycleTracker,
     ipcRenderer,
   });
   const validationService = createValidationService({

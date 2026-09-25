@@ -11,10 +11,18 @@ export const createPreviewCommandDescriptors = ({
 |}): Array<CommandDescriptor> => [
   {
     name: 'preview.status',
-    description: 'Return debugger and running state for the current preview.',
-    inputSchema: { type: 'object', additionalProperties: false, properties: {} },
+    description:
+      'Return authoritative preview window, debugger attachment and runtime readiness state.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {},
+    },
     metadata: makeCommandMetadata(),
-    execute: () => previewService.getStatus(),
+    execute: () =>
+      previewService.refreshStatus
+        ? previewService.refreshStatus()
+        : previewService.getStatus(),
   },
   {
     name: 'preview.start',
@@ -22,7 +30,11 @@ export const createPreviewCommandDescriptors = ({
     inputSchema: {
       type: 'object',
       additionalProperties: false,
-      properties: { numberOfWindows: { type: 'number' } },
+      properties: {
+        numberOfWindows: { type: 'number' },
+        waitUntilReady: { type: 'boolean', default: false },
+        readyTimeoutMs: { type: 'number', minimum: 100, maximum: 30000 },
+      },
     },
     metadata: makeCommandMetadata({
       readOnly: true,
@@ -34,7 +46,11 @@ export const createPreviewCommandDescriptors = ({
   {
     name: 'preview.hot-reload',
     description: 'Hot reload all running previews for the open project.',
-    inputSchema: { type: 'object', additionalProperties: false, properties: {} },
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {},
+    },
     metadata: makeCommandMetadata({
       readOnly: true,
       idempotent: false,
@@ -59,8 +75,13 @@ export const createPreviewCommandDescriptors = ({
   },
   {
     name: 'preview.close-all',
-    description: 'Close external preview windows without stopping the editor debugger server.',
-    inputSchema: { type: 'object', additionalProperties: false, properties: {} },
+    description:
+      'Close external preview windows without stopping the editor debugger server.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {},
+    },
     metadata: makeCommandMetadata({ readOnly: true, idempotent: true }),
     execute: () => previewService.closeAll(),
   },

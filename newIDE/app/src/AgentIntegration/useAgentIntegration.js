@@ -8,6 +8,7 @@ import { listAllExamples } from '../Utils/GDevelopServices/Example';
 import UrlStorageProvider from '../ProjectsStorage/UrlStorageProvider';
 import { type ResourceManagementProps } from '../ResourcesList/ResourceSource';
 import { createRuntimeTelemetry } from './RuntimeTelemetry';
+import { createPreviewLifecycleTracker } from './runtime/PreviewLifecycleTracker';
 import { createDesktopRuntimeSnapshotProvider } from './DesktopRuntimeSnapshotProvider';
 import {
   prepareGameplayTestRunForAgent,
@@ -247,6 +248,17 @@ export default function useAgentIntegration({
     [onOpenLayout, createProjectForAgent]
   );
 
+  const previewLifecycleTracker = React.useMemo(
+    () =>
+      previewDebuggerServer
+        ? createPreviewLifecycleTracker({
+            previewDebuggerServer,
+            ipcRenderer,
+          })
+        : null,
+    [previewDebuggerServer]
+  );
+
   const runtimeTelemetry = React.useMemo(
     () =>
       previewDebuggerServer
@@ -255,9 +267,10 @@ export default function useAgentIntegration({
               ipcRenderer && typeof ipcRenderer.invoke === 'function'
                 ? createDesktopRuntimeSnapshotProvider(ipcRenderer)
                 : null,
+            previewLifecycleTracker,
           })
         : null,
-    [previewDebuggerServer]
+    [previewDebuggerServer, previewLifecycleTracker]
   );
 
   const projectRevisionTrackerRef = React.useRef<?ProjectRevisionTracker>(null);
@@ -275,8 +288,9 @@ export default function useAgentIntegration({
   React.useEffect(
     () => () => {
       if (runtimeTelemetry) runtimeTelemetry.dispose();
+      if (previewLifecycleTracker) previewLifecycleTracker.dispose();
     },
-    [runtimeTelemetry]
+    [runtimeTelemetry, previewLifecycleTracker]
   );
 
   React.useEffect(
@@ -347,6 +361,7 @@ export default function useAgentIntegration({
         launchNewPreview,
         launchHotReloadPreview,
         previewDebuggerServer,
+        previewLifecycleTracker,
         runtimeTelemetry,
         ipcRenderer,
         pathModule: path,
@@ -405,6 +420,7 @@ export default function useAgentIntegration({
       launchNewPreview,
       launchHotReloadPreview,
       previewDebuggerServer,
+      previewLifecycleTracker,
       runtimeTelemetry,
       resourceManagementProps,
       assetStoreEnvironment,

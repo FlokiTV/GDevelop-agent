@@ -1,0 +1,122 @@
+{
+  "kind": "dx13-preview-lifecycle-acceptance",
+  "recordedAt": "2026-09-25",
+  "protocolVersion": "2026-07-28",
+  "contract": {
+    "states": [
+      "starting",
+      "window-open",
+      "debugger-attaching",
+      "ready",
+      "stopped",
+      "failed"
+    ],
+    "startWait": "preview.start waitUntilReady + readyTimeoutMs",
+    "targetMapping": "debuggerId ↔ previewWindowId",
+    "singlePreviewFallback": "deterministic only when exactly one preview window and one ready debugger exist",
+    "multiplePreviewRule": "requires explicit identity mapping; ambiguous targets are never guessed",
+    "runtimeAgreement": [
+      "runtime.status",
+      "runtime.logs",
+      "runtime.snapshot"
+    ],
+    "projectReadOnly": true
+  },
+  "source": {
+    "ok": true,
+    "label": "source-closefix-final",
+    "lifecycleStates": [
+      "stopped",
+      "ready",
+      "stopped",
+      "ready",
+      "stopped"
+    ],
+    "firstTarget": {
+      "debuggerId": "preview-ws-0",
+      "windowId": 2,
+      "ready": true
+    },
+    "secondTarget": {
+      "debuggerId": "preview-ws-1",
+      "windowId": 3,
+      "ready": true
+    },
+    "runtimeAgreement": {
+      "status": {
+        "debuggerId": "preview-ws-0",
+        "previewWindowId": 2,
+        "lifecycleState": "ready"
+      },
+      "logs": {
+        "debuggerId": "preview-ws-0",
+        "previewWindowId": 2,
+        "lifecycleState": "ready"
+      },
+      "snapshot": {
+        "debuggerId": "preview-ws-0",
+        "previewWindowId": 2,
+        "lifecycleState": "ready"
+      }
+    },
+    "projectRevision": {
+      "before": 1,
+      "afterFirstLifecycle": 1,
+      "afterRestart": 1,
+      "unchanged": true
+    },
+    "validationErrors": 0
+  },
+  "winUnpacked": {
+    "ok": true,
+    "label": "win-unpacked-final-closefix",
+    "lifecycleStates": [
+      "stopped",
+      "ready",
+      "stopped",
+      "ready",
+      "stopped"
+    ],
+    "firstTarget": {
+      "debuggerId": "preview-ws-0",
+      "windowId": 2,
+      "ready": true
+    },
+    "secondTarget": {
+      "debuggerId": "preview-ws-1",
+      "windowId": 3,
+      "ready": true
+    },
+    "runtimeAgreement": {
+      "status": {
+        "debuggerId": "preview-ws-0",
+        "previewWindowId": 2,
+        "lifecycleState": "ready"
+      },
+      "logs": {
+        "debuggerId": "preview-ws-0",
+        "previewWindowId": 2,
+        "lifecycleState": "ready"
+      },
+      "snapshot": {
+        "debuggerId": "preview-ws-0",
+        "previewWindowId": 2,
+        "lifecycleState": "ready"
+      }
+    },
+    "projectRevision": {
+      "before": 1,
+      "afterFirstLifecycle": 1,
+      "afterRestart": 1,
+      "unchanged": true
+    },
+    "validationErrors": 0,
+    "executable": "newIDE/electron-app/dist/win-unpacked/GDevelop.exe"
+  },
+  "notes": [
+    "preview.status distinguishes preview window existence, debugger attachment and runtime readiness instead of treating all non-ready states as preview_not_running.",
+    "runtime.status/logs/snapshot use the same lifecycle target and return previewWindowId/lifecycleState for agreement.",
+    "preview.close-all does not synchronously re-inspect BrowserWindows while they are being destroyed; the next preview.status refresh establishes stopped state.",
+    "Fresh-session source and Windows package acceptance both completed start → ready → close → stopped → restart → ready → close → stopped without changing projectRevision."
+  ]
+}

@@ -115,15 +115,35 @@ const createAgentPreviewRuntime = ({
       windowId,
     });
 
-  const ensureInstalled = async windowId => {
+  const ensureInstalled = async (windowId, options = {}) => {
     const targetWindow = getWindow(windowId);
-    targetWindow.focus();
-    targetWindow.webContents.focus();
+    if (options.focus !== false) {
+      targetWindow.focus();
+      targetWindow.webContents.focus();
+    }
     const status = await targetWindow.webContents.executeJavaScript(
       CLIENT_SOURCE,
       true
     );
-    return { windowId: targetWindow.id, ...status };
+    let identity = null;
+    try {
+      identity = await targetWindow.webContents.executeJavaScript(
+        runtimeCall('announceIdentity', { windowId: targetWindow.id }),
+        true
+      );
+    } catch (error) {
+      identity = {
+        announced: false,
+        windowId: targetWindow.id,
+        reason:
+          (error && error.message) || 'preview_identity_announcement_failed',
+      };
+    }
+    return {
+      windowId: targetWindow.id,
+      ...status,
+      identity,
+    };
   };
 
   const call = async (windowId, method, payload) => {

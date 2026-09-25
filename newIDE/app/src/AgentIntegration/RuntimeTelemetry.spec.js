@@ -314,6 +314,97 @@ describe('AgentIntegration RuntimeTelemetry', () => {
     telemetry.dispose();
   });
 
+  it('reports window-open/debugger-attaching as runtime not ready instead of preview not running', async () => {
+    const server = createDebuggerServer({ previewDebuggerIds: [] });
+    const previewLifecycleTracker = {
+      getStatus: jest.fn(() => ({
+        state: 'debugger-attaching',
+        serverState: 'started',
+        previewWindowIds: [12],
+        debuggerIds: [],
+        targets: [{ debuggerId: null, windowId: 12, ready: false }],
+      })),
+    };
+    const telemetry = createRuntimeTelemetry(server, {
+      previewLifecycleTracker,
+    });
+
+    await expect(telemetry.getStatus()).rejects.toMatchObject({
+      code: 'preview_runtime_not_ready',
+      details: expect.objectContaining({
+        state: 'debugger-attaching',
+        previewWindowIds: [12],
+      }),
+    });
+    expect(() => telemetry.getLogs()).toThrow(
+      expect.objectContaining({ code: 'preview_runtime_not_ready' })
+    );
+    await expect(telemetry.getSnapshot()).rejects.toMatchObject({
+      code: 'preview_runtime_not_ready',
+    });
+
+    telemetry.dispose();
+  });
+
+  it('uses the lifecycle debugger-to-window mapping for desktop snapshots', async () => {
+    const server = createDebuggerServer();
+    const snapshotProvider = jest.fn(async request => ({
+      previewWindowId: request.previewWindowId,
+      snapshotSource: 'bounded-preview-runtime',
+      scene: { name: 'Mapped scene' },
+      objects: {},
+      globalVariables: {},
+    }));
+    const lifecycle = {
+      state: 'ready',
+      targets: [
+        {
+          debuggerId: 'preview-1',
+          windowId: 12,
+          ready: true,
+          sceneName: 'Mapped scene',
+        },
+      ],
+    };
+    const telemetry = createRuntimeTelemetry(server, {
+      snapshotProvider,
+      previewLifecycleTracker: {
+        getStatus: jest.fn(() => lifecycle),
+      },
+    });
+
+    const snapshot = await telemetry.getSnapshot({ maxInstances: 1 });
+    expect(snapshotProvider).toHaveBeenCalledWith(
+      expect.objectContaining({ previewWindowId: 12, maxInstances: 1 })
+    );
+    expect(snapshot).toMatchObject({
+      debuggerId: 'preview-1',
+      previewWindowId: 12,
+      lifecycleState: 'ready',
+      lifecycleTarget: expect.objectContaining({
+        debuggerId: 'preview-1',
+        windowId: 12,
+      }),
+      scene: { name: 'Mapped scene' },
+    });
+
+    const status = await telemetry.getStatus();
+    expect(status).toMatchObject({
+      debuggerId: 'preview-1',
+      previewWindowId: 12,
+      lifecycleState: 'ready',
+    });
+
+    const logs = telemetry.getLogs();
+    expect(logs).toMatchObject({
+      debuggerId: 'preview-1',
+      previewWindowId: 12,
+      lifecycleState: 'ready',
+    });
+
+    telemetry.dispose();
+  });
+
   it('retries one transient debugger dump timeout', async () => {
     const server = createDebuggerServer({ dropFirstRefresh: true });
     const telemetry = createRuntimeTelemetry(server);

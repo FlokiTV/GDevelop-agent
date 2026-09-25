@@ -44,7 +44,7 @@ const createPreviewInteractionService = ({
     inputTools.resetInput({ windowId: getWindowId(input) });
 
   const getRuntimeStatus = input =>
-    previewRuntime.ensureInstalled(getWindowId(input));
+    previewRuntime.ensureInstalled(getWindowId(input), { focus: false });
 
   const resetRuntime = input =>
     previewRuntime.call(getWindowId(input), 'reset', {});

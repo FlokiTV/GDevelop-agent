@@ -142,6 +142,29 @@ test('installs runtime and dispatches a synthetic touch to the game canvas', asy
   assert.equal(canvasEvents[0].changedTouches[0].identifier, 3);
 });
 
+test('announces the BrowserWindow identity through the preview debugger connection', async () => {
+  const { runtime, context } = makeHarness();
+  const sentMessages = [];
+  context.window.game = {
+    _debuggerClient: {
+      _sendMessage: message => sentMessages.push(JSON.parse(message)),
+    },
+  };
+
+  const status = await runtime.ensureInstalled(12, { focus: false });
+  assert.equal(status.identity.announced, true);
+  assert.equal(status.identity.windowId, 12);
+  assert.deepEqual(sentMessages, [
+    {
+      command: 'agent.preview.identity',
+      payload: { windowId: 12 },
+    },
+  ]);
+
+  const after = await runtime.call(12, 'status', {});
+  assert.equal(after.result.identityWindowId, 12);
+});
+
 test('virtual gamepad is exposed through navigator.getGamepads', async () => {
   const { runtime, context, windowEvents } = makeHarness();
   await runtime.call(

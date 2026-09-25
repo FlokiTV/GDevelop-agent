@@ -1,8 +1,15 @@
 (() => {
   const name = '__GDevelopAgentPreviewRuntime';
-  if (window[name] && window[name].version === 2) return window[name].status();
+  if (
+    window[name] &&
+    window[name].version === 2 &&
+    typeof window[name].announceIdentity === 'function'
+  ) {
+    return window[name].status();
+  }
 
   const touches = new Map();
+  let identityWindowId = null;
   const gamepads = new Map();
   const originalGetGamepads =
     typeof navigator.getGamepads === 'function'
@@ -426,9 +433,49 @@
     };
   };
 
+  const announceIdentity = payload => {
+    const windowId = Number(payload && payload.windowId);
+    if (!Number.isInteger(windowId) || windowId <= 0) {
+      throw new Error('invalid_preview_identity_window_id');
+    }
+    const runtimeGame = window.game;
+    const debuggerClient =
+      runtimeGame && runtimeGame._debuggerClient
+        ? runtimeGame._debuggerClient
+        : null;
+    if (!debuggerClient || typeof debuggerClient._sendMessage !== 'function') {
+      return {
+        announced: false,
+        windowId,
+        reason: 'preview_debugger_client_unavailable',
+      };
+    }
+    const websocket = debuggerClient._ws;
+    if (
+      websocket &&
+      typeof WebSocket !== 'undefined' &&
+      websocket.readyState !== WebSocket.OPEN
+    ) {
+      return {
+        announced: false,
+        windowId,
+        reason: 'preview_debugger_connection_not_open',
+      };
+    }
+    identityWindowId = windowId;
+    debuggerClient._sendMessage(
+      JSON.stringify({
+        command: 'agent.preview.identity',
+        payload: { windowId },
+      })
+    );
+    return { announced: true, windowId };
+  };
+
   const runtime = {
     version: 2,
     snapshot,
+    announceIdentity,
     touch: sendTouch,
     gamepad: payload => {
       if (payload.action === 'connect') return connectGamepad(payload);
@@ -450,6 +497,7 @@
     status: () => ({
       installed: true,
       version: 2,
+      identityWindowId,
       activeTouchIds: Array.from(touches.keys()),
       virtualGamepads: Array.from(gamepads.values()).map(pad => ({
         id: pad.id,
