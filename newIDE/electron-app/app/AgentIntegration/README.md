@@ -225,6 +225,12 @@ Normal authoring must not close/reopen the project as a synchronization mechanis
 
 Ordinary authoring commands do not silently save. Opening/closing another project with unsaved changes requires explicit discard input, and destructive command metadata is projected to MCP annotations so clients can present suitable confirmation UX.
 
+Project persistence has an explicit MCP contract. Use `project.persistence.status` to distinguish editor memory from the persisted project JSON: it reports dirty state, the current monotonic project revision, a stable serialized-memory SHA-256, the active local project path, current disk hashes, external-disk-change detection and the last successful save/reload metadata. Preview/export generated output is reported separately and is never treated as persisted project JSON.
+
+Use `project.save`/`project.save-as` only when persistence is intended. They can be guarded with `expectedProjectId`, `expectedFileIdentifier` and `expectedProjectRevision`; a detected external disk change fails with `project_disk_conflict` unless `overwriteExternalChanges=true` is explicit. A successful save reads the project JSON back, returns the persisted hash/revision and reports resource flush state. Follow it with `project.persistence.verify` when acceptance needs proof that the serialized state can be read back and matches an expected persisted hash/revision.
+
+`project.reload` reopens the currently persisted local project and returns the disk hash that must survive the reopen. It never discards dirty editor state unless `discardUnsavedChanges=true` is explicit. Save/reload are blocked while a safety transaction is active, and they honor the project semantic lease/owner identity, so rollback-only or foreign-owned work cannot be persisted accidentally.
+
 Checkpoints and transactions are in-memory safety mechanisms. They are not a replacement for an explicit final save.
 
 ## Revisions, retries and recovery

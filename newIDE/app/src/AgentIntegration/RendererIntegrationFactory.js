@@ -337,22 +337,25 @@ export const createRendererIntegration = ({
     project,
     authenticatedUser,
   });
+  const safetyService = createSafetyService({
+    project,
+    fileIdentifier,
+    hasUnsavedChanges,
+    restoreProjectCheckpoint,
+  });
   const projectLifecycleService = createProjectLifecycleService({
     project,
     fileIdentifier,
     hasUnsavedChanges,
+    projectRevisionTracker,
+    semanticConcurrency,
+    getTransactionStatus: () => safetyService.getTransactionStatus(),
     createProjectForAgent,
     openFromFileMetadataWithStorageProvider,
     closeProject,
     saveProject,
     saveProjectAsWithStorageProvider,
     pathModule,
-  });
-  const safetyService = createSafetyService({
-    project,
-    fileIdentifier,
-    hasUnsavedChanges,
-    restoreProjectCheckpoint,
   });
   const exportService = createExportService({ project, i18n });
   const editorVisualService = createEditorVisualService({

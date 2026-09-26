@@ -232,4 +232,5 @@ Before considering an Event Sheet mutation accepted:
 - stale revision errors were reconciled by re-reading instead of overwriting;
 - diagnostics/validation are clean for the intended change;
 - preview/runtime behavior was checked when the change affects gameplay;
-- `project.save` is called only after acceptance when persistence is intended.
+- `project.save` is called only after acceptance when persistence is intended;
+- for persistence-sensitive acceptance, `project.persistence.verify` confirms the saved hash/revision and `project.reload` + re-read proves the authored change survives reopen without relying on filesystem guessing.

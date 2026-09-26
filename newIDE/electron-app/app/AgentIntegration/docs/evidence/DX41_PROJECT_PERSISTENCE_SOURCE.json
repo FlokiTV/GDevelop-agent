@@ -1,0 +1,74 @@
+{
+  "kind": "dx41-project-persistence-acceptance",
+  "label": "source-final",
+  "generatedAt": "2026-09-26T18:12:38.632Z",
+  "protocolVersion": "2026-07-28",
+  "cleanRoom": {
+    "repositoryImplementationOrTestsReadDuringScenario": false,
+    "repositoryReadGuard": true,
+    "authoringInputSource": "live MCP discovery and reads"
+  },
+  "discovery": {
+    "toolCount": 243,
+    "persistenceStatusPublished": true,
+    "persistenceVerifyPublished": true,
+    "reloadPublished": true
+  },
+  "dirtyVsPersisted": {
+    "baselinePersistedHash": "039505faef150b610a8001123cbe9bae1c0a58b2533f5c52b94462c131d66b4f",
+    "dirtyDetected": true,
+    "memoryDiffersFromPersisted": true,
+    "diskUnchangedBeforeExplicitSave": true
+  },
+  "saveReloadVerification": {
+    "persistedHash": "fca548c7ff799ac0b8413702d1b74fc42149408cda65f05fbc34a70d5eb9a642",
+    "persistedRevision": 1,
+    "verifyPassed": true,
+    "reloadPassed": true,
+    "sceneSurvivedReload": true,
+    "resourcesFlushed": true
+  },
+  "externalDiskConflict": {
+    "detected": true,
+    "saveRejected": true,
+    "errorCode": "project_disk_conflict",
+    "restoredBaseline": true
+  },
+  "transactionPersistenceGuard": {
+    "saveBlockedInsideTransaction": true,
+    "errorCode": "persistence_blocked_by_active_transaction",
+    "rollbackRestoredMemory": true,
+    "persistedHashUnchanged": true
+  },
+  "generatedState": {
+    "preview": {
+      "available": true,
+      "state": "stopped",
+      "serverState": "stopped",
+      "debuggerIds": [],
+      "previewDebuggerIds": [],
+      "previewWindowIds": [],
+      "targets": [],
+      "running": false,
+      "windowOpen": false,
+      "debuggerAttached": false,
+      "runtimeReady": false,
+      "launchedAt": null,
+      "failure": null
+    },
+    "export": {
+      "tracked": false,
+      "relationToPersistence": "independent-generated-output",
+      "note": "Project persistence verifies editor memory against project JSON on disk. Preview/export generated outputs have independent lifecycle state and are not treated as persisted project JSON."
+    }
+  },
+  "validation": {
+    "errors": 0,
+    "summary": {
+      "diagnosticErrors": 0,
+      "diagnosticWarnings": 0,
+      "checksRun": 0,
+      "checksFailed": 0
+    }
+  }
+}
