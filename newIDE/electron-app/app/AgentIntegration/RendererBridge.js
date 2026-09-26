@@ -100,6 +100,7 @@ const createRendererBridge = ({
     input,
     traceId,
     traceContext,
+    identity,
     expectedRevision,
     expectedSemanticRevisions,
     semanticLeaseOwner,
@@ -164,6 +165,7 @@ const createRendererBridge = ({
         ...(traceContext && typeof traceContext === 'object'
           ? { traceContext }
           : {}),
+        ...(identity && typeof identity === 'object' ? { identity } : {}),
         ...(Number.isInteger(expectedRevision) && expectedRevision >= 0
           ? { expectedRevision }
           : {}),

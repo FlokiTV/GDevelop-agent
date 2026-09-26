@@ -35,6 +35,13 @@ describe('RendererCommandAdapter', () => {
       requestId: 'request-1',
       command: 'project.status',
       input: {},
+      identity: {
+        clientId: 'client-a',
+        agentId: 'agent-a',
+        sessionId: 'session-a',
+        taskId: 'task-a',
+        ownerKey: 'agent-a::session-a',
+      },
       traceContext: {
         traceparent: '00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01',
         tracestate: 'vendor=value',
@@ -51,6 +58,13 @@ describe('RendererCommandAdapter', () => {
       {},
       {
         traceId: 'request-1',
+        identity: {
+        clientId: 'client-a',
+        agentId: 'agent-a',
+        sessionId: 'session-a',
+        taskId: 'task-a',
+        ownerKey: 'agent-a::session-a',
+      },
         traceContext: {
           traceparent:
             '00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01',

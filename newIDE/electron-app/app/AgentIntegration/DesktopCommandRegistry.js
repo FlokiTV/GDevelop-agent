@@ -85,6 +85,118 @@ const DESCRIPTORS = [
     metadata: metadata({ readOnly: true, idempotent: true }),
   },
   {
+    name: 'agent.workspace.temp.capabilities',
+    description:
+      'Describe MCP-managed temporary workspace isolation, owner binding, TTL cleanup and artifact limits.',
+    inputSchema: emptyObjectSchema(),
+    metadata: metadata({ readOnly: true, idempotent: true }),
+  },
+  {
+    name: 'agent.workspace.temp.create',
+    description:
+      'Create an isolated temporary workspace namespace owned by the current MCP agent/session and optionally associated with a task.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        purpose: { type: 'string', maxLength: 240 },
+        taskId: { type: 'string', maxLength: 160 },
+        ttlMs: { type: 'integer', minimum: 1000, maximum: 300000 },
+      },
+    },
+    metadata: metadata(),
+  },
+  {
+    name: 'agent.workspace.temp.status',
+    description:
+      'Read one owned temporary namespace or list namespaces owned by the current MCP agent/session.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        namespaceId: { type: 'string', minLength: 1, maxLength: 200 },
+      },
+    },
+    metadata: metadata({ readOnly: true, idempotent: true }),
+  },
+  {
+    name: 'agent.workspace.temp.heartbeat',
+    description:
+      'Renew the TTL heartbeat of an owned temporary workspace namespace.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['namespaceId'],
+      properties: {
+        namespaceId: { type: 'string', minLength: 1, maxLength: 200 },
+        ttlMs: { type: 'integer', minimum: 1000, maximum: 300000 },
+      },
+    },
+    metadata: metadata({ idempotent: true }),
+  },
+  {
+    name: 'agent.workspace.temp.write',
+    description:
+      'Write one bounded artifact inside an owned temporary namespace. Existing files require overwrite=true and cross-agent access is rejected.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['namespaceId', 'relativePath', 'content'],
+      properties: {
+        namespaceId: { type: 'string', minLength: 1, maxLength: 200 },
+        relativePath: { type: 'string', minLength: 1, maxLength: 1024 },
+        content: { type: 'string' },
+        encoding: { type: 'string', enum: ['utf8', 'base64'] },
+        overwrite: { type: 'boolean' },
+      },
+    },
+    metadata: metadata(),
+  },
+  {
+    name: 'agent.workspace.temp.read',
+    description:
+      'Read one owned temporary artifact as UTF-8 text or base64 without exposing other agents namespaces.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['namespaceId', 'relativePath'],
+      properties: {
+        namespaceId: { type: 'string', minLength: 1, maxLength: 200 },
+        relativePath: { type: 'string', minLength: 1, maxLength: 1024 },
+        encoding: { type: 'string', enum: ['utf8', 'base64'] },
+      },
+    },
+    metadata: metadata({ readOnly: true, idempotent: true }),
+  },
+  {
+    name: 'agent.workspace.temp.list',
+    description:
+      'List bounded artifact metadata inside an owned temporary workspace namespace.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['namespaceId'],
+      properties: {
+        namespaceId: { type: 'string', minLength: 1, maxLength: 200 },
+      },
+    },
+    metadata: metadata({ readOnly: true, idempotent: true }),
+  },
+  {
+    name: 'agent.workspace.temp.release',
+    description:
+      'Deterministically delete an owned temporary workspace namespace and all of its artifacts.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['namespaceId'],
+      properties: {
+        namespaceId: { type: 'string', minLength: 1, maxLength: 200 },
+      },
+    },
+    metadata: metadata({ idempotent: false }),
+  },
+  {
     name: 'preview.viewport.status',
     description:
       'Read the requested and actual Electron preview content viewport separately from outer window bounds.',
@@ -528,17 +640,21 @@ const DESCRIPTORS = [
   },
 ];
 
-const makeResult = (descriptor, data) => ({
+const makeResult = (descriptor, data, requestContext = {}) => ({
   command: descriptor.name,
   data,
   meta: {
     readOnly: !!descriptor.metadata.readOnly,
     modifiesProject: false,
+    ...(requestContext.identity && typeof requestContext.identity === 'object'
+      ? { identity: requestContext.identity }
+      : {}),
   },
 });
 
 const createDesktopCommandRegistry = ({
   windowCaptureService,
+  managedTempWorkspaceService,
   previewInteractionService,
   previewViewportService,
   previewQaService,
@@ -565,6 +681,22 @@ const createDesktopCommandRegistry = ({
         imageBuffer: captured.data,
       };
     },
+    'agent.workspace.temp.capabilities': () =>
+      managedTempWorkspaceService.capabilities(),
+    'agent.workspace.temp.create': (input, requestContext) =>
+      managedTempWorkspaceService.create(input || {}, requestContext || {}),
+    'agent.workspace.temp.status': (input, requestContext) =>
+      managedTempWorkspaceService.status(input || {}, requestContext || {}),
+    'agent.workspace.temp.heartbeat': (input, requestContext) =>
+      managedTempWorkspaceService.heartbeat(input || {}, requestContext || {}),
+    'agent.workspace.temp.write': (input, requestContext) =>
+      managedTempWorkspaceService.write(input || {}, requestContext || {}),
+    'agent.workspace.temp.read': (input, requestContext) =>
+      managedTempWorkspaceService.read(input || {}, requestContext || {}),
+    'agent.workspace.temp.list': (input, requestContext) =>
+      managedTempWorkspaceService.list(input || {}, requestContext || {}),
+    'agent.workspace.temp.release': (input, requestContext) =>
+      managedTempWorkspaceService.release(input || {}, requestContext || {}),
     'preview.viewport.status': input =>
       previewViewportService.status(input || {}),
     'preview.viewport.set': input =>
@@ -622,7 +754,7 @@ const createDesktopCommandRegistry = ({
 
   const listDescriptors = () => DESCRIPTORS.slice();
   const has = command => descriptorsByName.has(command);
-  const execute = async ({ command, input = {} }) => {
+  const execute = async ({ command, input = {}, requestContext = {} }) => {
     const descriptor = descriptorsByName.get(command);
     const handler = handlers[command];
     if (!descriptor || !handler) {
@@ -630,7 +762,11 @@ const createDesktopCommandRegistry = ({
       error.code = 'desktop_command_not_found';
       throw error;
     }
-    return makeResult(descriptor, await handler(input));
+    return makeResult(
+      descriptor,
+      await handler(input, requestContext),
+      requestContext
+    );
   };
 
   return { listDescriptors, has, execute };

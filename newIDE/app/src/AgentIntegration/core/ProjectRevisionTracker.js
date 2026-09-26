@@ -8,6 +8,9 @@ export type ProjectRevisionChange = {|
   source: 'external' | 'agent',
   revision: number,
   revisionDelta: number,
+  command?: string,
+  identity?: any,
+  semanticScopes?: Array<string>,
 |};
 
 const readChangesCount = (getChangesCount: () => number): number => {
@@ -65,7 +68,7 @@ export class ProjectRevisionTracker {
     return this._revision;
   }
 
-  markMutation(): ?number {
+  markMutation(context?: any = {}): ?number {
     if (!this._projectKey) return null;
 
     const currentChangesCount = readChangesCount(this._getChangesCount);
@@ -80,6 +83,15 @@ export class ProjectRevisionTracker {
       source: 'agent',
       revision: this._revision,
       revisionDelta,
+      ...(context && typeof context.command === 'string'
+        ? { command: context.command }
+        : {}),
+      ...(context && context.identity && typeof context.identity === 'object'
+        ? { identity: context.identity }
+        : {}),
+      ...(context && Array.isArray(context.semanticScopes)
+        ? { semanticScopes: context.semanticScopes.slice() }
+        : {}),
     };
     return this._revision;
   }

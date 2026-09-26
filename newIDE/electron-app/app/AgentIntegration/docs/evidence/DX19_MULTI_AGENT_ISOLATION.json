@@ -1,0 +1,174 @@
+{
+  "kind": "dx19-multi-agent-isolation-acceptance",
+  "recordedAt": "2026-09-26",
+  "protocolVersion": "2026-07-28",
+  "contract": {
+    "identity": {
+      "source": "MCP request headers",
+      "headers": [
+        "X-GDevelop-Client-Id",
+        "X-GDevelop-Agent-Id",
+        "X-GDevelop-Session-Id",
+        "X-GDevelop-Task-Id"
+      ],
+      "ownerKey": "agentId::sessionId",
+      "propagatedToMutationMeta": true,
+      "staleConflictLastChangeIdentity": true
+    },
+    "temporaryWorkspace": {
+      "commands": [
+        "agent.workspace.temp.capabilities",
+        "agent.workspace.temp.create",
+        "agent.workspace.temp.status",
+        "agent.workspace.temp.heartbeat",
+        "agent.workspace.temp.write",
+        "agent.workspace.temp.read",
+        "agent.workspace.temp.list",
+        "agent.workspace.temp.release"
+      ],
+      "ownerScoped": true,
+      "taskAssociation": true,
+      "crossOwnerAccessRejected": true,
+      "explicitOverwriteRequired": true,
+      "atomicWrites": true,
+      "traversalRejected": true,
+      "cleanup": [
+        "explicit-release",
+        "ttl-expiry",
+        "host-dispose"
+      ],
+      "disconnectPolicy": "autonomous-ttl-expiry-after-last-heartbeat"
+    },
+    "transactions": {
+      "ownerVisible": true,
+      "purposeVisible": true,
+      "startedAtVisible": true,
+      "foreignCommitRejected": true,
+      "foreignRollbackRejected": true,
+      "foreignProjectMutationRejected": true
+    },
+    "semanticLeases": {
+      "commands": [
+        "agent.concurrency.lease.acquire",
+        "agent.concurrency.lease.renew",
+        "agent.concurrency.lease.release"
+      ],
+      "processLocal": true,
+      "ownerBoundToCallerIdentity": true,
+      "acquiredAt": true,
+      "heartbeatAt": true,
+      "expiresAt": true,
+      "foreignScopeMutationRejected": true
+    },
+    "staleRevision": {
+      "code": "revision_conflict",
+      "conflictScope": "project",
+      "expectedRevision": true,
+      "actualRevision": true,
+      "lastChangeIdentity": true,
+      "retryAfterReconcile": true
+    }
+  },
+  "liveAcceptance": {
+    "source": {
+      "ok": true,
+      "tempIsolation": {
+        "sameRelativePath": "scripts/helper.js",
+        "contentsIndependent": true,
+        "crossAgentAccessError": "managed_temp_namespace_owner_mismatch",
+        "implicitOverwriteError": "managed_temp_artifact_exists",
+        "cleanupVerified": true
+      },
+      "transactionIsolation": {
+        "ownerVisible": true,
+        "foreignCommitError": "transaction_owner_mismatch",
+        "foreignMutationError": "transaction_scope_locked",
+        "foreignRollbackError": "transaction_scope_locked",
+        "ownerRollbackSucceeded": true
+      },
+      "leaseIsolation": {
+        "owner": "dx19-agent-a::dx19-session-a",
+        "renewed": true,
+        "foreignMutationError": "semantic_scope_locked",
+        "released": true
+      },
+      "staleWriter": {
+        "expectedRevision": 2,
+        "actualRevision": 3,
+        "error": "revision_conflict",
+        "conflictScope": "project",
+        "lastChangeOwner": "dx19-agent-b::dx19-session-b",
+        "retrySucceeded": true
+      },
+      "finalScenes": [
+        "Cena sem título",
+        "AgentA",
+        "AgentB",
+        "AgentAReconciled"
+      ],
+      "validationErrors": 0
+    },
+    "winUnpacked": {
+      "ok": true,
+      "parityWithSource": true,
+      "tempIsolation": {
+        "sameRelativePath": "scripts/helper.js",
+        "contentsIndependent": true,
+        "crossAgentAccessError": "managed_temp_namespace_owner_mismatch",
+        "implicitOverwriteError": "managed_temp_artifact_exists",
+        "cleanupVerified": true
+      },
+      "transactionIsolation": {
+        "ownerVisible": true,
+        "foreignCommitError": "transaction_owner_mismatch",
+        "foreignMutationError": "transaction_scope_locked",
+        "foreignRollbackError": "transaction_scope_locked",
+        "ownerRollbackSucceeded": true
+      },
+      "leaseIsolation": {
+        "owner": "dx19-agent-a::dx19-session-a",
+        "renewed": true,
+        "foreignMutationError": "semantic_scope_locked",
+        "released": true
+      },
+      "staleWriter": {
+        "expectedRevision": 2,
+        "actualRevision": 3,
+        "error": "revision_conflict",
+        "conflictScope": "project",
+        "lastChangeOwner": "dx19-agent-b::dx19-session-b",
+        "retrySucceeded": true
+      },
+      "finalScenes": [
+        "Cena sem título",
+        "AgentA",
+        "AgentB",
+        "AgentAReconciled"
+      ],
+      "validationErrors": 0
+    }
+  },
+  "regressions": {
+    "renderer": "34/34 PASS",
+    "electronMcp": "25/25 PASS",
+    "eslint": "PASS",
+    "productionBuild": "PASS",
+    "windowsPackage": "PASS",
+    "architectureGuard": "PASS",
+    "diffCheck": "PASS"
+  },
+  "discoveredAndFixedDuringLive": [
+    {
+      "issue": "project.create was blocked by transaction-state lookup before any project existed",
+      "symptom": "no_project_open",
+      "fix": "AgentHost transaction ownership guard now runs only when environment.project exists",
+      "regression": "project-creating mutations do not consult transaction state before a project exists"
+    }
+  ],
+  "notes": [
+    "Two MCP clients used different agent/session/task identities against the same live project.",
+    "Both clients wrote the same relative helper path in separate managed namespaces without clobbering each other.",
+    "No external shell or filename-convention coordination is part of the concurrency contract; the live harness only launches the MCP scenario process.",
+    "Temporary namespaces are independent of project serialization and safety transaction snapshots; normal/rollback workflows release explicitly, while stalled/disconnected clients are bounded by TTL heartbeat expiry."
+  ]
+}

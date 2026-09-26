@@ -21,6 +21,9 @@ export type ProjectCheckpoint = {|
 type ProjectCheckpointStore = {|
   checkpoints: Array<ProjectCheckpoint>,
   activeTransactionId: string | null,
+  activeTransactionOwner: any,
+  activeTransactionPurpose: string | null,
+  activeTransactionStartedAt: number | null,
 |};
 
 type CheckpointSummary = {|
@@ -47,7 +50,13 @@ const getStore = (project: gdProject): ProjectCheckpointStore => {
   const key = getProjectKey(project);
   let store = storesByProjectUuid.get(key);
   if (!store) {
-    store = { checkpoints: [], activeTransactionId: null };
+    store = {
+      checkpoints: [],
+      activeTransactionId: null,
+      activeTransactionOwner: null,
+      activeTransactionPurpose: null,
+      activeTransactionStartedAt: null,
+    };
     storesByProjectUuid.set(key, store);
   }
   return store;
@@ -275,11 +284,15 @@ export const beginTransaction = ({
   fileIdentifier,
   label,
   hadUnsavedChanges,
+  owner,
+  purpose,
 }: {|
   project: gdProject,
   fileIdentifier: string | null,
   label?: string | null,
   hadUnsavedChanges: boolean,
+  owner?: any,
+  purpose?: string | null,
 |}) => {
   const store = getStore(project);
   if (store.activeTransactionId) {
@@ -291,24 +304,47 @@ export const beginTransaction = ({
     label: label || 'transaction-begin',
     hadUnsavedChanges,
   });
+  const startedAt = Date.now();
   store.activeTransactionId = checkpoint.id;
+  store.activeTransactionOwner =
+    owner && typeof owner === 'object' ? { ...owner } : null;
+  store.activeTransactionPurpose =
+    typeof purpose === 'string' && purpose
+      ? purpose
+      : typeof label === 'string' && label
+      ? label
+      : null;
+  store.activeTransactionStartedAt = startedAt;
   return {
     ...checkpoint,
     transactionId: checkpoint.id,
     activeTransaction: true,
+    owner: store.activeTransactionOwner,
+    purpose: store.activeTransactionPurpose,
+    startedAt,
   };
 };
 
 export const getTransactionStatus = (project: gdProject) => {
   const store = getStore(project);
   if (!store.activeTransactionId) {
-    return { active: false, transactionId: null, checkpoint: null };
+    return {
+      active: false,
+      transactionId: null,
+      checkpoint: null,
+      owner: null,
+      purpose: null,
+      startedAt: null,
+    };
   }
   const checkpoint = getCheckpoint(project, store.activeTransactionId);
   return {
     active: true,
     transactionId: store.activeTransactionId,
     checkpoint: getCheckpointSummary(checkpoint, store.activeTransactionId),
+    owner: store.activeTransactionOwner,
+    purpose: store.activeTransactionPurpose,
+    startedAt: store.activeTransactionStartedAt,
   };
 };
 
@@ -334,6 +370,9 @@ export const commitTransaction = (
   const { store, checkpoint } = requireActiveTransaction(project, transactionId);
   const diff = diffSnapshots(checkpoint.snapshot, serializeProject(project));
   store.activeTransactionId = null;
+  store.activeTransactionOwner = null;
+  store.activeTransactionPurpose = null;
+  store.activeTransactionStartedAt = null;
   return {
     committed: true,
     transactionId,
@@ -360,6 +399,9 @@ export const completeTransactionRollback = (
     throw new Error('transaction_changed_during_rollback');
   }
   store.activeTransactionId = null;
+  store.activeTransactionOwner = null;
+  store.activeTransactionPurpose = null;
+  store.activeTransactionStartedAt = null;
 };
 
 export const clearProjectCheckpoints = (project: gdProject) => {

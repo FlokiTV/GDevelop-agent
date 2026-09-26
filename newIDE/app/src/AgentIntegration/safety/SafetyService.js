@@ -39,9 +39,17 @@ const requireTransactionId = (transactionId: any): string => {
   return transactionId;
 };
 
+const getRequestIdentity = requestContext =>
+  requestContext &&
+  requestContext.identity &&
+  typeof requestContext.identity === 'object'
+    ? requestContext.identity
+    : null;
+
 const assertTransactionHandle = (
   project: gdProject,
-  transactionId: string
+  transactionId: string,
+  requestContext?: any
 ) => {
   const status = getTransactionStatus(project);
   if (!status.active || !status.transactionId) {
@@ -53,6 +61,26 @@ const assertTransactionHandle = (
       details: {
         transactionId,
         activeTransactionId: status.transactionId,
+      },
+    });
+  }
+  const callerIdentity = getRequestIdentity(requestContext);
+  const activeOwner = status.owner;
+  if (
+    activeOwner &&
+    typeof activeOwner.ownerKey === 'string' &&
+    activeOwner.ownerKey &&
+    (!callerIdentity || callerIdentity.ownerKey !== activeOwner.ownerKey)
+  ) {
+    throw new AgentError({
+      code: 'transaction_owner_mismatch',
+      retryable: false,
+      details: {
+        transactionId,
+        owner: activeOwner,
+        callerIdentity,
+        purpose: status.purpose || null,
+        startedAt: status.startedAt || null,
       },
     });
   }
@@ -114,15 +142,20 @@ export const createSafetyService = ({
     return { ...restored, diff };
   },
 
-  getTransactionStatus: () => getTransactionStatus(requireProject(project)),
+  getTransactionStatus: (requestContext?: any) => ({
+    ...getTransactionStatus(requireProject(project)),
+    callerIdentity: getRequestIdentity(requestContext),
+  }),
 
-  beginTransaction: ({ label }: any = {}) => {
+  beginTransaction: ({ label }: any = {}, requestContext?: any) => {
     const currentProject = requireProject(project);
     const checkpoint = beginTransaction({
       project: currentProject,
       fileIdentifier: fileIdentifier || null,
       label: typeof label === 'string' && label ? label : null,
       hadUnsavedChanges: hasUnsavedChanges,
+      owner: getRequestIdentity(requestContext),
+      purpose: typeof label === 'string' && label ? label : null,
     });
     return {
       begun: true,
@@ -131,17 +164,20 @@ export const createSafetyService = ({
     };
   },
 
-  commitTransaction: ({ transactionId }: any = {}) => {
+  commitTransaction: ({ transactionId }: any = {}, requestContext?: any) => {
     const currentProject = requireProject(project);
     const id = requireTransactionId(transactionId);
-    assertTransactionHandle(currentProject, id);
+    assertTransactionHandle(currentProject, id, requestContext);
     return commitTransaction(currentProject, id);
   },
 
-  rollbackTransaction: async ({ transactionId }: any = {}) => {
+  rollbackTransaction: async (
+    { transactionId }: any = {},
+    requestContext?: any
+  ) => {
     const currentProject = requireProject(project);
     const id = requireTransactionId(transactionId);
-    assertTransactionHandle(currentProject, id);
+    assertTransactionHandle(currentProject, id, requestContext);
     const projectUuid = currentProject.getProjectUuid();
     const { checkpoint, diff } = prepareTransactionRollback(currentProject, id);
     if (!diff.changed) {

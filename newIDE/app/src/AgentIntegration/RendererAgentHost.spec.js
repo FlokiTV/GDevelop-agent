@@ -9,6 +9,7 @@ const EXPECTED_PUBLIC_COMMANDS = [
   'agent.concurrency.capabilities',
   'agent.concurrency.lease.acquire',
   'agent.concurrency.lease.release',
+  'agent.concurrency.lease.renew',
   'agent.concurrency.status',
   'build.cancel',
   'build.configuration.apply',

@@ -111,7 +111,8 @@ export const createSafetyCommandDescriptors = ({
     description: 'Return the active AgentIntegration transaction state.',
     inputSchema: EMPTY_SCHEMA,
     metadata: makeCommandMetadata({ requiresProject: true }),
-    execute: () => safetyService.getTransactionStatus(),
+    execute: ({ requestContext }) =>
+      safetyService.getTransactionStatus(requestContext),
   },
   {
     name: 'safety.transactions.begin',
@@ -123,7 +124,8 @@ export const createSafetyCommandDescriptors = ({
       idempotent: false,
       requiresProject: true,
     }),
-    execute: ({ input }) => safetyService.beginTransaction(input),
+    execute: ({ input, requestContext }) =>
+      safetyService.beginTransaction(input, requestContext),
   },
   {
     name: 'safety.transactions.commit',
@@ -136,7 +138,8 @@ export const createSafetyCommandDescriptors = ({
       requiresProject: true,
     }),
     validateInput: assertTransactionId,
-    execute: ({ input }) => safetyService.commitTransaction(input),
+    execute: ({ input, requestContext }) =>
+      safetyService.commitTransaction(input, requestContext),
   },
   {
     name: 'safety.transactions.rollback',
@@ -153,6 +156,7 @@ export const createSafetyCommandDescriptors = ({
       defaultTimeoutMs: 600000,
     }),
     validateInput: assertTransactionId,
-    execute: ({ input }) => safetyService.rollbackTransaction(input),
+    execute: ({ input, requestContext }) =>
+      safetyService.rollbackTransaction(input, requestContext),
   },
 ];

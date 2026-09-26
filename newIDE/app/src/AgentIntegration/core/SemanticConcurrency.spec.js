@@ -41,3 +41,43 @@ describe('SemanticConcurrency', () => {
     expect(concurrency.listLeases()).toEqual([]);
   });
 });
+
+
+describe('DX-19 lease metadata', () => {
+  test('renews leases explicitly with caller identity and heartbeat metadata', () => {
+    const concurrency = new SemanticConcurrency();
+    const identity = {
+      clientId: 'client-a',
+      agentId: 'agent-a',
+      sessionId: 'session-a',
+      taskId: 'task-a',
+      ownerKey: 'agent-a::session-a',
+    };
+    const lease = concurrency.acquireLease({
+      scope: 'scene:Game',
+      owner: identity.ownerKey,
+      identity,
+      ttlMs: 5000,
+    });
+    expect(lease).toMatchObject({
+      scope: 'scene:Game',
+      owner: identity.ownerKey,
+      identity,
+      ttlMs: 5000,
+      acquiredAt: expect.any(Number),
+      renewedAt: expect.any(Number),
+      heartbeatAt: expect.any(Number),
+      expiresAt: expect.any(Number),
+    });
+    const renewed = concurrency.renewLease({
+      scope: 'scene:Game',
+      owner: identity.ownerKey,
+      identity,
+      leaseId: lease.leaseId,
+      ttlMs: 10000,
+    });
+    expect(renewed.leaseId).toBe(lease.leaseId);
+    expect(renewed.acquiredAt).toBe(lease.acquiredAt);
+    expect(renewed.expiresAt).toBeGreaterThanOrEqual(lease.expiresAt);
+  });
+});

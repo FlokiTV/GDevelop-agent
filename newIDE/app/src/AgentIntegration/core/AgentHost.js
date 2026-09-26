@@ -16,6 +16,7 @@ export type CommandResult = {|
     modifiesProject: boolean,
     projectRevision: ?number,
     semanticRevisions?: Array<any>,
+    identity?: any,
     durationMs: number,
     idempotencyReplayed: boolean,
   |},
@@ -37,6 +38,39 @@ const normalizeInput = (input: any): { [string]: any } => {
     });
   }
   return input;
+};
+
+export const resolveSemanticScopes = (
+  descriptor: CommandDescriptor,
+  input: { [string]: any }
+): Array<string> => {
+  const scopes = new Set();
+  if (descriptor.metadata.modifiesProject) scopes.add('project');
+  if (Array.isArray(descriptor.metadata.semanticScopes)) {
+    descriptor.metadata.semanticScopes.forEach(scope => scopes.add(scope));
+  }
+  const sceneName =
+    (typeof input.sceneName === 'string' && input.sceneName.trim()) ||
+    (typeof input.scene_name === 'string' && input.scene_name.trim()) ||
+    null;
+  if (sceneName) {
+    scopes.add(`scene:${sceneName}`);
+    if (descriptor.name.startsWith('events.')) {
+      scopes.add(`events:${sceneName}`);
+    }
+  }
+  if (
+    descriptor.name.startsWith('resources.') ||
+    descriptor.name.startsWith('assets.')
+  ) {
+    scopes.add('resources');
+    const resourceName =
+      (typeof input.resourceName === 'string' && input.resourceName.trim()) ||
+      (typeof input.resource_name === 'string' && input.resource_name.trim()) ||
+      null;
+    if (resourceName) scopes.add(`resource:${resourceName}`);
+  }
+  return Array.from(scopes).sort();
 };
 
 const getProjectConflictContext = (environment: any) => {
@@ -103,11 +137,33 @@ export class AgentHost {
     const environment = this._environment || {};
     const revisionTracker = environment.projectRevisionTracker || null;
     const semanticConcurrency = environment.semanticConcurrency || null;
-    const semanticScopes = Array.isArray(descriptor.metadata.semanticScopes)
-      ? descriptor.metadata.semanticScopes
-      : descriptor.metadata.modifiesProject
-      ? ['project']
-      : [];
+    const semanticScopes = resolveSemanticScopes(descriptor, normalizedInput);
+    const requestIdentity =
+      requestContext.identity && typeof requestContext.identity === 'object'
+        ? requestContext.identity
+        : null;
+    const identityOwner =
+      requestIdentity &&
+      typeof requestIdentity.ownerKey === 'string' &&
+      requestIdentity.ownerKey
+        ? requestIdentity.ownerKey
+        : null;
+    if (
+      identityOwner &&
+      typeof requestContext.semanticLeaseOwner === 'string' &&
+      requestContext.semanticLeaseOwner &&
+      requestContext.semanticLeaseOwner !== identityOwner
+    ) {
+      throw new AgentError({
+        code: 'semantic_lease_owner_identity_mismatch',
+        details: {
+          suppliedOwner: requestContext.semanticLeaseOwner,
+          identityOwner,
+        },
+      });
+    }
+    const semanticLeaseOwner =
+      identityOwner || requestContext.semanticLeaseOwner || null;
     const readCurrentRevision = () =>
       revisionTracker ? revisionTracker.synchronize() : null;
 
@@ -124,6 +180,37 @@ export class AgentHost {
               ? requestContext.traceId
               : undefined,
         });
+      }
+
+      if (
+        descriptor.metadata.modifiesProject &&
+        environment.project &&
+        typeof environment.getTransactionStatus === 'function'
+      ) {
+        const transaction = environment.getTransactionStatus();
+        const transactionOwner =
+          transaction &&
+          transaction.active &&
+          transaction.owner &&
+          typeof transaction.owner.ownerKey === 'string'
+            ? transaction.owner.ownerKey
+            : null;
+        if (transactionOwner && transactionOwner !== identityOwner) {
+          throw new AgentError({
+            code: 'transaction_scope_locked',
+            retryable: true,
+            hint:
+              'Wait for the owning transaction to commit/rollback, or coordinate with its owner before retrying.',
+            details: {
+              conflictScope: 'project',
+              transactionId: transaction.transactionId,
+              owner: transaction.owner,
+              purpose: transaction.purpose || null,
+              startedAt: transaction.startedAt || null,
+              callerIdentity: requestIdentity,
+            },
+          });
+        }
       }
 
       if (
@@ -145,7 +232,9 @@ export class AgentHost {
           hint: 'Read the project again and retry with the current revision.',
           currentRevision,
           details: {
+            conflictScope: 'project',
             expectedRevision,
+            actualRevision: currentRevision,
             currentRevision,
             revisionDelta:
               typeof currentRevision === 'number' &&
@@ -169,7 +258,7 @@ export class AgentHost {
           );
           semanticConcurrency.assertLeaseAccess(
             semanticScopes,
-            requestContext.semanticLeaseOwner || null
+            semanticLeaseOwner
           );
         }
         if (descriptor.validateInput) descriptor.validateInput(normalizedInput);
@@ -181,7 +270,11 @@ export class AgentHost {
         });
         const projectRevision = descriptor.metadata.modifiesProject
           ? revisionTracker
-            ? revisionTracker.markMutation()
+            ? revisionTracker.markMutation({
+                command: descriptor.name,
+                identity: requestIdentity,
+                semanticScopes,
+              })
             : null
           : readCurrentRevision();
         const semanticRevisions =
@@ -237,6 +330,7 @@ export class AgentHost {
         ...(execution.semanticRevisions && execution.semanticRevisions.length
           ? { semanticRevisions: execution.semanticRevisions }
           : {}),
+        ...(requestIdentity ? { identity: requestIdentity } : {}),
         durationMs: Math.max(0, Date.now() - startedAt),
         idempotencyReplayed,
       },

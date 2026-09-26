@@ -27,6 +27,26 @@ const COMMAND_SUMMARY_SCHEMA = {
   },
 };
 
+const getRequestIdentity = requestContext =>
+  requestContext &&
+  requestContext.identity &&
+  typeof requestContext.identity === 'object'
+    ? requestContext.identity
+    : null;
+
+const resolveLeaseOwner = (input, requestContext) => {
+  const identity = getRequestIdentity(requestContext);
+  const identityOwner =
+    identity && typeof identity.ownerKey === 'string' && identity.ownerKey
+      ? identity.ownerKey
+      : null;
+  if (identityOwner) return { owner: identityOwner, identity };
+  if (input && typeof input.owner === 'string' && input.owner.trim()) {
+    return { owner: input.owner.trim(), identity: null };
+  }
+  throw new AgentError({ code: 'invalid_lease_owner' });
+};
+
 const COMMANDS_OUTPUT_SCHEMA = {
   type: 'object',
   additionalProperties: false,
@@ -122,10 +142,22 @@ export const createCoreCommandDescriptors = (): Array<CommandDescriptor> => [
     metadata: DISCOVERY_METADATA,
     execute: ({ environment }) => ({
       semanticRevisions: { supported: !!environment.semanticConcurrency },
+      callerIdentity: {
+        supported: true,
+        source: 'mcp-request-headers',
+        headers: [
+          'X-GDevelop-Client-Id',
+          'X-GDevelop-Agent-Id',
+          'X-GDevelop-Session-Id',
+          'X-GDevelop-Task-Id',
+        ],
+      },
       semanticLeases: {
         supported: !!environment.semanticConcurrency,
         processLocal: true,
         persisted: false,
+        ownerBoundToCallerIdentity: true,
+        explicitRenew: true,
         minTtlMs: 1000,
         maxTtlMs: 300000,
       },
@@ -148,7 +180,7 @@ export const createCoreCommandDescriptors = (): Array<CommandDescriptor> => [
       },
     },
     metadata: makeCommandMetadata({ requiresProject: true }),
-    execute: ({ environment, input }) => {
+    execute: ({ environment, input, requestContext }) => {
       const concurrency = environment.semanticConcurrency;
       if (!concurrency) return { supported: false, scopes: [], leases: [] };
       const scopes =
@@ -157,6 +189,7 @@ export const createCoreCommandDescriptors = (): Array<CommandDescriptor> => [
           : ['project'];
       return {
         supported: true,
+        identity: getRequestIdentity(requestContext),
         scopes: concurrency.snapshot(scopes),
         leases: concurrency.listLeases(),
       };
@@ -165,14 +198,18 @@ export const createCoreCommandDescriptors = (): Array<CommandDescriptor> => [
   {
     name: 'agent.concurrency.lease.acquire',
     description:
-      'Acquire or renew a process-local bounded semantic lease for a project scope.',
+      'Acquire a process-local bounded semantic lease for a project scope, owned by the current MCP agent/session identity.',
     inputSchema: {
       type: 'object',
       additionalProperties: false,
-      required: ['scope', 'owner'],
+      required: ['scope'],
       properties: {
         scope: { type: 'string', minLength: 1 },
-        owner: { type: 'string', minLength: 1 },
+        owner: {
+          type: 'string',
+          minLength: 1,
+          description: 'Legacy direct-host fallback. MCP callers are bound to connection identity.',
+        },
         ttlMs: {
           type: 'integer',
           minimum: 1000,
@@ -186,9 +223,56 @@ export const createCoreCommandDescriptors = (): Array<CommandDescriptor> => [
       readOnly: false,
       idempotent: false,
     }),
-    execute: ({ environment, input }) => ({
-      lease: environment.semanticConcurrency.acquireLease(input),
+    execute: ({ environment, input, requestContext }) => {
+      const { owner, identity } = resolveLeaseOwner(input, requestContext);
+      return {
+        lease: environment.semanticConcurrency.acquireLease({
+          ...input,
+          owner,
+          identity,
+        }),
+      };
+    },
+  },
+  {
+    name: 'agent.concurrency.lease.renew',
+    description:
+      'Renew a semantic lease owned by the current MCP agent/session identity.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['scope', 'leaseId'],
+      properties: {
+        scope: { type: 'string', minLength: 1 },
+        leaseId: { type: 'string', minLength: 1 },
+        owner: {
+          type: 'string',
+          minLength: 1,
+          description: 'Legacy direct-host fallback. MCP callers are bound to connection identity.',
+        },
+        ttlMs: {
+          type: 'integer',
+          minimum: 1000,
+          maximum: 300000,
+          default: 30000,
+        },
+      },
+    },
+    metadata: makeCommandMetadata({
+      requiresProject: true,
+      readOnly: false,
+      idempotent: false,
     }),
+    execute: ({ environment, input, requestContext }) => {
+      const { owner, identity } = resolveLeaseOwner(input, requestContext);
+      return {
+        lease: environment.semanticConcurrency.renewLease({
+          ...input,
+          owner,
+          identity,
+        }),
+      };
+    },
   },
   {
     name: 'agent.concurrency.lease.release',
@@ -196,10 +280,14 @@ export const createCoreCommandDescriptors = (): Array<CommandDescriptor> => [
     inputSchema: {
       type: 'object',
       additionalProperties: false,
-      required: ['scope', 'owner', 'leaseId'],
+      required: ['scope', 'leaseId'],
       properties: {
         scope: { type: 'string', minLength: 1 },
-        owner: { type: 'string', minLength: 1 },
+        owner: {
+          type: 'string',
+          minLength: 1,
+          description: 'Legacy direct-host fallback. MCP callers are bound to connection identity.',
+        },
         leaseId: { type: 'string', minLength: 1 },
       },
     },
@@ -208,9 +296,15 @@ export const createCoreCommandDescriptors = (): Array<CommandDescriptor> => [
       readOnly: false,
       idempotent: true,
     }),
-    execute: ({ environment, input }) => ({
-      released: environment.semanticConcurrency.releaseLease(input),
-    }),
+    execute: ({ environment, input, requestContext }) => {
+      const { owner } = resolveLeaseOwner(input, requestContext);
+      return {
+        released: environment.semanticConcurrency.releaseLease({
+          ...input,
+          owner,
+        }),
+      };
+    },
   },
   {
     name: 'project.status',

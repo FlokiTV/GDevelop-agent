@@ -4,6 +4,9 @@ const {
   createPreviewInteractionService,
 } = require('./PreviewInteractionService');
 const { createWindowCaptureService } = require('./WindowCaptureService');
+const {
+  createManagedTempWorkspaceService,
+} = require('./ManagedTempWorkspaceService');
 const { createPreviewQaService } = require('./PreviewQaService');
 const {
   createPreviewViewportService,
@@ -58,6 +61,7 @@ const createDesktopIntegrationHost = ({
     windowRegistry,
     isRegisteredPreviewWindow,
   });
+  const managedTempWorkspaceService = createManagedTempWorkspaceService();
   const previewViewportService = createPreviewViewportService({
     BrowserWindow,
     windowRegistry,
@@ -82,6 +86,7 @@ const createDesktopIntegrationHost = ({
   );
   const desktopCommandRegistry = createDesktopCommandRegistry({
     windowCaptureService,
+    managedTempWorkspaceService,
     previewInteractionService,
     previewViewportService,
     previewQaService,
@@ -94,6 +99,7 @@ const createDesktopIntegrationHost = ({
     if (disposed) return;
     disposed = true;
     previewNetworkDiagnosticsService.dispose();
+    managedTempWorkspaceService.dispose();
     previewLifecycleIpc.dispose();
     previewRuntimeSnapshotIpc.dispose();
     rendererBridge.dispose();
@@ -112,6 +118,7 @@ const createDesktopIntegrationHost = ({
     multiplayerPreviewService,
     previewNetworkDiagnosticsService,
     windowCaptureService,
+    managedTempWorkspaceService,
     desktopCommandRegistry,
     dispose,
   };

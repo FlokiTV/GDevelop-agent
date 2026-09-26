@@ -44,9 +44,20 @@ const sanitizeForReplay = value => {
   );
 };
 
-const makeRequestHeaders = ({ token, clientId, windowId, projectPath }) => ({
+const makeRequestHeaders = ({
+  token,
+  clientId,
+  agentId,
+  sessionId,
+  taskId,
+  windowId,
+  projectPath,
+}) => ({
   Authorization: `Bearer ${token}`,
   'X-GDevelop-Client-Id': clientId || DEFAULT_CLIENT_ID,
+  ...(agentId ? { 'X-GDevelop-Agent-Id': String(agentId) } : {}),
+  ...(sessionId ? { 'X-GDevelop-Session-Id': String(sessionId) } : {}),
+  ...(taskId ? { 'X-GDevelop-Task-Id': String(taskId) } : {}),
   ...(windowId ? { 'X-GDevelop-Window-Id': String(windowId) } : {}),
   ...(projectPath ? { 'X-GDevelop-Project-Path': projectPath } : {}),
 });
@@ -71,6 +82,9 @@ const connectLiveGDevelopMcp = async ({
   windowId,
   projectPath,
   clientId = DEFAULT_CLIENT_ID,
+  agentId,
+  sessionId,
+  taskId,
   clientVersion = '1.0.0',
   env = process.env,
 } = {}) => {
@@ -87,6 +101,9 @@ const connectLiveGDevelopMcp = async ({
         headers: makeRequestHeaders({
           token: runtime.token,
           clientId,
+          agentId,
+          sessionId,
+          taskId,
           windowId,
           projectPath,
         }),
@@ -108,6 +125,12 @@ const connectLiveGDevelopMcp = async ({
     endpoint: runtime.endpoint,
     discoveryPath: resolvedDiscoveryPath,
     protocolVersion: client.getNegotiatedProtocolVersion(),
+    identity: Object.freeze({
+      clientId,
+      agentId: agentId || clientId,
+      sessionId: sessionId || clientId,
+      ...(taskId ? { taskId } : {}),
+    }),
     target: Object.freeze({
       ...(windowId ? { windowId: String(windowId) } : {}),
       ...(projectPath ? { projectPath } : {}),

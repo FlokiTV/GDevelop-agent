@@ -20,6 +20,7 @@ const REQUIRED_TOOLS = [
   'agent.concurrency.capabilities',
   'agent.concurrency.status',
   'agent.concurrency.lease.acquire',
+  'agent.concurrency.lease.renew',
   'agent.concurrency.lease.release',
   'safety.transactions.begin',
   'safety.transactions.rollback',
@@ -144,9 +145,15 @@ const runConcurrencyResourcesLiveScenario = async ({
       throw new Error('initial_semantic_revision_invalid');
     const lease = (await call('agent.concurrency.lease.acquire', {
       scope: 'project',
-      owner: 'cap22-client',
       ttlMs: 30000,
     })).lease;
+    const renewedLease = (await call('agent.concurrency.lease.renew', {
+      scope: 'project',
+      leaseId: lease.leaseId,
+      ttlMs: 30000,
+    })).lease;
+    if (renewedLease.leaseId !== lease.leaseId)
+      throw new Error('semantic_lease_renew_changed_identity');
 
     let locked = false;
     try {
@@ -166,7 +173,6 @@ const runConcurrencyResourcesLiveScenario = async ({
       scene_name: `Leased ${Date.now().toString(36)}`,
       expectedRevision: revision,
       expectedSemanticRevisions: { project: 0 },
-      semanticLeaseOwner: 'cap22-client',
       idempotencyKey: `cap22-create-${Date.now().toString(36)}`,
     });
     revision = (await call('project.status')).projectRevision;
@@ -183,7 +189,6 @@ const runConcurrencyResourcesLiveScenario = async ({
     }
     await call('agent.concurrency.lease.release', {
       scope: 'project',
-      owner: 'cap22-client',
       leaseId: lease.leaseId,
     });
 

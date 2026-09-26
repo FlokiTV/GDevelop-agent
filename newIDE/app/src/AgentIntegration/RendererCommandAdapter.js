@@ -38,6 +38,7 @@ export const attachRendererAgentHostToIpc = ({
       input?: any,
       traceId?: string,
       traceContext?: any,
+      identity?: any,
       expectedRevision?: number,
       expectedSemanticRevisions?: { [string]: number },
       semanticLeaseOwner?: string,
@@ -50,6 +51,7 @@ export const attachRendererAgentHostToIpc = ({
       input,
       traceId,
       traceContext,
+      identity,
       expectedRevision,
       expectedSemanticRevisions,
       semanticLeaseOwner,
@@ -68,6 +70,7 @@ export const attachRendererAgentHostToIpc = ({
         ...(traceContext && typeof traceContext === 'object'
           ? { traceContext }
           : {}),
+        ...(identity && typeof identity === 'object' ? { identity } : {}),
         ...(Number.isInteger(expectedRevision) && expectedRevision >= 0
           ? { expectedRevision }
           : {}),

@@ -88,6 +88,33 @@ describe('AgentHost', () => {
     expect(execute).toHaveBeenCalledTimes(1);
   });
 
+  it('allows project-creating mutations to run before a project exists without touching transaction state', async () => {
+    const execute = jest.fn(() => ({ created: true }));
+    const getTransactionStatus = jest.fn(() => {
+      throw new Error('transaction_status_requires_project');
+    });
+    const host = new AgentHost({
+      environment: { getTransactionStatus },
+      descriptors: [
+        makeDescriptor('project.create', {
+          metadata: makeCommandMetadata({
+            readOnly: false,
+            idempotent: false,
+            requiresProject: false,
+            modifiesProject: true,
+          }),
+          execute,
+        }),
+      ],
+    });
+
+    await expect(
+      host.execute('project.create', { name: 'Fresh Project' })
+    ).resolves.toMatchObject({ data: { created: true } });
+    expect(getTransactionStatus).not.toHaveBeenCalled();
+    expect(execute).toHaveBeenCalledTimes(1);
+  });
+
   it('rejects stale mutating commands and returns the current project revision', async () => {
     let changesCount = 0;
     const projectRevisionTracker = new ProjectRevisionTracker({
@@ -211,6 +238,7 @@ describe('AgentHost', () => {
       }
     );
     expect(first.meta.semanticRevisions).toEqual([
+      { scope: 'project', revision: 1 },
       { scope: 'scenes', revision: 1 },
     ]);
     await expect(
@@ -398,7 +426,183 @@ describe('core commands', () => {
     expect(description.data.command.metadata.readOnly).toBe(true);
 
     const capabilities = await host.execute('agent.capabilities');
-    expect(capabilities.data.commandCount).toBe(8);
-    expect(capabilities.data.commands).toHaveLength(8);
+    expect(capabilities.data.commandCount).toBe(9);
+    expect(capabilities.data.commands).toHaveLength(9);
+  });
+});
+
+
+describe('DX-19 multi-agent guards', () => {
+  const identityA = {
+    clientId: 'client-a',
+    agentId: 'agent-a',
+    sessionId: 'session-a',
+    taskId: 'task-a',
+    ownerKey: 'agent-a::session-a',
+  };
+  const identityB = {
+    clientId: 'client-b',
+    agentId: 'agent-b',
+    sessionId: 'session-b',
+    taskId: 'task-b',
+    ownerKey: 'agent-b::session-b',
+  };
+
+  it('blocks project mutations from another agent while a transaction is active', async () => {
+    const execute = jest.fn(() => ({ created: true }));
+    const host = new AgentHost({
+      environment: {
+        project: {},
+        getTransactionStatus: () => ({
+          active: true,
+          transactionId: 'tx-a',
+          owner: identityA,
+          purpose: 'atomic refactor',
+          startedAt: 123,
+        }),
+      },
+      descriptors: [
+        makeDescriptor('scene.create', {
+          metadata: makeCommandMetadata({
+            readOnly: false,
+            idempotent: false,
+            requiresProject: true,
+            modifiesProject: true,
+          }),
+          execute,
+        }),
+      ],
+    });
+
+    await expect(
+      host.execute('scene.create', {}, { identity: identityB })
+    ).rejects.toMatchObject({
+      code: 'transaction_scope_locked',
+      retryable: true,
+      details: expect.objectContaining({
+        transactionId: 'tx-a',
+        owner: identityA,
+        callerIdentity: identityB,
+      }),
+    });
+    expect(execute).not.toHaveBeenCalled();
+
+    await expect(
+      host.execute('scene.create', {}, { identity: identityA })
+    ).resolves.toMatchObject({ data: { created: true } });
+  });
+
+  it('binds lease acquire/renew/release to request identity', async () => {
+    const semanticConcurrency = new SemanticConcurrency();
+    const host = new AgentHost({
+      environment: { project: {}, semanticConcurrency },
+      descriptors: createCoreCommandDescriptors(),
+    });
+
+    const acquired = await host.execute(
+      'agent.concurrency.lease.acquire',
+      { scope: 'scene:Game', ttlMs: 5000 },
+      { identity: identityA }
+    );
+    expect(acquired.data.lease).toMatchObject({
+      scope: 'scene:Game',
+      owner: identityA.ownerKey,
+      identity: identityA,
+    });
+
+    const status = await host.execute(
+      'agent.concurrency.status',
+      { scopes: ['scene:Game'] },
+      { identity: identityA }
+    );
+    expect(status.data.identity).toEqual(identityA);
+    expect(status.data.leases[0].owner).toBe(identityA.ownerKey);
+
+    await expect(
+      host.execute(
+        'agent.concurrency.lease.release',
+        {
+          scope: 'scene:Game',
+          leaseId: acquired.data.lease.leaseId,
+        },
+        { identity: identityB }
+      )
+    ).rejects.toMatchObject({ code: 'semantic_lease_mismatch' });
+
+    const renewed = await host.execute(
+      'agent.concurrency.lease.renew',
+      {
+        scope: 'scene:Game',
+        leaseId: acquired.data.lease.leaseId,
+        ttlMs: 10000,
+      },
+      { identity: identityA }
+    );
+    expect(renewed.data.lease.expiresAt).toBeGreaterThanOrEqual(
+      acquired.data.lease.expiresAt
+    );
+
+    await expect(
+      host.execute(
+        'agent.concurrency.lease.release',
+        {
+          scope: 'scene:Game',
+          leaseId: acquired.data.lease.leaseId,
+        },
+        { identity: identityA }
+      )
+    ).resolves.toMatchObject({ data: { released: true } });
+  });
+
+  it('records the responsible identity in stale revision conflict context', async () => {
+    let changesCount = 0;
+    const projectRevisionTracker = new ProjectRevisionTracker({
+      getChangesCount: () => changesCount,
+    });
+    projectRevisionTracker.setSource({ projectKey: 'project-1' });
+    const host = new AgentHost({
+      environment: {
+        project: {
+          getProjectUuid: () => 'project-1',
+          getName: () => 'Concurrent',
+        },
+        projectRevisionTracker,
+      },
+      descriptors: [
+        makeDescriptor('scene.create', {
+          metadata: makeCommandMetadata({
+            readOnly: false,
+            idempotent: false,
+            requiresProject: true,
+            modifiesProject: true,
+          }),
+          execute: () => ({ created: true }),
+        }),
+      ],
+    });
+
+    await host.execute(
+      'scene.create',
+      { sceneName: 'AgentB' },
+      { expectedRevision: 0, identity: identityB }
+    );
+    await expect(
+      host.execute(
+        'scene.create',
+        { sceneName: 'StaleA' },
+        { expectedRevision: 0, identity: identityA }
+      )
+    ).rejects.toMatchObject({
+      code: 'revision_conflict',
+      details: expect.objectContaining({
+        conflictScope: 'project',
+        expectedRevision: 0,
+        actualRevision: 1,
+        lastChange: expect.objectContaining({
+          source: 'agent',
+          identity: identityB,
+        }),
+      }),
+    });
   });
 });

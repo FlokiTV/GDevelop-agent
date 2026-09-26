@@ -175,3 +175,52 @@ describe('SafetyService', () => {
     );
   });
 });
+
+
+describe('DX-19 transaction ownership', () => {
+  test('rejects commit and rollback from another agent/session', async () => {
+    const owner = {
+      clientId: 'client-a',
+      agentId: 'agent-a',
+      sessionId: 'session-a',
+      taskId: 'task-a',
+      ownerKey: 'agent-a::session-a',
+    };
+    const other = {
+      clientId: 'client-b',
+      agentId: 'agent-b',
+      sessionId: 'session-b',
+      taskId: 'task-b',
+      ownerKey: 'agent-b::session-b',
+    };
+    checkpointTools.getTransactionStatus.mockReturnValue({
+      active: true,
+      transactionId: 'tx-owner',
+      checkpoint: { id: 'tx-owner' },
+      owner,
+      purpose: 'multi-step mutation',
+      startedAt: 123,
+    });
+    const { service } = makeService();
+
+    expect(() =>
+      service.commitTransaction(
+        { transactionId: 'tx-owner' },
+        { identity: other }
+      )
+    ).toThrow(
+      expect.objectContaining({
+        code: 'transaction_owner_mismatch',
+        details: expect.objectContaining({ owner, callerIdentity: other }),
+      })
+    );
+    await expect(
+      service.rollbackTransaction(
+        { transactionId: 'tx-owner' },
+        { identity: other }
+      )
+    ).rejects.toMatchObject({ code: 'transaction_owner_mismatch' });
+    expect(checkpointTools.commitTransaction).not.toHaveBeenCalled();
+    expect(checkpointTools.prepareTransactionRollback).not.toHaveBeenCalled();
+  });
+});

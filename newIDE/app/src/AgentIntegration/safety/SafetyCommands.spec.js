@@ -68,15 +68,18 @@ describe('SafetyCommands', () => {
     await host.execute('safety.transactions.rollback', {
       transactionId: 'tx-1',
     });
-    expect(safetyService.beginTransaction).toHaveBeenCalledWith({
-      label: 'tx',
-    });
-    expect(safetyService.commitTransaction).toHaveBeenCalledWith({
-      transactionId: 'tx-1',
-    });
-    expect(safetyService.rollbackTransaction).toHaveBeenCalledWith({
-      transactionId: 'tx-1',
-    });
+    expect(safetyService.beginTransaction).toHaveBeenCalledWith(
+      { label: 'tx' },
+      {}
+    );
+    expect(safetyService.commitTransaction).toHaveBeenCalledWith(
+      { transactionId: 'tx-1' },
+      {}
+    );
+    expect(safetyService.rollbackTransaction).toHaveBeenCalledWith(
+      { transactionId: 'tx-1' },
+      {}
+    );
   });
 
   test('requires checkpoint ids, transaction ids and an open project', async () => {

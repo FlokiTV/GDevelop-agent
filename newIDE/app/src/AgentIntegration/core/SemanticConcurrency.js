@@ -10,6 +10,11 @@ type Lease = {|
   leaseId: string,
   scope: string,
   owner: string,
+  identity?: any,
+  acquiredAt: number,
+  renewedAt: number,
+  heartbeatAt: number,
+  ttlMs: number,
   expiresAt: number,
 |};
 
@@ -62,7 +67,13 @@ export class SemanticConcurrency {
           retryable: true,
           hint:
             'Read semantic revisions again and retry with the current scope revision.',
-          details: { scope, expectedRevision, currentRevision },
+          details: {
+            conflictScope: 'semantic',
+            scope,
+            expectedRevision,
+            actualRevision: currentRevision,
+            currentRevision,
+          },
         });
       }
     });
@@ -81,7 +92,7 @@ export class SemanticConcurrency {
     });
   }
 
-  acquireLease({ scope, owner, ttlMs = 30000 }: any): Lease {
+  acquireLease({ scope, owner, ttlMs = 30000, identity }: any): Lease {
     const normalizedScope = normalizeScope(scope);
     if (typeof owner !== 'string' || !owner.trim()) {
       throw new AgentError({ code: 'invalid_lease_owner' });
@@ -90,22 +101,69 @@ export class SemanticConcurrency {
       throw new AgentError({ code: 'invalid_lease_ttl' });
     }
     this._pruneExpired();
+    const normalizedOwner = owner.trim();
     const current = this._leases.get(normalizedScope);
-    if (current && current.owner !== owner.trim()) {
+    if (current && current.owner !== normalizedOwner) {
       throw new AgentError({
         code: 'semantic_scope_locked',
         retryable: true,
-        details: { scope: normalizedScope, expiresAt: current.expiresAt },
+        details: {
+          scope: normalizedScope,
+          owner: current.owner,
+          identity: current.identity || null,
+          acquiredAt: current.acquiredAt,
+          heartbeatAt: current.heartbeatAt,
+          expiresAt: current.expiresAt,
+        },
       });
     }
+    const now = Date.now();
     const lease = {
       leaseId: current ? current.leaseId : `lease-${this._nextLeaseId++}`,
       scope: normalizedScope,
-      owner: owner.trim(),
-      expiresAt: Date.now() + ttlMs,
+      owner: normalizedOwner,
+      ...(identity && typeof identity === 'object' ? { identity } : {}),
+      acquiredAt: current ? current.acquiredAt : now,
+      renewedAt: now,
+      heartbeatAt: now,
+      ttlMs,
+      expiresAt: now + ttlMs,
     };
     this._leases.set(normalizedScope, lease);
     return { ...lease };
+  }
+
+  renewLease({ scope, owner, leaseId, ttlMs = 30000, identity }: any): Lease {
+    const normalizedScope = normalizeScope(scope);
+    if (typeof owner !== 'string' || !owner.trim()) {
+      throw new AgentError({ code: 'invalid_lease_owner' });
+    }
+    if (typeof leaseId !== 'string' || !leaseId) {
+      throw new AgentError({ code: 'invalid_lease_id' });
+    }
+    if (!Number.isInteger(ttlMs) || ttlMs < 1000 || ttlMs > 300000) {
+      throw new AgentError({ code: 'invalid_lease_ttl' });
+    }
+    this._pruneExpired();
+    const current = this._leases.get(normalizedScope);
+    if (
+      !current ||
+      current.owner !== owner.trim() ||
+      current.leaseId !== leaseId
+    ) {
+      throw new AgentError({ code: 'semantic_lease_mismatch' });
+    }
+    const now = Date.now();
+    const renewed = {
+      ...current,
+      ...(identity && typeof identity === 'object' ? { identity } : {}),
+      renewedAt: now,
+      heartbeatAt: now,
+      ttlMs,
+      expiresAt: now + ttlMs,
+    };
+    this._leases.set(normalizedScope, renewed);
+    return { ...renewed };
   }
 
   releaseLease({ scope, owner, leaseId }: any): boolean {
@@ -135,7 +193,14 @@ export class SemanticConcurrency {
         throw new AgentError({
           code: 'semantic_scope_locked',
           retryable: true,
-          details: { scope, expiresAt: lease.expiresAt },
+          details: {
+            scope,
+            owner: lease.owner,
+            identity: lease.identity || null,
+            acquiredAt: lease.acquiredAt,
+            heartbeatAt: lease.heartbeatAt,
+            expiresAt: lease.expiresAt,
+          },
         });
       }
     });

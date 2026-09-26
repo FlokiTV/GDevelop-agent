@@ -24,6 +24,33 @@ const SERVER_INFO = {
   version: '0.1.0',
 };
 
+const IDENTITY_PART_PATTERN = /^[A-Za-z0-9._:@-]{1,160}$/;
+
+const readIdentityHeader = (request, name) => {
+  if (!request || !request.headers) return null;
+  const value = request.headers.get(name);
+  return typeof value === 'string' && IDENTITY_PART_PATTERN.test(value)
+    ? value
+    : null;
+};
+
+const getIdentityFromRequest = request => {
+  const clientId =
+    readIdentityHeader(request, 'x-gdevelop-client-id') || 'anonymous-client';
+  const agentId =
+    readIdentityHeader(request, 'x-gdevelop-agent-id') || clientId;
+  const sessionId =
+    readIdentityHeader(request, 'x-gdevelop-session-id') || clientId;
+  const taskId = readIdentityHeader(request, 'x-gdevelop-task-id');
+  return {
+    clientId,
+    agentId,
+    sessionId,
+    ...(taskId ? { taskId } : {}),
+    ownerKey: `${agentId}::${sessionId}`,
+  };
+};
+
 const getTargetingFromRequest = request => {
   if (!request || !request.headers) return {};
   const windowId = request.headers.get('x-gdevelop-window-id');
@@ -91,12 +118,14 @@ const createMcpServerFactory = ({
   operationRegistry = null,
 }) => async ctx => {
   const targeting = getTargetingFromRequest(ctx && ctx.requestInfo);
+  const connectionIdentity = getIdentityFromRequest(ctx && ctx.requestInfo);
   const connectionTraceContext = getTraceContextFromRequest(
     ctx && ctx.requestInfo
   );
   const catalogResult = await rendererBridge.executeCommand({
     command: 'agent.commands.list',
     input: {},
+    identity: connectionIdentity,
     ...targeting,
   });
   const rendererDescriptors =
@@ -216,6 +245,11 @@ const createMcpServerFactory = ({
             result = await desktopCommandRegistry.execute({
               command: registration.name,
               input: desktopInput,
+              requestContext: {
+                identity: connectionIdentity,
+                traceId: traceContext.traceId,
+                signal: requestSignal,
+              },
             });
             if (registration.name === 'desktop.window.capture' && result.data) {
               let projectRevision = null;
@@ -273,6 +307,7 @@ const createMcpServerFactory = ({
               input: commandInput,
               traceId: traceContext.traceId,
               traceContext,
+              identity: connectionIdentity,
               ...(registration.modifiesProject &&
               Number.isInteger(expectedRevision) &&
               expectedRevision >= 0
@@ -335,6 +370,7 @@ const createMcpServerFactory = ({
               timeoutMs: registration.timeoutMs,
               result,
             }),
+            'gdevelop/identity': connectionIdentity,
             ...(operationId ? { 'gdevelop/operationId': operationId } : {}),
           };
           return toolResult;
@@ -391,6 +427,7 @@ const createMcpServerFactory = ({
 module.exports = {
   SERVER_INFO,
   PROTOCOL_VERSION: '2026-07-28',
+  getIdentityFromRequest,
   getTargetingFromRequest,
   mergeCommandDescriptors,
   toMcpToolResult,

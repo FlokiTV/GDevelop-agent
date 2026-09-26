@@ -386,6 +386,7 @@ export const createRendererIntegration = ({
         hasUnsavedChanges,
         projectRevisionTracker,
         semanticConcurrency,
+        getTransactionStatus: () => safetyService.getTransactionStatus(),
         getProjectStatus: () => ({
           projectOpen: !!project,
           fileIdentifier,

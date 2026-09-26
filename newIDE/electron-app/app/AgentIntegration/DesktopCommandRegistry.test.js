@@ -316,3 +316,108 @@ test('rejects unknown desktop commands', async () => {
     error => error && error.code === 'desktop_command_not_found'
   );
 });
+
+
+test('routes managed temp workspace commands with caller identity metadata', async () => {
+  const calls = [];
+  const identity = {
+    clientId: 'client-a',
+    agentId: 'agent-a',
+    sessionId: 'session-a',
+    taskId: 'task-a',
+    ownerKey: 'agent-a::session-a',
+  };
+  const managedTempWorkspaceService = {
+    capabilities: () => ({ supported: true, ownerBoundToCallerIdentity: true }),
+    create: (input, requestContext) => {
+      calls.push(['create', input, requestContext]);
+      return {
+        created: true,
+        namespace: {
+          namespaceId: 'ns-a',
+          ownerKey: requestContext.identity.ownerKey,
+        },
+      };
+    },
+    status: (input, requestContext) => {
+      calls.push(['status', input, requestContext]);
+      return { namespaces: [] };
+    },
+    heartbeat: (input, requestContext) => {
+      calls.push(['heartbeat', input, requestContext]);
+      return { namespace: { namespaceId: input.namespaceId } };
+    },
+    write: (input, requestContext) => {
+      calls.push(['write', input, requestContext]);
+      return { written: true, relativePath: input.relativePath };
+    },
+    read: (input, requestContext) => {
+      calls.push(['read', input, requestContext]);
+      return { content: 'a', relativePath: input.relativePath };
+    },
+    list: (input, requestContext) => {
+      calls.push(['list', input, requestContext]);
+      return { entries: [] };
+    },
+    release: (input, requestContext) => {
+      calls.push(['release', input, requestContext]);
+      return { released: true, namespaceId: input.namespaceId };
+    },
+  };
+  const registry = createDesktopCommandRegistry({
+    windowCaptureService: {},
+    managedTempWorkspaceService,
+    previewInteractionService: {},
+    previewViewportService: {},
+    previewQaService: {},
+    multiplayerPreviewService: {},
+    previewNetworkDiagnosticsService: {},
+  });
+
+  const createDescriptor = DESCRIPTORS.find(
+    descriptor => descriptor.name === 'agent.workspace.temp.create'
+  );
+  assert.ok(createDescriptor);
+  assert.equal(registry.has('agent.workspace.temp.write'), true);
+  assert.equal(
+    DESCRIPTORS.find(
+      descriptor => descriptor.name === 'agent.workspace.temp.write'
+    ).inputSchema.properties.overwrite.type,
+    'boolean'
+  );
+
+  const requestContext = { identity, traceId: 'trace-temp' };
+  const created = await registry.execute({
+    command: 'agent.workspace.temp.create',
+    input: { purpose: 'helper' },
+    requestContext,
+  });
+  assert.equal(created.data.namespace.ownerKey, identity.ownerKey);
+  assert.deepEqual(created.meta.identity, identity);
+
+  await registry.execute({
+    command: 'agent.workspace.temp.write',
+    input: {
+      namespaceId: 'ns-a',
+      relativePath: 'scripts/helper.js',
+      content: 'a',
+    },
+    requestContext,
+  });
+  await registry.execute({
+    command: 'agent.workspace.temp.read',
+    input: { namespaceId: 'ns-a', relativePath: 'scripts/helper.js' },
+    requestContext,
+  });
+  await registry.execute({
+    command: 'agent.workspace.temp.release',
+    input: { namespaceId: 'ns-a' },
+    requestContext,
+  });
+
+  assert.deepEqual(
+    calls.map(call => call[0]),
+    ['create', 'write', 'read', 'release']
+  );
+  calls.forEach(call => assert.deepEqual(call[2].identity, identity));
+});

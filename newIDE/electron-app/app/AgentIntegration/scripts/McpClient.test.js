@@ -95,6 +95,11 @@ test('connectLiveGDevelopMcp discovers, pins, calls once and closes without expo
 
     assert.equal(session.protocolVersion, PROTOCOL_VERSION);
     assert.equal(session.endpoint, host.url);
+    assert.deepEqual(session.identity, {
+      clientId: 'dx6-test-client',
+      agentId: 'dx6-test-client',
+      sessionId: 'dx6-test-client',
+    });
     assert.deepEqual(session.target, {});
     assert.equal('token' in session, false);
     assert.equal(
@@ -168,12 +173,18 @@ test('request targeting headers and replay sanitization keep transport credentia
     makeRequestHeaders({
       token: 'secret',
       clientId: 'dx6-client',
+      agentId: 'agent-a',
+      sessionId: 'session-a',
+      taskId: 'task-a',
       windowId: 17,
       projectPath: 'C:/game/game.json',
     }),
     {
       Authorization: 'Bearer secret',
       'X-GDevelop-Client-Id': 'dx6-client',
+      'X-GDevelop-Agent-Id': 'agent-a',
+      'X-GDevelop-Session-Id': 'session-a',
+      'X-GDevelop-Task-Id': 'task-a',
       'X-GDevelop-Window-Id': '17',
       'X-GDevelop-Project-Path': 'C:/game/game.json',
     }
