@@ -39,6 +39,7 @@ const {
   closePreviewWindowsForParent,
   closeAllPreviewWindows,
   isPreviewWindow,
+  getPreviewWindowParentId,
 } = require('./PreviewWindow');
 const {
   setupLocalGDJSDevelopmentWatcher,
@@ -77,6 +78,7 @@ require('./AgentIntegration').installAgentIntegration({
   BrowserWindow,
   desktopCapturer: electron.desktopCapturer,
   isRegisteredPreviewWindow: isPreviewWindow,
+  getPreviewWindowParentId,
   log,
 });
 
@@ -113,24 +115,32 @@ if (!gotTheLock) {
   // Second instance attempted - quit immediately
   app.quit();
 } else {
-  app.on('second-instance', (event, commandLine, workingDirectory, additionalData) => {
-    const secondInstanceArgs = parseSecondInstanceArgs({
-      commandLine,
-      additionalData,
-      isDev,
-    });
+  app.on(
+    'second-instance',
+    (event, commandLine, workingDirectory, additionalData) => {
+      const secondInstanceArgs = parseSecondInstanceArgs({
+        commandLine,
+        additionalData,
+        isDev,
+      });
 
-    if (routeCliCommandToLiveEditor({ parsedArgs: secondInstanceArgs, mainWindows })) {
-      return;
+      if (
+        routeCliCommandToLiveEditor({
+          parsedArgs: secondInstanceArgs,
+          mainWindows,
+        })
+      ) {
+        return;
+      }
+
+      // Update the global args so the new window's renderer (which reads them
+      // via remote.getGlobal('args')) picks up the second-instance CLI flags
+      // (e.g. --run-command, positional project file).
+      global['args'] = secondInstanceArgs;
+
+      createNewWindow(secondInstanceArgs);
     }
-
-    // Update the global args so the new window's renderer (which reads them
-    // via remote.getGlobal('args')) picks up the second-instance CLI flags
-    // (e.g. --run-command, positional project file).
-    global['args'] = secondInstanceArgs;
-
-    createNewWindow(secondInstanceArgs);
-  });
+  );
 }
 
 // Quit when all windows are closed.
@@ -328,9 +338,7 @@ function createNewWindow(windowArgs = args) {
       // Extract the theme background color passed via the features string
       // by WindowPortal (e.g. "...,themeBackgroundColor=%23282828").
       let backgroundColor = '#000';
-      const match = details.features.match(
-        /themeBackgroundColor=([^,]*)/
-      );
+      const match = details.features.match(/themeBackgroundColor=([^,]*)/);
       if (match) {
         try {
           backgroundColor = decodeURIComponent(match[1]);
@@ -371,8 +379,15 @@ function createNewWindow(windowArgs = args) {
   newWindow.webContents.on('did-create-window', (childWindow, details) => {
     require('@electron/remote/main').enable(childWindow.webContents);
 
-    if (!details.frameName || !details.frameName.startsWith('GDevelopWindowPortal')) {
-      console.warn(`Unexpected frameName for child window: ${details.frameName} - verify handling on Electron side.`);
+    if (
+      !details.frameName ||
+      !details.frameName.startsWith('GDevelopWindowPortal')
+    ) {
+      console.warn(
+        `Unexpected frameName for child window: ${
+          details.frameName
+        } - verify handling on Electron side.`
+      );
     }
 
     // Track child window by frameName so the renderer can look up its

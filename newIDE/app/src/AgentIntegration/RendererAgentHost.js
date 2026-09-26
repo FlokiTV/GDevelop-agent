@@ -15,6 +15,7 @@ import { createDocumentationCommandDescriptors } from './editor/DocumentationCom
 import { createStoreCommandDescriptors } from './editor/StoreCommands';
 import { createExportCommandDescriptors } from './editor/ExportCommands';
 import { createProjectLifecycleCommandDescriptors } from './editor/ProjectLifecycleCommands';
+import { createTargetIdentityCommandDescriptors } from './editor/TargetIdentityCommands';
 import { createResourceCommandDescriptors } from './editor/ResourceCommands';
 import { createRemoteResourceCommandDescriptors } from './editor/RemoteResourceCommands';
 import { createAssetProcessingCommandDescriptors } from './editor/AssetProcessingCommands';
@@ -47,6 +48,7 @@ type Options = {|
   exportService: any,
   previewService: any,
   projectLifecycleService: any,
+  targetIdentityService: any,
   runtimeTelemetry: any,
   runtimeDiagnosticsService: any,
   safetyService: any,
@@ -75,6 +77,7 @@ export const createRendererAgentHost = ({
   exportService,
   previewService,
   projectLifecycleService,
+  targetIdentityService,
   runtimeTelemetry,
   runtimeDiagnosticsService,
   safetyService,
@@ -85,6 +88,7 @@ export const createRendererAgentHost = ({
     idempotencyStore,
     descriptors: [
       ...createCoreCommandDescriptors(),
+      ...createTargetIdentityCommandDescriptors({ targetIdentityService }),
       ...createProjectLifecycleCommandDescriptors({ projectLifecycleService }),
       ...createSafetyCommandDescriptors({ safetyService }),
       ...createEventCommandDescriptors({

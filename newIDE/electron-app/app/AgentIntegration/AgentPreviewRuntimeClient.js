@@ -2,7 +2,7 @@
   const name = '__GDevelopAgentPreviewRuntime';
   if (
     window[name] &&
-    window[name].version === 2 &&
+    window[name].version === 3 &&
     typeof window[name].announceIdentity === 'function'
   ) {
     return window[name].status();
@@ -183,6 +183,13 @@
     },
   });
 
+  const getRuntimeGame = () => {
+    const captured = window.__GDevelopAgentRuntimeGame;
+    if (captured && typeof captured === 'object') return captured;
+    const legacy = window.game;
+    return legacy && typeof legacy === 'object' ? legacy : null;
+  };
+
   const clampInteger = (value, fallback, minimum, maximum) => {
     const parsed = Number(value);
     if (!Number.isFinite(parsed)) return fallback;
@@ -337,9 +344,8 @@
   };
 
   const snapshot = payload => {
-    const runtimeGame = window.game;
-    if (!runtimeGame || typeof runtimeGame !== 'object')
-      throw new Error('preview_runtime_game_not_found');
+    const runtimeGame = getRuntimeGame();
+    if (!runtimeGame) throw new Error('preview_runtime_game_not_found');
     const sceneStack =
       typeof runtimeGame.getSceneStack === 'function'
         ? runtimeGame.getSceneStack()
@@ -403,8 +409,7 @@
     return {
       snapshotSource: 'bounded-preview-runtime',
       viewport: {
-        width:
-          typeof window.innerWidth === 'number' ? window.innerWidth : null,
+        width: typeof window.innerWidth === 'number' ? window.innerWidth : null,
         height:
           typeof window.innerHeight === 'number' ? window.innerHeight : null,
         outerWidth:
@@ -452,7 +457,7 @@
     if (!Number.isInteger(windowId) || windowId <= 0) {
       throw new Error('invalid_preview_identity_window_id');
     }
-    const runtimeGame = window.game;
+    const runtimeGame = getRuntimeGame();
     const debuggerClient =
       runtimeGame && runtimeGame._debuggerClient
         ? runtimeGame._debuggerClient
@@ -487,7 +492,7 @@
   };
 
   const runtime = {
-    version: 2,
+    version: 3,
     snapshot,
     announceIdentity,
     touch: sendTouch,
@@ -510,7 +515,7 @@
     },
     status: () => ({
       installed: true,
-      version: 2,
+      version: 3,
       identityWindowId,
       activeTouchIds: Array.from(touches.keys()),
       virtualGamepads: Array.from(gamepads.values()).map(pad => ({

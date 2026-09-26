@@ -5,7 +5,14 @@ const {
   screen,
 } = require('electron');
 const isDev = require('electron-is-dev');
+const path = require('path');
 const { load } = require('./Utils/UrlLoader');
+
+const AGENT_PREVIEW_RUNTIME_PRELOAD = path.join(
+  __dirname,
+  'AgentIntegration',
+  'AgentPreviewRuntimePreload.js'
+);
 
 // Keep a global reference of the window object, if you don't, the window will
 // be closed automatically when the JavaScript object is garbage collected.
@@ -44,6 +51,13 @@ const openPreviewWindow = ({
   for (let i = 0; i < numberOfWindows; i++) {
     const browserWindowOptions = {
       ...previewBrowserWindowOptions,
+      webPreferences: {
+        ...(previewBrowserWindowOptions.webPreferences || {}),
+        preload:
+          (previewBrowserWindowOptions.webPreferences &&
+            previewBrowserWindowOptions.webPreferences.preload) ||
+          AGENT_PREVIEW_RUNTIME_PRELOAD,
+      },
       parent: alwaysOnTop ? parentWindow : null,
       x: numberOfWindows > 1 ? positions[i + 1].x : undefined,
       y: numberOfWindows > 1 ? positions[i + 1].y : undefined,
@@ -99,6 +113,17 @@ const isPreviewWindow = windowId =>
       entry.previewWindow.id === windowId
   );
 
+const getPreviewWindowParentId = windowId => {
+  const numericWindowId = Number(windowId);
+  const entry = previewWindows.find(
+    candidate =>
+      candidate.previewWindow &&
+      !candidate.previewWindow.isDestroyed() &&
+      candidate.previewWindow.id === numericWindowId
+  );
+  return entry ? entry.parentWindowId : null;
+};
+
 const closePreviewWindow = windowId => {
   const entry = previewWindows.find(
     entry => entry.previewWindow.id === windowId
@@ -141,4 +166,5 @@ module.exports = {
   closePreviewWindow,
   closePreviewWindowsForParent,
   closeAllPreviewWindows,
+  getPreviewWindowParentId,
 };

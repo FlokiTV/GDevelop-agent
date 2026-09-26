@@ -209,6 +209,7 @@ const EXPECTED_PUBLIC_COMMANDS = [
   'store.resources.import',
   'store.resources.inspect',
   'store.resources.search',
+  'target.status',
   'validation.run',
 ];
 

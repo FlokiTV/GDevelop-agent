@@ -128,7 +128,7 @@ test('installs runtime and dispatches a synthetic touch to the game canvas', asy
   const { runtime, canvasEvents } = makeHarness();
   const status = await runtime.ensureInstalled(12);
   assert.equal(status.installed, true);
-  assert.equal(status.version, 2);
+  assert.equal(status.version, 3);
 
   const result = await runtime.call(
     12,
@@ -150,7 +150,7 @@ test('installs runtime and dispatches a synthetic touch to the game canvas', asy
 test('announces the BrowserWindow identity through the preview debugger connection', async () => {
   const { runtime, context } = makeHarness();
   const sentMessages = [];
-  context.window.game = {
+  context.window.__GDevelopAgentRuntimeGame = {
     _debuggerClient: {
       _sendMessage: message => sentMessages.push(JSON.parse(message)),
     },
@@ -260,7 +260,7 @@ test('captures a bounded structured runtime snapshot without serializing Runtime
       },
     },
   };
-  context.game = {
+  context.__GDevelopAgentRuntimeGame = {
     _paused: false,
     isPaused: () => false,
     _variables: {
@@ -303,4 +303,27 @@ test('captures a bounded structured runtime snapshot without serializing Runtime
   assert.equal(snapshot.totalInstances, 2);
   assert.equal(snapshot.includedInstances, 1);
   assert.equal(snapshot.truncatedInstances, 1);
+});
+
+test('captured RuntimeGame identity is authoritative over a stale window.game alias', async () => {
+  const { runtime, context } = makeHarness();
+  const capturedMessages = [];
+  const staleMessages = [];
+
+  context.window.__GDevelopAgentRuntimeGame = {
+    _debuggerClient: {
+      _sendMessage: message => capturedMessages.push(JSON.parse(message)),
+    },
+  };
+  context.window.game = {
+    _debuggerClient: {
+      _sendMessage: message => staleMessages.push(JSON.parse(message)),
+    },
+  };
+
+  const status = await runtime.ensureInstalled(12, { focus: false });
+  assert.equal(status.version, 3);
+  assert.equal(status.identity.announced, true);
+  assert.equal(capturedMessages.length, 1);
+  assert.equal(staleMessages.length, 0);
 });

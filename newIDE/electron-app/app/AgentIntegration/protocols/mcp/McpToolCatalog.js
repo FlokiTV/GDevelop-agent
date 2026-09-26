@@ -83,6 +83,89 @@ const withRevisionPrecondition = (inputSchema, modifiesProject) => {
   };
 };
 
+const isTargetAwareDescriptor = descriptor => {
+  const metadata = (descriptor && descriptor.metadata) || {};
+  const name =
+    descriptor && typeof descriptor.name === 'string' ? descriptor.name : '';
+  return (
+    !!metadata.requiresProject ||
+    !!metadata.modifiesProject ||
+    /^(project\.|events\.|editor\.|preview\.|runtime\.|diagnostics\.|validation\.|resources\.|assets\.|target\.)/.test(
+      name
+    ) ||
+    name === 'desktop.window.capture'
+  );
+};
+
+const withTargetPreconditions = (inputSchema, descriptor) => {
+  const schema = inputSchema || {
+    type: 'object',
+    additionalProperties: false,
+    properties: {},
+  };
+  if (!isTargetAwareDescriptor(descriptor) || schema.type !== 'object') {
+    return schema;
+  }
+  return {
+    ...schema,
+    properties: {
+      ...(schema.properties || {}),
+      expectedProjectId: {
+        type: 'string',
+        minLength: 1,
+        maxLength: 500,
+        description:
+          'Optional active-project identity precondition. Use target.status.project.projectId. Mismatch fails with target_mismatch.',
+      },
+      expectedProjectPath: {
+        type: 'string',
+        minLength: 1,
+        maxLength: 4096,
+        description:
+          'Optional normalized active-project path precondition. Mismatch fails with target_mismatch.',
+      },
+      expectedEditorSelector: {
+        type: 'string',
+        minLength: 1,
+        maxLength: 500,
+        description:
+          'Optional active editor-tab selector from target.status.editor.activeTargets. Mismatch fails with target_mismatch.',
+      },
+      expectedSceneId: {
+        type: 'string',
+        minLength: 1,
+        maxLength: 500,
+        description:
+          'Optional active scene identity from target.status.editor.activeScene.sceneId. Mismatch fails with target_mismatch.',
+      },
+      expectedSceneSelector: {
+        type: 'string',
+        minLength: 1,
+        maxLength: 500,
+        description:
+          'Optional active scene selector from target.status.editor.activeScene.selector. Mismatch fails with target_mismatch.',
+      },
+      expectedPreviewTarget: {
+        anyOf: [
+          { type: 'string', minLength: 1, maxLength: 500 },
+          {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              targetId: { type: 'string', minLength: 1, maxLength: 500 },
+              windowId: { type: 'integer', minimum: 1 },
+              debuggerId: { type: 'string', minLength: 1, maxLength: 500 },
+              sceneSelector: { type: 'string', minLength: 1, maxLength: 500 },
+            },
+          },
+        ],
+        description:
+          'Optional preview identity precondition. Use one target from target.status.preview.targets. Mismatch fails with target_mismatch.',
+      },
+    },
+  };
+};
+
 const descriptorToToolRegistration = descriptor => {
   const metadata = descriptor.metadata || {};
   const modifiesProject = !!metadata.modifiesProject;
@@ -91,7 +174,10 @@ const descriptorToToolRegistration = descriptor => {
     config: {
       description: descriptor.description,
       inputSchema: fromJsonSchema(
-        withRevisionPrecondition(descriptor.inputSchema, modifiesProject)
+        withTargetPreconditions(
+          withRevisionPrecondition(descriptor.inputSchema, modifiesProject),
+          descriptor
+        )
       ),
       ...(descriptor.outputSchema
         ? {
@@ -145,6 +231,8 @@ module.exports = {
   MCP_META_PREFIX,
   withCommandResultEnvelope,
   withRevisionPrecondition,
+  withTargetPreconditions,
+  isTargetAwareDescriptor,
   descriptorToToolRegistration,
   descriptorsToToolRegistrations,
 };

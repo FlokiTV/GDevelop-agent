@@ -8,9 +8,7 @@ const {
   createManagedTempWorkspaceService,
 } = require('./ManagedTempWorkspaceService');
 const { createPreviewQaService } = require('./PreviewQaService');
-const {
-  createPreviewViewportService,
-} = require('./PreviewViewportService');
+const { createPreviewViewportService } = require('./PreviewViewportService');
 const {
   createMultiplayerPreviewService,
 } = require('./MultiplayerPreviewService');
@@ -28,6 +26,7 @@ const createDesktopIntegrationHost = ({
   ipcMain,
   desktopCapturer,
   isRegisteredPreviewWindow,
+  getPreviewWindowParentId,
 }) => {
   const windowRegistry = createWindowRegistry({ BrowserWindow });
   const removeWindowRegistrationHandlers = windowRegistry.installIpc(ipcMain);
@@ -53,6 +52,7 @@ const createDesktopIntegrationHost = ({
     ipcMain,
     windowRegistry,
     isRegisteredPreviewWindow,
+    getPreviewWindowParentId,
     previewInteractionService,
   });
   const windowCaptureService = createWindowCaptureService({
@@ -60,6 +60,7 @@ const createDesktopIntegrationHost = ({
     desktopCapturer,
     windowRegistry,
     isRegisteredPreviewWindow,
+    getPreviewWindowParentId,
   });
   const managedTempWorkspaceService = createManagedTempWorkspaceService();
   const previewViewportService = createPreviewViewportService({

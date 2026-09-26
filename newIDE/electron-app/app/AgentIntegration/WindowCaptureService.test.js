@@ -319,3 +319,83 @@ test('capture service rejects missing windows', async () => {
     error => error.code === 'window_not_found'
   );
 });
+
+test('desktop window listing associates preview windows with their parent editor project', () => {
+  const editorA = makeWindow({
+    id: 1,
+    title: 'Project A',
+    url: 'file:///editor-a/index.html',
+  });
+  const editorB = makeWindow({
+    id: 2,
+    title: 'Project B',
+    url: 'file:///editor-b/index.html',
+  });
+  const previewA = makeWindow({
+    id: 12,
+    title: 'Preview A',
+    url: 'file:///preview-a/index.html',
+  });
+  const previewB = makeWindow({
+    id: 22,
+    title: 'Preview B',
+    url: 'file:///preview-b/index.html',
+  });
+  const service = createWindowCaptureService({
+    BrowserWindow: {
+      getAllWindows: () => [editorA, editorB, previewA, previewB],
+      fromId: () => null,
+      getFocusedWindow: () => editorA,
+    },
+    desktopCapturer: null,
+    windowRegistry: {
+      prune: () => {},
+      isRegistered: id => [1, 2].includes(Number(id)),
+      getProjectPath: id =>
+        Number(id) === 1 ? 'C:/games/a/game.json' : 'C:/games/b/game.json',
+    },
+    isRegisteredPreviewWindow: id => [12, 22].includes(Number(id)),
+    getPreviewWindowParentId: id => (Number(id) === 12 ? 1 : 2),
+  });
+
+  const windows = service.listWindows();
+  assert.deepEqual(
+    windows.map(window => ({
+      windowId: window.windowId,
+      editorWindow: window.editorWindow,
+      previewWindow: window.previewWindow,
+      parentEditorWindowId: window.parentEditorWindowId || null,
+      projectPath: window.projectPath,
+    })),
+    [
+      {
+        windowId: 1,
+        editorWindow: true,
+        previewWindow: false,
+        parentEditorWindowId: null,
+        projectPath: 'C:/games/a/game.json',
+      },
+      {
+        windowId: 2,
+        editorWindow: true,
+        previewWindow: false,
+        parentEditorWindowId: null,
+        projectPath: 'C:/games/b/game.json',
+      },
+      {
+        windowId: 12,
+        editorWindow: false,
+        previewWindow: true,
+        parentEditorWindowId: 1,
+        projectPath: 'C:/games/a/game.json',
+      },
+      {
+        windowId: 22,
+        editorWindow: false,
+        previewWindow: true,
+        parentEditorWindowId: 2,
+        projectPath: 'C:/games/b/game.json',
+      },
+    ]
+  );
+});

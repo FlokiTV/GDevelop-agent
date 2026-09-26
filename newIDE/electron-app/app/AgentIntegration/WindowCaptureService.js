@@ -144,12 +144,7 @@ const waitForCaptureReadiness = async (
   };
 };
 
-const nativeImageToPng = ({
-  image,
-  maxWidth,
-  maxHeight,
-  maxCaptureBytes,
-}) => {
+const nativeImageToPng = ({ image, maxWidth, maxHeight, maxCaptureBytes }) => {
   const sourceSize = getImageSize(image);
   const resizedImage = resizeNativeImage(image, maxWidth, maxHeight);
   const outputSize = getImageSize(resizedImage);
@@ -254,9 +249,7 @@ const captureDesktopFallback = async ({
   return {
     ...converted,
     available: true,
-    reason: converted.data.length
-      ? 'captured'
-      : 'desktop_thumbnail_empty',
+    reason: converted.data.length ? 'captured' : 'desktop_thumbnail_empty',
     sourcesCount: sources.length,
     matchedBy,
   };
@@ -397,29 +390,45 @@ const createWindowCaptureService = ({
   desktopCapturer,
   windowRegistry,
   isRegisteredPreviewWindow,
+  getPreviewWindowParentId,
   maxCaptureBytes = DEFAULT_MAX_CAPTURE_BYTES,
 }) => {
   const listWindows = () => {
     windowRegistry.prune();
-    return BrowserWindow.getAllWindows().map(window => ({
-      windowId: window.id,
-      title: window.getTitle(),
-      url: window.webContents.getURL(),
-      bounds: window.getBounds(),
-      contentBounds:
-        typeof window.getContentBounds === 'function'
-          ? window.getContentBounds()
+    return BrowserWindow.getAllWindows().map(window => {
+      const editorWindow = windowRegistry.isRegistered(window.id);
+      const previewWindow = !!isRegisteredPreviewWindow(window.id);
+      const parentEditorWindowId =
+        previewWindow && typeof getPreviewWindowParentId === 'function'
+          ? getPreviewWindowParentId(window.id)
+          : null;
+      return {
+        windowId: window.id,
+        title: window.getTitle(),
+        url: window.webContents.getURL(),
+        bounds: window.getBounds(),
+        contentBounds:
+          typeof window.getContentBounds === 'function'
+            ? window.getContentBounds()
+            : null,
+        visible: window.isVisible(),
+        focused: window.isFocused(),
+        minimized:
+          typeof window.isMinimized === 'function'
+            ? window.isMinimized()
+            : null,
+        editorWindow,
+        previewWindow,
+        ...(Number.isInteger(parentEditorWindowId)
+          ? { parentEditorWindowId }
+          : {}),
+        projectPath: editorWindow
+          ? windowRegistry.getProjectPath(window.id)
+          : Number.isInteger(parentEditorWindowId)
+          ? windowRegistry.getProjectPath(parentEditorWindowId)
           : null,
-      visible: window.isVisible(),
-      focused: window.isFocused(),
-      minimized:
-        typeof window.isMinimized === 'function' ? window.isMinimized() : null,
-      editorWindow: windowRegistry.isRegistered(window.id),
-      previewWindow: !!isRegisteredPreviewWindow(window.id),
-      projectPath: windowRegistry.isRegistered(window.id)
-        ? windowRegistry.getProjectPath(window.id)
-        : null,
-    }));
+      };
+    });
   };
 
   const resolveWindow = windowId => {

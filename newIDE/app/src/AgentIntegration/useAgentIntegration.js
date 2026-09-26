@@ -51,6 +51,7 @@ const path = optionalRequire('path');
 
 type Props = {|
   project: ?gdProject,
+  getCurrentProject: () => ?gdProject,
   editorTabs: any,
   fileIdentifier: ?string,
   fileMetadata: ?FileMetadata,
@@ -122,6 +123,7 @@ type Props = {|
 
 export default function useAgentIntegration({
   project,
+  getCurrentProject,
   editorTabs,
   fileIdentifier,
   fileMetadata,
@@ -321,6 +323,7 @@ export default function useAgentIntegration({
 
       const { agentHost } = createRendererIntegration({
         project,
+        getCurrentProject,
         editorTabs,
         fileIdentifier,
         fileMetadata,
@@ -386,6 +389,7 @@ export default function useAgentIntegration({
     },
     [
       project,
+      getCurrentProject,
       editorTabs,
       fileIdentifier,
       fileMetadata,

@@ -1,0 +1,119 @@
+{
+  "kind": "dx40-target-identity-acceptance",
+  "label": "win-unpacked-final",
+  "generatedAt": "2026-09-26T19:40:56.362Z",
+  "protocolVersion": "2026-07-28",
+  "cleanRoom": {
+    "repositoryImplementationOrTestsReadDuringScenario": false,
+    "repositoryReadGuard": true,
+    "authoringInputSource": "live MCP discovery and reads"
+  },
+  "discovery": {
+    "toolCount": 244,
+    "targetStatusPublished": true,
+    "projectGuardPublished": true,
+    "sceneGuardPublished": true,
+    "previewGuardPublished": true
+  },
+  "project": {
+    "projectId": "2cb06a36-9537-4f20-8145-652f4b61f081",
+    "sceneName": "DX40TargetSceneA",
+    "sceneSelector": "scene:DX40TargetSceneA",
+    "responseTargetMetadata": true,
+    "wrongProjectRejected": true,
+    "wrongScenePreviewRejectedBeforeLaunch": true
+  },
+  "preview": {
+    "targetCount": 2,
+    "targets": [
+      {
+        "debuggerId": "preview-ws-0",
+        "windowId": 2,
+        "ready": true,
+        "windowState": {
+          "windowId": 2,
+          "parentEditorWindowId": 1,
+          "projectPath": null,
+          "title": "Preview of DX40 Target Identity Acceptance",
+          "url": "file:///C:/Users/Floki/AppData/Local/Temp/GDTMP--1/preview/index.html",
+          "visible": true,
+          "focused": false,
+          "destroyed": false,
+          "bounds": {
+            "x": 0,
+            "y": 0,
+            "width": 816,
+            "height": 665
+          },
+          "contentBounds": {
+            "x": 8,
+            "y": 31,
+            "width": 800,
+            "height": 626
+          },
+          "minimized": false,
+          "maximized": false,
+          "fullScreen": false
+        },
+        "isPaused": false,
+        "isInGameEdition": false,
+        "sceneName": "DX40TargetSceneA",
+        "targetId": "preview-window:2",
+        "projectId": "2cb06a36-9537-4f20-8145-652f4b61f081",
+        "sceneId": "scene:DX40TargetSceneA",
+        "sceneSelector": "scene:DX40TargetSceneA"
+      },
+      {
+        "debuggerId": "preview-ws-1",
+        "windowId": 3,
+        "ready": true,
+        "windowState": {
+          "windowId": 3,
+          "parentEditorWindowId": 1,
+          "projectPath": null,
+          "title": "Preview of DX40 Target Identity Acceptance",
+          "url": "file:///C:/Users/Floki/AppData/Local/Temp/GDTMP--1/preview/index.html",
+          "visible": true,
+          "focused": true,
+          "destroyed": false,
+          "bounds": {
+            "x": 960,
+            "y": 0,
+            "width": 816,
+            "height": 665
+          },
+          "contentBounds": {
+            "x": 968,
+            "y": 31,
+            "width": 800,
+            "height": 626
+          },
+          "minimized": false,
+          "maximized": false,
+          "fullScreen": false
+        },
+        "isPaused": false,
+        "isInGameEdition": false,
+        "sceneName": "DX40TargetSceneA",
+        "targetId": "preview-window:3",
+        "projectId": "2cb06a36-9537-4f20-8145-652f4b61f081",
+        "sceneId": "scene:DX40TargetSceneA",
+        "sceneSelector": "scene:DX40TargetSceneA"
+      }
+    ],
+    "projectAssociationVerified": true,
+    "sceneAssociationVerified": true,
+    "runtimeBoundPerTarget": true,
+    "inputBoundPerTarget": true,
+    "captureBoundPerTarget": true,
+    "swappedPreviewTargetRejected": true,
+    "unrelatedWindowRejected": true
+  },
+  "twoProjectProtocolAcceptance": {
+    "coveredBy": "McpHttpServer target-aware two-window acceptance",
+    "crossProjectMutationRejectedBeforeDispatch": true
+  },
+  "validation": {
+    "errors": 0
+  }
+}

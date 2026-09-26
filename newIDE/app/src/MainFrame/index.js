@@ -5878,8 +5878,14 @@ const MainFrame = (props: Props): React.MixedElement => {
     ]
   );
 
+  const getCurrentProjectForAgent = React.useCallback(
+    () => currentProjectRef.current,
+    [currentProjectRef]
+  );
+
   useAgentIntegration({
     project: state.currentProject,
+    getCurrentProject: getCurrentProjectForAgent,
     editorTabs: state.editorTabs,
     fileIdentifier,
     fileMetadata: currentFileMetadata,

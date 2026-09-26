@@ -17,6 +17,7 @@ export type CommandResult = {|
     projectRevision: ?number,
     semanticRevisions?: Array<any>,
     identity?: any,
+    targetIdentity?: any,
     durationMs: number,
     idempotencyReplayed: boolean,
   |},
@@ -331,6 +332,9 @@ export class AgentHost {
           ? { semanticRevisions: execution.semanticRevisions }
           : {}),
         ...(requestIdentity ? { identity: requestIdentity } : {}),
+        ...(typeof environment.getTargetIdentity === 'function'
+          ? { targetIdentity: environment.getTargetIdentity() }
+          : {}),
         durationMs: Math.max(0, Date.now() - startedAt),
         idempotencyReplayed,
       },

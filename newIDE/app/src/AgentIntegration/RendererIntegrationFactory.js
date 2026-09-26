@@ -21,6 +21,7 @@ import { createBuildService } from './editor/BuildService';
 import { createPublicationService } from './editor/PublicationService';
 import { createExportService } from './editor/ExportService';
 import { createProjectLifecycleService } from './editor/ProjectLifecycleService';
+import { createTargetIdentityService } from './editor/TargetIdentityService';
 import { createValidationService } from './editor/ValidationService';
 import { createPreviewService } from './runtime/PreviewService';
 import { createRuntimeDiagnosticsService } from './runtime/RuntimeDiagnosticsService';
@@ -39,6 +40,7 @@ const gd: libGDevelop = global.gd;
 
 type Options = {|
   project: ?gdProject,
+  getCurrentProject: () => ?gdProject,
   editorTabs: any,
   fileIdentifier: ?string,
   fileMetadata: any,
@@ -98,6 +100,7 @@ type Options = {|
 
 export const createRendererIntegration = ({
   project,
+  getCurrentProject,
   editorTabs,
   fileIdentifier,
   fileMetadata,
@@ -371,6 +374,14 @@ export const createRendererIntegration = ({
     previewLifecycleTracker,
     ipcRenderer,
   });
+  const targetIdentityService = createTargetIdentityService({
+    project,
+    getProject: getCurrentProject,
+    fileIdentifier,
+    pathModule,
+    editorTabs,
+    previewService,
+  });
   const validationService = createValidationService({
     project,
     diagnosticsTools,
@@ -391,6 +402,7 @@ export const createRendererIntegration = ({
         projectRevisionTracker,
         semanticConcurrency,
         getTransactionStatus: () => safetyService.getTransactionStatus(),
+        getTargetIdentity: () => targetIdentityService.getStatus(),
         getProjectStatus: () => ({
           projectOpen: !!project,
           fileIdentifier,
@@ -404,6 +416,7 @@ export const createRendererIntegration = ({
           hasUnsavedChanges,
           projectRevision: projectRevisionTracker.synchronize(),
           preview: previewService.getStatus(),
+          targetIdentity: targetIdentityService.getStatus(),
         }),
       },
       assetTools,
@@ -425,6 +438,7 @@ export const createRendererIntegration = ({
       exportService,
       previewService,
       projectLifecycleService,
+      targetIdentityService,
       runtimeTelemetry,
       runtimeDiagnosticsService,
       safetyService,

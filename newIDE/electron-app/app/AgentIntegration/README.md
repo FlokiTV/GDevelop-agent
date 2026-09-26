@@ -117,6 +117,14 @@ X-GDevelop-Client-Id: <optional stable local client id>
 
 If neither editor target is supplied, `WindowRegistry` prefers the focused registered editor and otherwise accepts the only unambiguous registered editor. Use `desktop.windows.list` when multiple editor/preview windows are open.
 
+`target.status` is the authoritative semantic identity read for the selected editor window. It separates the active project (`projectId`/UUID, name and normalized path), editor-tab targets (session-stable `editor-tab:<id>` plus scene/external-events selectors), the last-opened scene, and live preview targets. Scene selectors use `scene:<name>`; External Events use `external-events:<name>` and include the associated scene where GDevelop exposes one. If multiple panes expose different active scene-bearing targets, `activeScene` is intentionally null and `activeSceneAmbiguous=true` with explicit candidates instead of guessing.
+
+Target-aware MCP tools expose optional `expectedProjectId`, `expectedProjectPath`, `expectedEditorSelector`, `expectedSceneId`, `expectedSceneSelector` and `expectedPreviewTarget` preconditions. A mismatch fails before dispatch with structured `target_mismatch` details and a fresh `target.status` recovery hint. Explicit scene mutations compare the expected scene against the command's `sceneName`/`scene_name`; preview launch without an explicit scene compares against the editor-active scene. This lets an agent pin intent without forcing every scene mutation to follow the currently visible tab.
+
+Preview BrowserWindows are associated with their native parent editor window. `preview.status`/`target.status` only expose previews parented to the selected editor; `desktop.windows.list` reports `parentEditorWindowId` and the parent project path for preview windows. Preview input/viewport/runtime-helper calls with a `previewWindowId` are automatically rejected if that window is not owned by the selected editor target. `desktop.window.capture` applies the same guard when the requested `windowId` is a preview, while ordinary editor-window capture remains available. When `expectedPreviewTarget` is supplied in a multi-preview run, its target/window/debugger identity must describe the same requested preview window rather than merely another valid preview of the project.
+
+Renderer responses include `meta.targetIdentity` when the live renderer publishes the capability; desktop preview/capture responses add the same metadata best-effort. Legacy renderers that do not publish `target.status` keep existing automatic behavior, while explicit target preconditions fail as `target_identity_unavailable` instead of pretending they were enforced.
+
 ## Discovering commands
 
 MCP tools are generated from the live command registry. Useful discovery commands include:

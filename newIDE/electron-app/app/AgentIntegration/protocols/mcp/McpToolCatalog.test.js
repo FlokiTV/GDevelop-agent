@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const {
   withCommandResultEnvelope,
   withRevisionPrecondition,
+  withTargetPreconditions,
   descriptorToToolRegistration,
   descriptorsToToolRegistrations,
 } = require('./McpToolCatalog');
@@ -82,7 +83,8 @@ test('wraps command data output schemas in the shared AgentIntegration envelope'
 
 test('adds mutation controls only to project-mutating MCP schemas', () => {
   const baseSchema = descriptor('events.patch').inputSchema;
-  const mutatingProperties = withRevisionPrecondition(baseSchema, true).properties;
+  const mutatingProperties = withRevisionPrecondition(baseSchema, true)
+    .properties;
   assert.deepEqual(mutatingProperties.expectedRevision, {
     type: 'integer',
     minimum: 0,
@@ -97,7 +99,8 @@ test('adds mutation controls only to project-mutating MCP schemas', () => {
       'Optional retry key. Repeating the same mutating command with the same key and input returns the original result without applying the mutation again.',
   });
 
-  const readOnlyProperties = withRevisionPrecondition(baseSchema, false).properties;
+  const readOnlyProperties = withRevisionPrecondition(baseSchema, false)
+    .properties;
   assert.equal(readOnlyProperties.expectedRevision, undefined);
   assert.equal(readOnlyProperties.idempotencyKey, undefined);
 });
@@ -167,4 +170,33 @@ test('keeps tool order deterministic', () => {
     descriptor('middle.command'),
   ]).map(registration => registration.name);
   assert.deepEqual(names, ['alpha.command', 'middle.command', 'zeta.command']);
+});
+
+test('adds target identity preconditions to project/scene/preview tools but not unrelated desktop helpers', () => {
+  const targetAware = withTargetPreconditions(
+    descriptor('events.update', { requiresProject: true }).inputSchema,
+    descriptor('events.update', { requiresProject: true })
+  ).properties;
+  assert.equal(targetAware.expectedProjectId.type, 'string');
+  assert.equal(targetAware.expectedProjectPath.type, 'string');
+  assert.equal(targetAware.expectedEditorSelector.type, 'string');
+  assert.equal(targetAware.expectedSceneId.type, 'string');
+  assert.equal(targetAware.expectedSceneSelector.type, 'string');
+  assert.ok(Array.isArray(targetAware.expectedPreviewTarget.anyOf));
+
+  const preview = withTargetPreconditions(
+    descriptor('preview.input.send').inputSchema,
+    descriptor('preview.input.send')
+  ).properties;
+  assert.equal(
+    preview.expectedPreviewTarget.description.includes('target_mismatch'),
+    true
+  );
+
+  const unrelated = withTargetPreconditions(
+    descriptor('agent.workspace.temp.read').inputSchema,
+    descriptor('agent.workspace.temp.read')
+  ).properties;
+  assert.equal(unrelated.expectedProjectId, undefined);
+  assert.equal(unrelated.expectedPreviewTarget, undefined);
 });

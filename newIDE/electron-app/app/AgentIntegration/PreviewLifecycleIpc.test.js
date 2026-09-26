@@ -140,3 +140,81 @@ test('keeps window visibility even when runtime identity is not ready', async ()
 
   bridge.dispose();
 });
+
+test('filters preview lifecycle by requesting editor parent and exposes project association', async () => {
+  const editorA = makeWindow({
+    id: 1,
+    title: 'Project A',
+    url: 'file:///editor-a/index.html',
+  });
+  const editorB = makeWindow({
+    id: 2,
+    title: 'Project B',
+    url: 'file:///editor-b/index.html',
+  });
+  const previewA = makeWindow({
+    id: 12,
+    title: 'Preview A',
+    url: 'file:///preview-a/index.html',
+  });
+  const previewB = makeWindow({
+    id: 22,
+    title: 'Preview B',
+    url: 'file:///preview-b/index.html',
+  });
+  const senderA = { id: 'sender-a' };
+  const handlers = new Map();
+  const bridge = createPreviewLifecycleIpc({
+    BrowserWindow: {
+      getAllWindows: () => [editorA, editorB, previewA, previewB],
+      fromWebContents: sender => (sender === senderA ? editorA : null),
+    },
+    ipcMain: {
+      handle: (channel, handler) => handlers.set(channel, handler),
+      removeHandler: channel => handlers.delete(channel),
+    },
+    windowRegistry: {
+      isRegistered: id => [1, 2].includes(Number(id)),
+      getProjectPath: id =>
+        Number(id) === 1 ? 'C:/games/a/game.json' : 'C:/games/b/game.json',
+    },
+    isRegisteredPreviewWindow: id => [12, 22].includes(Number(id)),
+    getPreviewWindowParentId: id => (Number(id) === 12 ? 1 : 2),
+    previewInteractionService: {
+      getRuntimeStatus: async input => ({
+        identity: { announced: true, windowId: input.previewWindowId },
+      }),
+    },
+  });
+
+  const response = await handlers.get(PREVIEW_LIFECYCLE_CHANNEL)({
+    sender: senderA,
+  });
+  assert.equal(response.ok, true);
+  assert.equal(response.data.parentEditorWindowId, 1);
+  assert.equal(response.data.windows.length, 1);
+  assert.deepEqual(response.data.windows[0], {
+    windowId: 12,
+    parentEditorWindowId: 1,
+    projectPath: 'C:/games/a/game.json',
+    title: 'Preview A',
+    url: 'file:///preview-a/index.html',
+    visible: true,
+    focused: false,
+    destroyed: false,
+    bounds: { x: 20, y: 30, width: 816, height: 639 },
+    contentBounds: { x: 28, y: 61, width: 800, height: 600 },
+    minimized: false,
+    maximized: false,
+    fullScreen: false,
+  });
+  assert.deepEqual(response.data.activated, [
+    {
+      windowId: 12,
+      parentEditorWindowId: 1,
+      identity: { announced: true, windowId: 12 },
+    },
+  ]);
+
+  bridge.dispose();
+});

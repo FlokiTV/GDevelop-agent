@@ -602,6 +602,13 @@ test('official MCP client completes edit hot-reload input assert edit loop witho
           meta: { traceId: null, readOnly: true, modifiesProject: false },
         };
       }
+      if (options.command === 'events.nodes.describe') {
+        return {
+          command: options.command,
+          data: { item: { schemaAvailable: false, schema: null } },
+          meta: { traceId: null, readOnly: true, modifiesProject: false },
+        };
+      }
       if (options.command === 'events.update') {
         assert.equal(options.expectedRevision, projectRevision);
         projectRevision++;
@@ -738,7 +745,11 @@ test('official MCP client completes edit hot-reload input assert edit loop witho
 
     const executedRendererCommands = rendererCalls
       .map(call => call.command)
-      .filter(command => command !== 'agent.commands.list');
+      .filter(
+        command =>
+          command !== 'agent.commands.list' &&
+          command !== 'events.nodes.describe'
+      );
     assert.deepEqual(executedRendererCommands, [
       'events.update',
       'preview.hot-reload',
@@ -865,6 +876,147 @@ test('official MCP client calls desktop capture and preview input without render
     );
   } finally {
     await client.close();
+    await host.stop();
+  }
+});
+
+test('pins target-aware mutations to the selected project and scene across two open renderer windows', async () => {
+  const calls = [];
+  const descriptors = [
+    makeDescriptor('target.status'),
+    makeDescriptor('project.status'),
+    makeDescriptor('events.fake-write', {
+      readOnly: false,
+      idempotent: false,
+      requiresProject: true,
+      modifiesProject: true,
+    }),
+  ];
+  const targetForWindow = windowId => {
+    const isA = String(windowId) === '17';
+    return {
+      project: {
+        open: true,
+        projectId: isA ? 'project-a' : 'project-b',
+        projectUuid: isA ? 'project-a' : 'project-b',
+        projectName: isA ? 'Project A' : 'Project B',
+        normalizedProjectPath: isA
+          ? 'c:\\games\\a\\game.json'
+          : 'c:\\games\\b\\game.json',
+      },
+      editor: {
+        activeTargets: [
+          {
+            editorSelector: isA
+              ? 'editor-tab:editor-tab-a'
+              : 'editor-tab:editor-tab-b',
+            selector: isA ? 'scene:SceneA' : 'scene:SceneB',
+          },
+        ],
+        activeScene: {
+          sceneName: isA ? 'SceneA' : 'SceneB',
+          sceneId: isA ? 'scene:SceneA' : 'scene:SceneB',
+          selector: isA ? 'scene:SceneA' : 'scene:SceneB',
+        },
+      },
+      preview: { state: 'stopped', targets: [] },
+    };
+  };
+  const rendererBridge = {
+    calls,
+    executeCommand: async options => {
+      calls.push(options);
+      if (options.command === 'agent.commands.list') {
+        return {
+          command: options.command,
+          data: { commands: descriptors },
+          meta: { readOnly: true, modifiesProject: false },
+        };
+      }
+      if (options.command === 'target.status') {
+        return {
+          command: options.command,
+          data: targetForWindow(options.windowId),
+          meta: { readOnly: true, modifiesProject: false },
+        };
+      }
+      if (options.command === 'project.status') {
+        const target = targetForWindow(options.windowId);
+        return {
+          command: options.command,
+          data: {
+            projectOpen: true,
+            projectUuid: target.project.projectId,
+            projectName: target.project.projectName,
+          },
+          meta: { readOnly: true, modifiesProject: false },
+        };
+      }
+      if (options.command === 'events.fake-write') {
+        const target = targetForWindow(options.windowId);
+        return {
+          command: options.command,
+          data: {
+            written: true,
+            projectId: target.project.projectId,
+            windowId: options.windowId,
+          },
+          meta: { readOnly: false, modifiesProject: true, projectRevision: 1 },
+        };
+      }
+      throw new Error(`unexpected_command:${options.command}`);
+    },
+  };
+  const token = 'target-aware-two-project-token';
+  const host = await startMcpHttpServer({
+    rendererBridge,
+    token,
+    port: 0,
+  });
+  const clientA = await connectClient({ url: host.url, token, windowId: 17 });
+  const clientB = await connectClient({ url: host.url, token, windowId: 23 });
+
+  try {
+    const acceptedA = await clientA.callTool({
+      name: 'events.fake-write',
+      arguments: {
+        expectedProjectId: 'project-a',
+        expectedSceneSelector: 'scene:SceneA',
+      },
+    });
+    assert.equal(acceptedA.structuredContent.data.projectId, 'project-a');
+
+    const rejectedCrossProject = await clientA.callTool({
+      name: 'events.fake-write',
+      arguments: {
+        expectedProjectId: 'project-b',
+        expectedSceneSelector: 'scene:SceneB',
+      },
+    });
+    assert.equal(rejectedCrossProject.isError, true);
+    assert.equal(
+      rejectedCrossProject.structuredContent.error.code,
+      'target_mismatch'
+    );
+    assert.equal(
+      rejectedCrossProject.structuredContent.error.details.conflictScope,
+      'project'
+    );
+
+    const acceptedB = await clientB.callTool({
+      name: 'events.fake-write',
+      arguments: {
+        expectedProjectId: 'project-b',
+        expectedSceneSelector: 'scene:SceneB',
+      },
+    });
+    assert.equal(acceptedB.structuredContent.data.projectId, 'project-b');
+
+    const writes = calls.filter(call => call.command === 'events.fake-write');
+    assert.deepEqual(writes.map(call => call.windowId), ['17', '23']);
+  } finally {
+    await clientA.close();
+    await clientB.close();
     await host.stop();
   }
 });

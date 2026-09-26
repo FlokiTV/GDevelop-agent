@@ -1,0 +1,63 @@
+{
+  "kind": "dx40-multi-project-target-isolation-acceptance",
+  "label": "win-unpacked-two-projects",
+  "generatedAt": "2026-09-26T19:50:00.225Z",
+  "protocolVersion": "2026-07-28",
+  "windows": {
+    "editorWindowA": 1,
+    "editorWindowB": 2,
+    "distinct": true
+  },
+  "projects": {
+    "projectA": {
+      "projectId": "55a9d3a4-7ddc-4b60-be96-09629c474d70",
+      "sceneSelector": "scene:DX40SceneA"
+    },
+    "projectB": {
+      "projectId": "ded96220-3b0b-4156-9cd6-406e6dccc6cc",
+      "sceneSelector": "scene:DX40SceneB"
+    },
+    "distinct": true
+  },
+  "blockedFromProjectA": {
+    "crossProjectMutation": {
+      "rejected": true,
+      "code": "target_mismatch",
+      "conflictScope": "project"
+    },
+    "crossProjectPreviewLaunch": {
+      "rejected": true,
+      "code": "target_mismatch",
+      "conflictScope": "project"
+    },
+    "projectBPreviewInput": {
+      "rejected": true,
+      "code": "target_mismatch",
+      "conflictScope": "preview-window"
+    },
+    "projectBPreviewCapture": {
+      "rejected": true,
+      "code": "target_mismatch",
+      "conflictScope": "preview-window"
+    },
+    "projectBPreviewRuntime": {
+      "rejected": true,
+      "code": "target_mismatch",
+      "conflictScope": "preview"
+    }
+  },
+  "projectBPreview": {
+    "windowId": 3,
+    "debuggerId": "preview-ws-0",
+    "targetId": "preview-window:3",
+    "projectId": "ded96220-3b0b-4156-9cd6-406e6dccc6cc",
+    "sceneSelector": "scene:DX40SceneB",
+    "ownInputSucceeded": true,
+    "ownCaptureSucceeded": true
+  },
+  "mutationAbsentFromBothProjects": true,
+  "validation": {
+    "projectAErrors": 0,
+    "projectBErrors": 0
+  }
+}

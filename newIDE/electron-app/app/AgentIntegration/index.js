@@ -12,7 +12,11 @@ const logLifecycleError = (log, message, error) => {
 };
 
 const startAgentIntegration = dependencies => {
-  if (desktopIntegrationHost && mcpIntegrationHost && mcpIntegrationHost.serverInfo) {
+  if (
+    desktopIntegrationHost &&
+    mcpIntegrationHost &&
+    mcpIntegrationHost.serverInfo
+  ) {
     return Promise.resolve(desktopIntegrationHost);
   }
   if (startPromise) return startPromise;
@@ -23,6 +27,7 @@ const startAgentIntegration = dependencies => {
     BrowserWindow,
     desktopCapturer,
     isRegisteredPreviewWindow,
+    getPreviewWindowParentId,
     log,
   } = dependencies;
 
@@ -31,6 +36,7 @@ const startAgentIntegration = dependencies => {
     ipcMain,
     desktopCapturer,
     isRegisteredPreviewWindow,
+    getPreviewWindowParentId,
   });
   mcpIntegrationHost = createMcpIntegrationHost({
     app,
@@ -93,20 +99,12 @@ const installAgentIntegration = dependencies => {
   const start = () => {
     if (disposed) return;
     startAgentIntegration(dependencies).catch(error => {
-      logLifecycleError(
-        log,
-        '[AgentIntegration] MCP startup failed:',
-        error
-      );
+      logLifecycleError(log, '[AgentIntegration] MCP startup failed:', error);
     });
   };
   const stop = () => {
     stopAgentIntegration().catch(error => {
-      logLifecycleError(
-        log,
-        '[AgentIntegration] MCP shutdown failed:',
-        error
-      );
+      logLifecycleError(log, '[AgentIntegration] MCP shutdown failed:', error);
     });
   };
 
