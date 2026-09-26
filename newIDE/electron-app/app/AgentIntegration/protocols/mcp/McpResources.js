@@ -11,7 +11,7 @@ const RESOURCE_DEFINITIONS = [
     text: NATIVE_EVENT_AUTHORING_GUIDE,
     cacheScope: 'process',
     live: false,
-    guideVersion: 2,
+    guideVersion: 3,
   },
   {
     name: 'gdevelop-project-status',

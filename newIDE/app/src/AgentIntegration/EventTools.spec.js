@@ -8,6 +8,7 @@ describe('AgentIntegration EventTools', () => {
   let source: gdLayout;
   let target: gdLayout;
   let diagnosticsTools;
+  let metadataDiscoveryService;
   let triggerUnsavedChanges;
   let onSceneEventsModifiedOutsideEditor;
   let forceUpdate;
@@ -28,6 +29,19 @@ describe('AgentIntegration EventTools', () => {
         summary: { ok: true, errors: 0, warnings: 0 },
       })),
     };
+    metadataDiscoveryService = {
+      describeInstruction: jest.fn(input => ({
+        item: {
+          id: input.id,
+          kind: input.kind,
+          canHaveSubInstructions: true,
+          parameters:
+            input.id === 'TestAction'
+              ? [{ index: 0, name: 'Target' }, { index: 1, name: 'Value' }]
+              : [{ index: 0, name: 'Value' }],
+        },
+      })),
+    };
     triggerUnsavedChanges = jest.fn();
     onSceneEventsModifiedOutsideEditor = jest.fn();
     forceUpdate = jest.fn();
@@ -41,6 +55,7 @@ describe('AgentIntegration EventTools', () => {
     createEventTools({
       project,
       diagnosticsTools,
+      metadataDiscoveryService,
       triggerUnsavedChanges,
       onSceneEventsModifiedOutsideEditor,
       forceUpdate,
@@ -170,6 +185,322 @@ describe('AgentIntegration EventTools', () => {
       parameters: ['42'],
     });
     expect(event.actions[0].handle).toMatch(/^action:fp:[0-9a-f]{32}$/);
+  });
+
+  it('patches one instruction parameter by metadata name without resending the parent event JSON', () => {
+    const tools = makeTools();
+    const initial = tools.readSceneEventsJson({ sceneName: 'Source' });
+    tools.updateSceneEvent({
+      sceneName: 'Source',
+      expectedEventsRevision: initial.eventsRevision,
+      handle: initial.events[0].handle,
+      eventJson: {
+        ...initial.eventsJson[0],
+        conditions: [
+          {
+            type: { inverted: false, value: 'TestCondition' },
+            parameters: ['keep-condition'],
+            subInstructions: [],
+          },
+        ],
+        actions: [
+          {
+            type: { inverted: false, value: 'TestAction' },
+            parameters: ['Player', '42'],
+            subInstructions: [],
+          },
+          {
+            type: { inverted: false, value: 'SiblingAction' },
+            parameters: ['keep-sibling'],
+            subInstructions: [],
+          },
+        ],
+      },
+    });
+    const before = tools.readSceneEventsJson({ sceneName: 'Source' });
+    const siblingBefore = before.eventsJson[0].actions[1];
+    const conditionsBefore = before.eventsJson[0].conditions;
+
+    const result = tools.patchEvent({
+      sceneName: 'Source',
+      expectedEventsRevision: before.eventsRevision,
+      operation: {
+        kind: 'instruction.parameter.update',
+        instructionHandle: before.events[0].actions[0].handle,
+        parameterName: 'Value',
+        value: '99',
+      },
+    });
+
+    expect(result).toMatchObject({
+      updated: true,
+      changed: true,
+      parameter: {
+        index: 1,
+        name: 'Value',
+        beforeValue: '42',
+        value: '99',
+      },
+      diff: {
+        operation: 'instruction.parameter.update',
+        changed: true,
+      },
+    });
+    expect(metadataDiscoveryService.describeInstruction).toHaveBeenCalledWith({
+      id: 'TestAction',
+      kind: 'action',
+      includeHidden: true,
+    });
+    const after = tools.readSceneEventsJson({ sceneName: 'Source' });
+    expect(after.eventsJson[0].actions[0].parameters).toEqual(['Player', '99']);
+    expect(after.eventsJson[0].actions[1]).toEqual(siblingBefore);
+    expect(after.eventsJson[0].conditions).toEqual(conditionsBefore);
+  });
+
+  it('inserts and deletes individual instructions with deterministic index and sibling placement', () => {
+    const tools = makeTools();
+    const initial = tools.readSceneEventsJson({ sceneName: 'Source' });
+    tools.updateSceneEvent({
+      sceneName: 'Source',
+      expectedEventsRevision: initial.eventsRevision,
+      handle: initial.events[0].handle,
+      eventJson: {
+        ...initial.eventsJson[0],
+        actions: [
+          {
+            type: { inverted: false, value: 'ActionA' },
+            parameters: ['A'],
+            subInstructions: [],
+          },
+          {
+            type: { inverted: false, value: 'ActionC' },
+            parameters: ['C'],
+            subInstructions: [],
+          },
+        ],
+      },
+    });
+    const before = tools.readSceneEventsJson({ sceneName: 'Source' });
+
+    const inserted = tools.patchEvent({
+      sceneName: 'Source',
+      expectedEventsRevision: before.eventsRevision,
+      operation: {
+        kind: 'instruction.insert',
+        eventHandle: before.events[0].handle,
+        instructionKind: 'action',
+        index: 1,
+        instructionJson: {
+          type: { inverted: false, value: 'ActionB' },
+          parameters: ['B'],
+          subInstructions: [],
+        },
+      },
+    });
+    expect(inserted.inserted).toBe(true);
+    expect(inserted.instruction).toMatchObject({
+      instructionKind: 'action',
+      path: [1],
+      type: 'ActionB',
+      parameters: ['B'],
+    });
+    let after = tools.readSceneEventsJson({ sceneName: 'Source' });
+    expect(
+      after.eventsJson[0].actions.map(action => action.type.value)
+    ).toEqual(['ActionA', 'ActionB', 'ActionC']);
+
+    const deleted = tools.patchEvent({
+      sceneName: 'Source',
+      expectedEventsRevision: inserted.eventsRevision,
+      operation: {
+        kind: 'instruction.delete',
+        instructionHandle: inserted.instruction.handle,
+      },
+    });
+    expect(deleted.deleted).toBe(true);
+    after = tools.readSceneEventsJson({ sceneName: 'Source' });
+    expect(
+      after.eventsJson[0].actions.map(action => action.type.value)
+    ).toEqual(['ActionA', 'ActionC']);
+
+    const insertedBefore = tools.patchEvent({
+      sceneName: 'Source',
+      expectedEventsRevision: deleted.eventsRevision,
+      operation: {
+        kind: 'instruction.insert',
+        eventHandle: after.events[0].handle,
+        instructionKind: 'action',
+        beforeHandle: after.events[0].actions[1].handle,
+        instructionJson: {
+          type: { inverted: false, value: 'ActionB2' },
+          parameters: ['B2'],
+          subInstructions: [],
+        },
+      },
+    });
+    expect(insertedBefore.instruction.path).toEqual([1]);
+    let finalRead = tools.readSceneEventsJson({ sceneName: 'Source' });
+    expect(
+      finalRead.eventsJson[0].actions.map(action => action.type.value)
+    ).toEqual(['ActionA', 'ActionB2', 'ActionC']);
+
+    const movedBefore = tools.patchEvent({
+      sceneName: 'Source',
+      expectedEventsRevision: finalRead.eventsRevision,
+      operation: {
+        kind: 'instruction.move',
+        instructionHandle: finalRead.events[0].actions[2].handle,
+        beforeHandle: finalRead.events[0].actions[0].handle,
+      },
+    });
+    expect(movedBefore).toMatchObject({
+      moved: true,
+      fromPath: [2],
+      instruction: { path: [0], type: 'ActionC' },
+      diff: {
+        operation: 'instruction.move',
+        fromPath: [2],
+        toPath: [0],
+      },
+    });
+    finalRead = tools.readSceneEventsJson({ sceneName: 'Source' });
+    expect(
+      finalRead.eventsJson[0].actions.map(action => action.type.value)
+    ).toEqual(['ActionC', 'ActionA', 'ActionB2']);
+
+    const movedToEnd = tools.patchEvent({
+      sceneName: 'Source',
+      expectedEventsRevision: finalRead.eventsRevision,
+      operation: {
+        kind: 'instruction.move',
+        instructionHandle: finalRead.events[0].actions[1].handle,
+        index: 3,
+      },
+    });
+    expect(movedToEnd.instruction).toMatchObject({
+      path: [2],
+      type: 'ActionA',
+    });
+    finalRead = tools.readSceneEventsJson({ sceneName: 'Source' });
+    expect(
+      finalRead.eventsJson[0].actions.map(action => action.type.value)
+    ).toEqual(['ActionC', 'ActionB2', 'ActionA']);
+  });
+
+  it('patches supported instruction/event flags and small event metadata fields', () => {
+    const tools = makeTools();
+    const initial = tools.readSceneEventsJson({ sceneName: 'Source' });
+    tools.updateSceneEvent({
+      sceneName: 'Source',
+      expectedEventsRevision: initial.eventsRevision,
+      handle: initial.events[0].handle,
+      eventJson: {
+        ...initial.eventsJson[0],
+        conditions: [
+          {
+            type: { inverted: false, value: 'TestCondition' },
+            parameters: ['Value'],
+            subInstructions: [],
+          },
+        ],
+      },
+    });
+    const before = tools.readSceneEventsJson({ sceneName: 'Source' });
+    const inverted = tools.patchEvent({
+      sceneName: 'Source',
+      expectedEventsRevision: before.eventsRevision,
+      operation: {
+        kind: 'instruction.flags.update',
+        instructionHandle: before.events[0].conditions[0].handle,
+        inverted: true,
+      },
+    });
+    expect(inverted.flags.after).toEqual({ inverted: true });
+
+    const disabled = tools.patchEvent({
+      sceneName: 'Source',
+      expectedEventsRevision: inverted.eventsRevision,
+      operation: {
+        kind: 'event.flags.update',
+        eventHandle: inverted.event.handle,
+        enabled: false,
+      },
+    });
+    expect(disabled.flags.after).toEqual({ enabled: false });
+    const sourceAfter = tools.readSceneEventsJson({ sceneName: 'Source' });
+    expect(sourceAfter.eventsJson[0].conditions[0].type.inverted).toBe(true);
+    expect(sourceAfter.eventsJson[0].disabled).toBe(true);
+
+    const commentBefore = tools.readSceneEventsJson({ sceneName: 'Target' });
+    const commentPatched = tools.patchEvent({
+      sceneName: 'Target',
+      expectedEventsRevision: commentBefore.eventsRevision,
+      operation: {
+        kind: 'event.fields.update',
+        eventHandle: commentBefore.events[0].handle,
+        fields: { comment: 'Granular comment update' },
+      },
+    });
+    expect(commentPatched.fields).toEqual({
+      before: { comment: commentBefore.eventsJson[0].comment },
+      after: { comment: 'Granular comment update' },
+    });
+    const commentAfter = tools.readSceneEventsJson({ sceneName: 'Target' });
+    expect(commentAfter.eventsJson[0].comment).toBe('Granular comment update');
+  });
+
+  it('composes unrelated granular edits without overwriting the first edit when revisions permit', () => {
+    const tools = makeTools();
+    const initial = tools.readSceneEventsJson({ sceneName: 'Source' });
+    tools.updateSceneEvent({
+      sceneName: 'Source',
+      expectedEventsRevision: initial.eventsRevision,
+      handle: initial.events[0].handle,
+      eventJson: {
+        ...initial.eventsJson[0],
+        actions: [
+          {
+            type: { inverted: false, value: 'TestAction' },
+            parameters: ['Player', '1'],
+            subInstructions: [],
+          },
+          {
+            type: { inverted: false, value: 'SiblingAction' },
+            parameters: ['A'],
+            subInstructions: [],
+          },
+        ],
+      },
+    });
+    const before = tools.readSceneEventsJson({ sceneName: 'Source' });
+    const firstHandle = before.events[0].actions[0].handle;
+    const secondHandle = before.events[0].actions[1].handle;
+
+    const first = tools.patchEvent({
+      sceneName: 'Source',
+      expectedEventsRevision: before.eventsRevision,
+      operation: {
+        kind: 'instruction.parameter.update',
+        instructionHandle: firstHandle,
+        parameterIndex: 1,
+        value: '2',
+      },
+    });
+    const second = tools.patchEvent({
+      sceneName: 'Source',
+      expectedEventsRevision: first.eventsRevision,
+      operation: {
+        kind: 'instruction.parameter.update',
+        instructionHandle: secondHandle,
+        parameterIndex: 0,
+        value: 'B',
+      },
+    });
+
+    const after = tools.readSceneEventsJson({ sceneName: 'Source' });
+    expect(after.eventsJson[0].actions[0].parameters).toEqual(['Player', '2']);
+    expect(after.eventsJson[0].actions[1].parameters).toEqual(['B']);
+    expect(second.eventsRevision).toBe(after.eventsRevision);
   });
 
   it('uses persistent ids only when unique and scopes indistinguishable duplicates by path', () => {
@@ -673,6 +1004,26 @@ describe('AgentIntegration EventTools', () => {
         code: 'events_revision_conflict',
         details: expect.objectContaining({
           expectedEventsRevision: read.eventsRevision,
+        }),
+      })
+    );
+    expect(() =>
+      tools.patchEvent({
+        sceneName: 'Target',
+        expectedEventsRevision: read.eventsRevision,
+        operation: {
+          kind: 'event.fields.update',
+          eventHandle: read.events[0].handle,
+          fields: { comment: 'stale write must not land' },
+        },
+      })
+    ).toThrow(
+      expect.objectContaining({
+        code: 'events_revision_conflict',
+        details: expect.objectContaining({
+          conflictScope: 'events',
+          expectedEventsRevision: read.eventsRevision,
+          actualEventsRevision: expect.stringMatching(/^events:[0-9a-f]{32}$/),
         }),
       })
     );

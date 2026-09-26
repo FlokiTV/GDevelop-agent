@@ -586,6 +586,171 @@ const collectMap = ({
     });
 };
 
+const parameterContainerToArray = (
+  parameters: gdParameterMetadataContainer
+): Array<gdParameterMetadata> => {
+  const items = [];
+  for (let index = 0; index < parameters.getParametersCount(); index++) {
+    items.push(parameters.getParameterAt(index));
+  }
+  return items;
+};
+
+const eventsFunctionsContainerToArray = (
+  container: gdEventsFunctionsContainer
+): Array<gdEventsFunction> => {
+  const items = [];
+  for (let index = 0; index < container.getEventsFunctionsCount(); index++) {
+    items.push(container.getEventsFunctionAt(index));
+  }
+  return items;
+};
+
+const projectOwnerScopeMatches = ({
+  scope,
+  ownerKind,
+  extensionName,
+  ownerName,
+}: any): boolean => {
+  if (!scope || typeof scope !== 'object') return false;
+  if (ownerKind === 'extension') return scope.kind === 'free';
+  if (ownerKind === 'behavior') {
+    if (scope.kind !== 'behavior' || typeof scope.behaviorType !== 'string') {
+      return false;
+    }
+    return (
+      scope.behaviorType === ownerName ||
+      scope.behaviorType === `${extensionName}::${ownerName}` ||
+      scope.behaviorType.endsWith(`::${ownerName}`)
+    );
+  }
+  if (ownerKind === 'object') {
+    if (scope.kind !== 'object' || typeof scope.objectType !== 'string') {
+      return false;
+    }
+    return (
+      scope.objectType === ownerName ||
+      scope.objectType === `${extensionName}::${ownerName}` ||
+      scope.objectType.endsWith(`::${ownerName}`)
+    );
+  }
+  return false;
+};
+
+const overlayEventsFunctionParameterNames = ({
+  records,
+  extensionName,
+  ownerKind,
+  ownerName,
+  eventsFunction,
+}: any) => {
+  const nativeParameters = parameterContainerToArray(
+    eventsFunction.getParameters()
+  );
+  if (!nativeParameters.length) return;
+
+  const functionName = eventsFunction.getName();
+  const fullName = eventsFunction.getFullName();
+  const candidates = [...records.values()].filter(record => {
+    if (
+      !record ||
+      !record.extension ||
+      record.extension.name !== extensionName ||
+      !projectOwnerScopeMatches({
+        scope: record.scope,
+        ownerKind,
+        extensionName,
+        ownerName,
+      })
+    ) {
+      return false;
+    }
+    const namespace =
+      typeof record.extension.namespace === 'string'
+        ? record.extension.namespace
+        : '';
+    const exactFreeId =
+      ownerKind === 'extension' && namespace
+        ? `${namespace}${functionName}`
+        : null;
+    return (
+      record.id === exactFreeId ||
+      record.id === functionName ||
+      (typeof record.id === 'string' &&
+        record.id.endsWith(`::${functionName}`)) ||
+      (!!fullName && record.displayName === fullName)
+    );
+  });
+
+  candidates.forEach(record => {
+    const authoredParameters = (record.parameters || []).filter(
+      parameter => !parameter.codeOnly
+    );
+    if (authoredParameters.length !== nativeParameters.length) return;
+    authoredParameters.forEach((parameter, index) => {
+      const name = nativeParameters[index].getName();
+      if (name) parameter.name = name;
+    });
+  });
+};
+
+const overlayProjectEventsFunctionParameterNames = (
+  project: gdProject,
+  records: Map<string, any>
+) => {
+  for (
+    let extensionIndex = 0;
+    extensionIndex < project.getEventsFunctionsExtensionsCount();
+    extensionIndex++
+  ) {
+    const projectExtension = project.getEventsFunctionsExtensionAt(
+      extensionIndex
+    );
+    const extensionName = projectExtension.getName();
+    eventsFunctionsContainerToArray(
+      projectExtension.getEventsFunctions()
+    ).forEach(eventsFunction =>
+      overlayEventsFunctionParameterNames({
+        records,
+        extensionName,
+        ownerKind: 'extension',
+        ownerName: null,
+        eventsFunction,
+      })
+    );
+
+    const behaviors = projectExtension.getEventsBasedBehaviors();
+    for (let index = 0; index < behaviors.size(); index++) {
+      const behavior = behaviors.at(index);
+      eventsFunctionsContainerToArray(behavior.getEventsFunctions()).forEach(
+        eventsFunction =>
+          overlayEventsFunctionParameterNames({
+            records,
+            extensionName,
+            ownerKind: 'behavior',
+            ownerName: behavior.getName(),
+            eventsFunction,
+          })
+      );
+    }
+
+    const objects = projectExtension.getEventsBasedObjects();
+    for (let index = 0; index < objects.size(); index++) {
+      const object = objects.at(index);
+      eventsFunctionsContainerToArray(object.getEventsFunctions()).forEach(
+        eventsFunction =>
+          overlayEventsFunctionParameterNames({
+            records,
+            extensionName,
+            ownerKind: 'object',
+            ownerName: object.getName(),
+            eventsFunction,
+          })
+      );
+    }
+  }
+};
+
 const collectInstructionCatalog = (project: gdProject): Array<any> => {
   const records: Map<string, any> = new Map();
   const extensions = gd
@@ -697,6 +862,8 @@ const collectInstructionCatalog = (project: gdProject): Array<any> => {
         });
       });
   }
+
+  overlayProjectEventsFunctionParameterNames(project, records);
 
   return [...records.values()].sort((left, right) => {
     const kindOrder = left.kind.localeCompare(right.kind);

@@ -72,6 +72,7 @@ const INSERT_SCHEMA = {
     parentHandle: { type: 'string', minLength: 1 },
     beforeHandle: { type: 'string', minLength: 1 },
     afterHandle: { type: 'string', minLength: 1 },
+    index: { type: 'integer', minimum: 0 },
   },
 };
 
@@ -99,6 +100,7 @@ const MOVE_SCHEMA = {
     parentHandle: { type: 'string', minLength: 1 },
     beforeHandle: { type: 'string', minLength: 1 },
     afterHandle: { type: 'string', minLength: 1 },
+    index: { type: 'integer', minimum: 0 },
   },
 };
 
@@ -145,6 +147,147 @@ const STYLE_UPDATE_SCHEMA = {
         text: RGB_STYLE_SCHEMA,
       },
     },
+  },
+};
+
+const INSTRUCTION_JSON_SCHEMA = {
+  type: 'object',
+  additionalProperties: true,
+  required: ['type', 'parameters', 'subInstructions'],
+  properties: {
+    type: {
+      anyOf: [
+        { type: 'string', minLength: 1 },
+        {
+          type: 'object',
+          additionalProperties: true,
+          required: ['value'],
+          properties: {
+            value: { type: 'string', minLength: 1 },
+            inverted: { type: 'boolean' },
+          },
+        },
+      ],
+    },
+    parameters: { type: 'array', items: { type: 'string' } },
+    subInstructions: { type: 'array', items: { type: 'object' } },
+  },
+};
+
+const PATCH_OPERATION_SCHEMA = {
+  anyOf: [
+    {
+      type: 'object',
+      additionalProperties: false,
+      required: ['kind', 'eventHandle', 'instructionKind', 'instructionJson'],
+      properties: {
+        kind: { type: 'string', enum: ['instruction.insert'] },
+        eventHandle: { type: 'string', minLength: 1 },
+        instructionKind: {
+          type: 'string',
+          enum: ['action', 'condition', 'whileCondition'],
+        },
+        instructionJson: INSTRUCTION_JSON_SCHEMA,
+        parentInstructionHandle: { type: 'string', minLength: 1 },
+        beforeHandle: { type: 'string', minLength: 1 },
+        afterHandle: { type: 'string', minLength: 1 },
+        index: { type: 'integer', minimum: 0 },
+      },
+    },
+    {
+      type: 'object',
+      additionalProperties: false,
+      required: ['kind', 'instructionHandle'],
+      properties: {
+        kind: { type: 'string', enum: ['instruction.move'] },
+        instructionHandle: { type: 'string', minLength: 1 },
+        parentInstructionHandle: { type: 'string', minLength: 1 },
+        beforeHandle: { type: 'string', minLength: 1 },
+        afterHandle: { type: 'string', minLength: 1 },
+        index: { type: 'integer', minimum: 0 },
+      },
+    },
+    {
+      type: 'object',
+      additionalProperties: false,
+      required: ['kind', 'instructionHandle'],
+      properties: {
+        kind: { type: 'string', enum: ['instruction.delete'] },
+        instructionHandle: { type: 'string', minLength: 1 },
+      },
+    },
+    {
+      type: 'object',
+      additionalProperties: false,
+      required: ['kind', 'instructionHandle', 'value'],
+      anyOf: [
+        { required: ['parameterIndex'] },
+        { required: ['parameterName'] },
+      ],
+      properties: {
+        kind: {
+          type: 'string',
+          enum: ['instruction.parameter.update'],
+        },
+        instructionHandle: { type: 'string', minLength: 1 },
+        parameterIndex: { type: 'integer', minimum: 0 },
+        parameterName: { type: 'string', minLength: 1 },
+        value: { type: 'string' },
+      },
+    },
+    {
+      type: 'object',
+      additionalProperties: false,
+      required: ['kind', 'instructionHandle', 'inverted'],
+      properties: {
+        kind: { type: 'string', enum: ['instruction.flags.update'] },
+        instructionHandle: { type: 'string', minLength: 1 },
+        inverted: { type: 'boolean' },
+      },
+    },
+    {
+      type: 'object',
+      additionalProperties: false,
+      required: ['kind', 'eventHandle'],
+      anyOf: [{ required: ['enabled'] }, { required: ['folded'] }],
+      properties: {
+        kind: { type: 'string', enum: ['event.flags.update'] },
+        eventHandle: { type: 'string', minLength: 1 },
+        enabled: { type: 'boolean' },
+        folded: { type: 'boolean' },
+      },
+    },
+    {
+      type: 'object',
+      additionalProperties: false,
+      required: ['kind', 'eventHandle', 'fields'],
+      properties: {
+        kind: { type: 'string', enum: ['event.fields.update'] },
+        eventHandle: { type: 'string', minLength: 1 },
+        fields: {
+          type: 'object',
+          additionalProperties: false,
+          minProperties: 1,
+          properties: {
+            comment: { type: 'string' },
+            name: { type: 'string' },
+            source: { type: 'string' },
+          },
+        },
+      },
+    },
+  ],
+};
+
+const PATCH_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['expectedEventsRevision', 'operation'],
+  anyOf: TARGET_ANY_OF,
+  properties: {
+    ...EVENT_TARGET_PROPERTIES,
+    expectedEventsRevision: { type: 'string', minLength: 1 },
+    operation: PATCH_OPERATION_SCHEMA,
   },
 };
 
@@ -273,13 +416,215 @@ const assertEventHandle = (handle: any) => {
 };
 
 const assertEventPlacement = (input: any) => {
-  const placements = [
-    input.parentHandle,
-    input.beforeHandle,
-    input.afterHandle,
-  ].filter(value => typeof value === 'string' && value);
-  if (placements.length > 1) {
+  const siblingPlacements = [input.beforeHandle, input.afterHandle].filter(
+    value => typeof value === 'string' && value
+  );
+  if (
+    siblingPlacements.length > 1 ||
+    (siblingPlacements.length && input.parentHandle) ||
+    (siblingPlacements.length && input.index !== undefined)
+  ) {
     throw new AgentError({ code: 'invalid_event_placement' });
+  }
+  if (
+    input.index !== undefined &&
+    (!Number.isInteger(input.index) || input.index < 0)
+  ) {
+    throw new AgentError({
+      code: 'invalid_event_placement',
+      details: { index: input.index },
+    });
+  }
+};
+
+const assertInstructionHandle = (handle: any) => {
+  if (!handle || typeof handle !== 'string') {
+    throw new AgentError({ code: 'invalid_instruction_handle' });
+  }
+};
+
+const assertInstructionJson = (instructionJson: any) => {
+  if (
+    !instructionJson ||
+    typeof instructionJson !== 'object' ||
+    Array.isArray(instructionJson) ||
+    !Array.isArray(instructionJson.parameters) ||
+    !Array.isArray(instructionJson.subInstructions)
+  ) {
+    throw new AgentError({ code: 'invalid_instruction_json' });
+  }
+  const type = instructionJson.type;
+  const hasType =
+    (typeof type === 'string' && !!type) ||
+    (type &&
+      typeof type === 'object' &&
+      !Array.isArray(type) &&
+      typeof type.value === 'string' &&
+      !!type.value);
+  if (!hasType) {
+    throw new AgentError({
+      code: 'invalid_instruction_json',
+      details: { field: 'type' },
+    });
+  }
+  if (
+    instructionJson.parameters.some(parameter => typeof parameter !== 'string')
+  ) {
+    throw new AgentError({
+      code: 'invalid_instruction_json',
+      details: { field: 'parameters' },
+    });
+  }
+};
+
+const assertInstructionPlacement = (operation: any) => {
+  const siblings = [operation.beforeHandle, operation.afterHandle].filter(
+    value => typeof value === 'string' && value
+  );
+  if (
+    siblings.length > 1 ||
+    (siblings.length && operation.parentInstructionHandle) ||
+    (siblings.length && operation.index !== undefined)
+  ) {
+    throw new AgentError({ code: 'invalid_instruction_placement' });
+  }
+  if (
+    operation.index !== undefined &&
+    (!Number.isInteger(operation.index) || operation.index < 0)
+  ) {
+    throw new AgentError({
+      code: 'invalid_instruction_placement',
+      details: { index: operation.index },
+    });
+  }
+};
+
+const assertEventPatchOperation = (operation: any) => {
+  if (!operation || typeof operation !== 'object' || Array.isArray(operation)) {
+    throw new AgentError({ code: 'invalid_event_patch_operation' });
+  }
+  switch (operation.kind) {
+    case 'instruction.insert':
+      assertEventHandle(operation.eventHandle);
+      if (
+        !['action', 'condition', 'whileCondition'].includes(
+          operation.instructionKind
+        )
+      ) {
+        throw new AgentError({ code: 'invalid_instruction_kind' });
+      }
+      assertInstructionJson(operation.instructionJson);
+      if (operation.parentInstructionHandle !== undefined) {
+        assertInstructionHandle(operation.parentInstructionHandle);
+      }
+      if (operation.beforeHandle !== undefined) {
+        assertInstructionHandle(operation.beforeHandle);
+      }
+      if (operation.afterHandle !== undefined) {
+        assertInstructionHandle(operation.afterHandle);
+      }
+      assertInstructionPlacement(operation);
+      return;
+    case 'instruction.move':
+      assertInstructionHandle(operation.instructionHandle);
+      if (operation.parentInstructionHandle !== undefined) {
+        assertInstructionHandle(operation.parentInstructionHandle);
+      }
+      if (operation.beforeHandle !== undefined) {
+        assertInstructionHandle(operation.beforeHandle);
+      }
+      if (operation.afterHandle !== undefined) {
+        assertInstructionHandle(operation.afterHandle);
+      }
+      assertInstructionPlacement(operation);
+      return;
+    case 'instruction.delete':
+      assertInstructionHandle(operation.instructionHandle);
+      return;
+    case 'instruction.parameter.update': {
+      assertInstructionHandle(operation.instructionHandle);
+      const hasIndex = Number.isInteger(operation.parameterIndex);
+      const hasName =
+        typeof operation.parameterName === 'string' &&
+        !!operation.parameterName;
+      if (hasIndex === hasName) {
+        throw new AgentError({
+          code: 'invalid_instruction_parameter_selector',
+        });
+      }
+      if (hasIndex && operation.parameterIndex < 0) {
+        throw new AgentError({
+          code: 'invalid_instruction_parameter_selector',
+        });
+      }
+      if (typeof operation.value !== 'string') {
+        throw new AgentError({ code: 'invalid_instruction_parameter_value' });
+      }
+      return;
+    }
+    case 'instruction.flags.update':
+      assertInstructionHandle(operation.instructionHandle);
+      if (typeof operation.inverted !== 'boolean') {
+        throw new AgentError({
+          code: 'invalid_instruction_flag_value',
+          details: { flag: 'inverted' },
+        });
+      }
+      return;
+    case 'event.flags.update':
+      assertEventHandle(operation.eventHandle);
+      if (operation.enabled === undefined && operation.folded === undefined) {
+        throw new AgentError({ code: 'empty_event_flags_patch' });
+      }
+      if (
+        operation.enabled !== undefined &&
+        typeof operation.enabled !== 'boolean'
+      ) {
+        throw new AgentError({
+          code: 'invalid_event_flag_value',
+          details: { flag: 'enabled' },
+        });
+      }
+      if (
+        operation.folded !== undefined &&
+        typeof operation.folded !== 'boolean'
+      ) {
+        throw new AgentError({
+          code: 'invalid_event_flag_value',
+          details: { flag: 'folded' },
+        });
+      }
+      return;
+    case 'event.fields.update': {
+      assertEventHandle(operation.eventHandle);
+      const fields = operation.fields;
+      if (!fields || typeof fields !== 'object' || Array.isArray(fields)) {
+        throw new AgentError({ code: 'invalid_event_fields_patch' });
+      }
+      const keys = Object.keys(fields);
+      if (!keys.length) {
+        throw new AgentError({ code: 'empty_event_fields_patch' });
+      }
+      const supportedFields = ['comment', 'name', 'source'];
+      const unsupportedField = keys.find(
+        field => !supportedFields.includes(field)
+      );
+      if (
+        unsupportedField ||
+        keys.some(field => typeof fields[field] !== 'string')
+      ) {
+        throw new AgentError({
+          code: 'event_field_unsupported',
+          details: { field: unsupportedField || null, supportedFields },
+        });
+      }
+      return;
+    }
+    default:
+      throw new AgentError({
+        code: 'unsupported_event_patch_operation',
+        details: { operation: operation.kind || null },
+      });
   }
 };
 
@@ -483,6 +828,24 @@ export const createEventCommandDescriptors = ({
       assertEventStyle(input.style);
     },
     execute: ({ input }) => eventTools.updateEventStyle(input),
+  },
+  {
+    name: 'events.patch',
+    description:
+      'Apply one granular Event Sheet mutation by stable event/instruction handle: insert/move/delete an action or condition, update one instruction parameter by index/name, toggle supported flags, or patch small event metadata fields without resending the full parent event JSON.',
+    inputSchema: PATCH_SCHEMA,
+    metadata: makeCommandMetadata({
+      readOnly: false,
+      idempotent: false,
+      requiresProject: true,
+      modifiesProject: true,
+    }),
+    validateInput: input => {
+      assertEventsTarget(input);
+      assertEventsRevision(input.expectedEventsRevision);
+      assertEventPatchOperation(input.operation);
+    },
+    execute: ({ input }) => eventTools.patchEvent(input),
   },
   {
     name: 'events.apply',

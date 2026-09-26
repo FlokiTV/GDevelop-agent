@@ -10,7 +10,7 @@ The structured command result contains three different pieces of information wit
 
 - `data.eventsJson` — the **authoritative canonical serialized GDevelop event payload**. Use this representation when you need complete event-type-specific fields or when constructing canonical `eventJson` / `eventsJson` for mutations.
 - `data.events` — a normalized navigation/index tree. It provides stable event/instruction handles, paths, fingerprints, type names, basic flags and child relationships for localized addressing.
-- `data.eventsRevision` — the optimistic-concurrency token for localized event mutations such as `events.insert`, `events.update`, `events.move` and `events.delete`.
+- `data.eventsRevision` — the optimistic-concurrency token for localized event mutations such as `events.insert`, `events.patch`, `events.update`, `events.move` and `events.delete`.
 
 The normalized `data.events` tree is intentionally not a complete editable serialization. For example, it does not carry every event-type-specific visual field.
 
@@ -58,7 +58,7 @@ Recommended native-event sequence:
 3. For each unfamiliar condition/action/expression, call `events.instructions.search` with the appropriate `kind`.
 4. Call `events.instructions.describe` for the selected identifier; for expressions, preserve the returned scope/extension disambiguators and `returnType`.
 5. Construct canonical event JSON using the discovered ordered parameter contract.
-6. Use the smallest suitable mutation: `events.style.update` for visual-only Group/Comment colors, otherwise `events.insert/update/move/delete`; reserve `events.apply` for deliberate bulk replacement/append.
+6. Use the smallest suitable mutation: `events.style.update` for visual-only Group/Comment colors; `events.patch` for one action/condition insert/move/delete, one instruction parameter/flag, or a small supported event field; `events.insert/move/delete` for event/subevent structure; use `events.update` only when the full event node is intentionally replaced, and reserve `events.apply` for deliberate bulk replacement/append.
 7. Pass the current `eventsRevision` where the localized mutation requires `expectedEventsRevision`.
 8. Run `diagnostics.inspect` / `validation.run`, then preview and inspect runtime behavior before explicitly saving.
 
@@ -105,6 +105,61 @@ A serialized Comment keeps background and text RGB fields inside `color`:
 ```
 
 Do not infer these fields from the normalized handle tree. They are canonical serialization details and should be read from `eventsJson`.
+
+### Granular instruction and structural patches
+
+Use `events.patch` when the intended change is smaller than a complete event node. Each call performs exactly one operation against stable handles from the latest `events.read` and requires `expectedEventsRevision`. The client does **not** resend the parent `eventJson`; the renderer clones the current canonical event, changes only the addressed structure/field, deserializes it through native GDevelop serialization, and preserves untouched siblings, subevents and forward-compatible fields.
+
+Supported operation kinds are:
+
+- `instruction.insert` — insert one action/condition/while-condition at `index`, `beforeHandle`, `afterHandle`, or under `parentInstructionHandle`;
+- `instruction.move` — reorder/move one existing instruction with the same deterministic placement forms;
+- `instruction.delete` — remove one instruction by handle;
+- `instruction.parameter.update` — replace exactly one serialized parameter by `parameterIndex` **or** metadata `parameterName`;
+- `instruction.flags.update` — currently toggles `inverted` for condition/while-condition instructions where the canonical type supports it;
+- `event.flags.update` — patch supported event flags such as `enabled` (canonical `disabled`) or `folded` when that field exists on the serialized event;
+- `event.fields.update` — patch small supported string fields (`comment`, `name`, `source`) only when present on that event type.
+
+Example: update one action parameter by the live metadata name instead of round-tripping the Standard event:
+
+```json
+{
+  "sceneName": "CoinIdle",
+  "expectedEventsRevision": "events:...",
+  "operation": {
+    "kind": "instruction.parameter.update",
+    "instructionHandle": "action:fp:...",
+    "parameterName": "Value",
+    "value": "99"
+  }
+}
+```
+
+`parameterName` is resolved through the connected build's `events.instructions.describe` metadata. If instruction metadata is ambiguous/unavailable, use the exact zero-based `parameterIndex` learned from the same discovery response instead of guessing a name.
+
+Example: insert one discovered canonical action at a deterministic position:
+
+```json
+{
+  "sceneName": "CoinIdle",
+  "expectedEventsRevision": "events:...",
+  "operation": {
+    "kind": "instruction.insert",
+    "eventHandle": "event:fp:...",
+    "instructionKind": "action",
+    "index": 1,
+    "instructionJson": {
+      "type": { "value": "<discovered-action-id>" },
+      "parameters": ["<ordered parameter>"],
+      "subInstructions": []
+    }
+  }
+}
+```
+
+For event/subevent structure, keep using `events.insert`, `events.move` and `events.delete`; insert/move accept deterministic zero-based `index` in addition to sibling/parent handles. Use `events.patch` for the instruction structure *inside* an event. Do not use `events.update` merely to change one instruction parameter or one comment/name field.
+
+At the MCP boundary, granular patches are preflighted against a fresh `events.read`: stale `expectedEventsRevision` and missing/mismatched stable handles fail before the mutating renderer dispatch. The renderer checks the revision again at mutation time, so the preflight does not weaken optimistic concurrency. Successful results include the before/after event revision and a structural diff describing the exact operation/path/field that changed.
 
 ### Localized visual-only style updates
 

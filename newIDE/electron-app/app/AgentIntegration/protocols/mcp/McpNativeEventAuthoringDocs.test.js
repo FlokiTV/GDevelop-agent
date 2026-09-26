@@ -51,7 +51,12 @@ test('native Event Sheet authoring docs preserve canonical/discovery guidance', 
   assert.match(guide, /"textG"/);
   assert.match(guide, /"textB"/);
   assert.match(readme, /events\.style\.update/);
+  assert.match(readme, /events\.patch/);
   assert.match(guide, /events\.style\.update/);
+  assert.match(guide, /events\.patch/);
+  assert.match(guide, /instruction\.parameter\.update/);
+  assert.match(guide, /parameterName/);
+  assert.match(guide, /does \*\*not\*\* resend the parent `eventJson`/);
   assert.match(guide, /"background"/);
   assert.match(guide, /"text"/);
   assert.match(guide, /0 through 255/);

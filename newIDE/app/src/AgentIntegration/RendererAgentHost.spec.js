@@ -81,6 +81,7 @@ const EXPECTED_PUBLIC_COMMANDS = [
   'events.move',
   'events.nodes.describe',
   'events.nodes.list',
+  'events.patch',
   'events.read',
   'events.style.update',
   'events.update',

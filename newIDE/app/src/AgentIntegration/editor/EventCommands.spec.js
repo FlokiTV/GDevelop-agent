@@ -2,7 +2,7 @@
 import { AgentHost } from '../core/AgentHost';
 import { createEventCommandDescriptors } from './EventCommands';
 
-const makeHost = (project: any = {}) => {
+const makeHost = (project: any = {}, environmentOverrides: any = {}) => {
   const eventTools = {
     readEventsJson: jest.fn(input => ({
       target: input.target || input.sceneName,
@@ -12,6 +12,7 @@ const makeHost = (project: any = {}) => {
     moveEvent: jest.fn(input => ({ moved: true, ...input })),
     updateEvent: jest.fn(input => ({ updated: true, ...input })),
     updateEventStyle: jest.fn(input => ({ updated: true, ...input })),
+    patchEvent: jest.fn(input => ({ updated: true, ...input })),
     applyEventsJson: jest.fn(input => ({ applied: true, ...input })),
   };
   const metadataDiscoveryService = {
@@ -55,7 +56,7 @@ const makeHost = (project: any = {}) => {
     eventTools,
     metadataDiscoveryService,
     host: new AgentHost({
-      environment: { project },
+      environment: { project, ...environmentOverrides },
       descriptors: createEventCommandDescriptors({
         eventTools,
         metadataDiscoveryService,
@@ -101,11 +102,81 @@ describe('EventCommands', () => {
       requiresProject: true,
       modifiesProject: true,
     });
+    expect(host.describeCommand('events.patch').metadata).toMatchObject({
+      readOnly: false,
+      idempotent: false,
+      requiresProject: true,
+      modifiesProject: true,
+    });
     expect(host.describeCommand('events.apply').metadata).toMatchObject({
       readOnly: false,
       requiresProject: true,
       modifiesProject: true,
     });
+  });
+
+  test('runs events.patch through existing semantic leases and transaction ownership guards', async () => {
+    const semanticConcurrency = {
+      assertExpected: jest.fn(),
+      assertLeaseAccess: jest.fn(),
+      mark: jest.fn(() => []),
+      snapshot: jest.fn(() => []),
+    };
+    const { host, eventTools } = makeHost(
+      {},
+      {
+        semanticConcurrency,
+        getTransactionStatus: () => ({ active: false }),
+      }
+    );
+    const input = {
+      sceneName: 'Scene',
+      expectedEventsRevision: 'events:patch',
+      operation: {
+        kind: 'event.flags.update',
+        eventHandle: 'event:fp:patch',
+        enabled: false,
+      },
+    };
+
+    await host.execute('events.patch', input, {
+      expectedSemanticRevisions: { project: 4, 'events:Scene': 7 },
+      semanticLeaseOwner: 'agent-a',
+    });
+
+    expect(semanticConcurrency.assertExpected).toHaveBeenCalledWith({
+      project: 4,
+      'events:Scene': 7,
+    });
+    expect(semanticConcurrency.assertLeaseAccess).toHaveBeenCalledWith(
+      ['events:Scene', 'project', 'scene:Scene'],
+      'agent-a'
+    );
+    expect(eventTools.patchEvent).toHaveBeenCalledWith(input);
+
+    const locked = makeHost(
+      {},
+      {
+        getTransactionStatus: () => ({
+          active: true,
+          transactionId: 'tx-owner',
+          owner: { ownerKey: 'agent-a' },
+          purpose: 'other edit',
+          startedAt: '2026-09-26T00:00:00.000Z',
+        }),
+      }
+    );
+    await expect(
+      locked.host.execute('events.patch', input, {
+        identity: { ownerKey: 'agent-b' },
+      })
+    ).rejects.toMatchObject({
+      code: 'transaction_scope_locked',
+      details: expect.objectContaining({
+        transactionId: 'tx-owner',
+      }),
+    });
+    expect(locked.eventTools.patchEvent).not.toHaveBeenCalled();
   });
 
   test('publishes an abstract bounded RGB schema for localized style updates', () => {
@@ -132,6 +203,51 @@ describe('EventCommands', () => {
           },
         },
       },
+    });
+  });
+
+  test('publishes granular events.patch operations and deterministic index placement without requiring parent eventJson', () => {
+    const { host } = makeHost();
+    const insertSchema = host.describeCommand('events.insert').inputSchema;
+    const moveSchema = host.describeCommand('events.move').inputSchema;
+    const patchSchema = host.describeCommand('events.patch').inputSchema;
+
+    expect(insertSchema.properties.index).toEqual({
+      type: 'integer',
+      minimum: 0,
+    });
+    expect(moveSchema.properties.index).toEqual({
+      type: 'integer',
+      minimum: 0,
+    });
+    expect(patchSchema.required).toEqual([
+      'expectedEventsRevision',
+      'operation',
+    ]);
+
+    const branches = patchSchema.properties.operation.anyOf;
+    const operations = branches.map(branch => branch.properties.kind.enum[0]);
+    expect(operations).toEqual(
+      expect.arrayContaining([
+        'instruction.insert',
+        'instruction.move',
+        'instruction.delete',
+        'instruction.parameter.update',
+        'instruction.flags.update',
+        'event.flags.update',
+        'event.fields.update',
+      ])
+    );
+    const parameterPatch = branches.find(
+      branch =>
+        branch.properties.kind.enum[0] === 'instruction.parameter.update'
+    );
+    expect(parameterPatch.properties).not.toHaveProperty('eventJson');
+    expect(parameterPatch.properties).toMatchObject({
+      instructionHandle: { type: 'string', minLength: 1 },
+      parameterIndex: { type: 'integer', minimum: 0 },
+      parameterName: { type: 'string', minLength: 1 },
+      value: { type: 'string' },
     });
   });
 
@@ -262,6 +378,15 @@ describe('EventCommands', () => {
       handle: 'event:fp:style',
       style: { background: { r: 45, g: 100, b: 180 } },
     });
+    await host.execute('events.patch', {
+      sceneName: 'Scene',
+      expectedEventsRevision: 'events:patch',
+      operation: {
+        kind: 'event.flags.update',
+        eventHandle: 'event:fp:patch',
+        enabled: false,
+      },
+    });
     await host.execute('events.apply', {
       sceneName: 'Scene',
       eventsJson: [],
@@ -295,6 +420,15 @@ describe('EventCommands', () => {
         style: { background: { r: 45, g: 100, b: 180 } },
       })
     );
+    expect(eventTools.patchEvent).toHaveBeenCalledWith({
+      sceneName: 'Scene',
+      expectedEventsRevision: 'events:patch',
+      operation: {
+        kind: 'event.flags.update',
+        eventHandle: 'event:fp:patch',
+        enabled: false,
+      },
+    });
     expect(eventTools.applyEventsJson).toHaveBeenCalledWith({
       sceneName: 'Scene',
       eventsJson: [],
@@ -407,8 +541,24 @@ describe('EventCommands', () => {
         style: { background: { r: 45, g: 100 } },
       })
     ).rejects.toMatchObject({ code: 'invalid_event_style' });
+    await expect(
+      host.execute('events.patch', {
+        sceneName: 'Scene',
+        expectedEventsRevision: 'events:patch',
+        operation: {
+          kind: 'instruction.parameter.update',
+          instructionHandle: 'action:fp:abc',
+          parameterIndex: 0,
+          parameterName: 'Value',
+          value: '42',
+        },
+      })
+    ).rejects.toMatchObject({
+      code: 'invalid_instruction_parameter_selector',
+    });
     expect(eventTools.applyEventsJson).not.toHaveBeenCalled();
     expect(eventTools.updateEventStyle).not.toHaveBeenCalled();
+    expect(eventTools.patchEvent).not.toHaveBeenCalled();
   });
 
   test('requires an open project through AgentHost', async () => {

@@ -122,6 +122,213 @@ const getRootEventJsonList = (command, input) => {
   return input && Array.isArray(input.eventsJson) ? input.eventsJson : [];
 };
 
+const makePatchPreflightError = (code, details = {}) => {
+  const error = new Error(code);
+  error.code = code;
+  error.retryable = code === 'events_revision_conflict';
+  error.details = details;
+  return error;
+};
+
+const indexCanonicalReadState = events => {
+  const eventByHandle = new Map();
+  const instructionByHandle = new Map();
+
+  const visitInstructions = (instructions, event, instructionKind) => {
+    for (const instruction of Array.isArray(instructions) ? instructions : []) {
+      if (instruction && typeof instruction.handle === 'string') {
+        instructionByHandle.set(instruction.handle, {
+          ...instruction,
+          eventHandle: event.handle,
+          eventPath: event.path,
+          instructionKind: instruction.instructionKind || instructionKind,
+        });
+      }
+      visitInstructions(
+        instruction && instruction.children,
+        event,
+        (instruction && instruction.instructionKind) || instructionKind
+      );
+    }
+  };
+
+  const visitEvents = nodes => {
+    for (const event of Array.isArray(nodes) ? nodes : []) {
+      if (event && typeof event.handle === 'string') {
+        eventByHandle.set(event.handle, event);
+      }
+      visitInstructions(event && event.conditions, event, 'condition');
+      visitInstructions(
+        event && event.whileConditions,
+        event,
+        'whileCondition'
+      );
+      visitInstructions(event && event.actions, event, 'action');
+      visitEvents(event && event.children);
+    }
+  };
+  visitEvents(events);
+  return { eventByHandle, instructionByHandle };
+};
+
+const pathsEqual = (left, right) =>
+  Array.isArray(left) &&
+  Array.isArray(right) &&
+  left.length === right.length &&
+  left.every((value, index) => value === right[index]);
+
+const preflightGranularEventPatch = async ({
+  input,
+  rendererBridge,
+  targeting = {},
+}) => {
+  const operation = input && input.operation;
+  if (!operation || typeof operation !== 'object' || Array.isArray(operation)) {
+    throw makePatchPreflightError('invalid_event_patch_operation');
+  }
+  const readInput =
+    input && input.target && typeof input.target === 'object'
+      ? { target: input.target }
+      : { sceneName: input && input.sceneName };
+  const readResult = await rendererBridge.executeCommand({
+    command: 'events.read',
+    input: readInput,
+    ...targeting,
+  });
+  const readData = readResult && readResult.data ? readResult.data : {};
+  const actualEventsRevision = readData.eventsRevision;
+  if (
+    typeof input.expectedEventsRevision !== 'string' ||
+    input.expectedEventsRevision !== actualEventsRevision
+  ) {
+    throw makePatchPreflightError('events_revision_conflict', {
+      conflictScope: 'events',
+      expectedEventsRevision: input.expectedEventsRevision,
+      actualEventsRevision,
+      currentEventsRevision: actualEventsRevision,
+    });
+  }
+
+  const { eventByHandle, instructionByHandle } = indexCanonicalReadState(
+    readData.events
+  );
+  const requireEvent = handle => {
+    const event = eventByHandle.get(handle);
+    if (!event) {
+      throw makePatchPreflightError('event_handle_not_found', { handle });
+    }
+    return event;
+  };
+  const requireInstruction = handle => {
+    const instruction = instructionByHandle.get(handle);
+    if (!instruction) {
+      throw makePatchPreflightError('instruction_handle_not_found', { handle });
+    }
+    return instruction;
+  };
+  const assertSameInstructionScope = ({ source, target, handleField }) => {
+    if (
+      source.instructionKind !== target.instructionKind ||
+      source.eventHandle !== target.eventHandle
+    ) {
+      throw makePatchPreflightError('instruction_placement_scope_mismatch', {
+        instructionHandle: source.handle,
+        [handleField]: target.handle,
+        instructionKind: source.instructionKind,
+        targetInstructionKind: target.instructionKind,
+        eventHandle: source.eventHandle,
+        targetEventHandle: target.eventHandle,
+      });
+    }
+  };
+
+  switch (operation.kind) {
+    case 'instruction.insert': {
+      const event = requireEvent(operation.eventHandle);
+      for (const [field, handle] of [
+        ['parentInstructionHandle', operation.parentInstructionHandle],
+        ['beforeHandle', operation.beforeHandle],
+        ['afterHandle', operation.afterHandle],
+      ]) {
+        if (typeof handle !== 'string' || !handle) continue;
+        const targetInstruction = requireInstruction(handle);
+        if (
+          targetInstruction.eventHandle !== event.handle ||
+          targetInstruction.instructionKind !== operation.instructionKind
+        ) {
+          throw makePatchPreflightError(
+            'instruction_placement_scope_mismatch',
+            {
+              eventHandle: event.handle,
+              instructionKind: operation.instructionKind,
+              [field]: handle,
+              targetEventHandle: targetInstruction.eventHandle,
+              targetInstructionKind: targetInstruction.instructionKind,
+            }
+          );
+        }
+      }
+      break;
+    }
+    case 'instruction.move': {
+      const source = requireInstruction(operation.instructionHandle);
+      for (const [field, handle] of [
+        ['parentInstructionHandle', operation.parentInstructionHandle],
+        ['beforeHandle', operation.beforeHandle],
+        ['afterHandle', operation.afterHandle],
+      ]) {
+        if (typeof handle !== 'string' || !handle) continue;
+        const targetInstruction = requireInstruction(handle);
+        assertSameInstructionScope({
+          source,
+          target: targetInstruction,
+          handleField: field,
+        });
+        if (
+          field === 'parentInstructionHandle' &&
+          Array.isArray(source.path) &&
+          Array.isArray(targetInstruction.path) &&
+          source.path.length <= targetInstruction.path.length &&
+          pathsEqual(
+            source.path,
+            targetInstruction.path.slice(0, source.path.length)
+          )
+        ) {
+          throw makePatchPreflightError(
+            'invalid_instruction_move_destination',
+            {
+              instructionHandle: source.handle,
+              parentInstructionHandle: targetInstruction.handle,
+            }
+          );
+        }
+      }
+      break;
+    }
+    case 'instruction.delete':
+    case 'instruction.parameter.update':
+    case 'instruction.flags.update':
+      requireInstruction(operation.instructionHandle);
+      break;
+    case 'event.flags.update':
+    case 'event.fields.update':
+      requireEvent(operation.eventHandle);
+      break;
+    default:
+      throw makePatchPreflightError('unsupported_event_patch_operation', {
+        operation: operation.kind || null,
+      });
+  }
+
+  return {
+    validated: true,
+    validatedPatch: true,
+    eventsRevision: actualEventsRevision,
+    eventHandleCount: eventByHandle.size,
+    instructionHandleCount: instructionByHandle.size,
+  };
+};
+
 const isUnknownEventNodeError = error => {
   const code = error && error.code;
   return code === 'metadata_event_node_not_found';
@@ -138,6 +345,14 @@ const preflightEventMutationInput = async ({
   rendererBridge,
   targeting = {},
 }) => {
+  if (command === 'events.patch') {
+    return preflightGranularEventPatch({
+      input,
+      rendererBridge,
+      targeting,
+    });
+  }
+
   const roots = getRootEventJsonList(command, input);
   if (!roots.length) return { validated: false, reason: 'not_applicable' };
 
@@ -224,6 +439,8 @@ module.exports = {
   EVENT_MUTATION_COMMANDS,
   getEventType,
   getRootEventJsonList,
+  indexCanonicalReadState,
+  preflightGranularEventPatch,
   preflightEventMutationInput,
   validateKnownJsonValue,
 };

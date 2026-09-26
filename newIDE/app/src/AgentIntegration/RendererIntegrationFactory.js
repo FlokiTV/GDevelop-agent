@@ -176,10 +176,14 @@ export const createRendererIntegration = ({
   const diagnosticsTools = project
     ? createDiagnosticsTools({ project, i18n, assetTools })
     : null;
+  const metadataDiscoveryService = project
+    ? createMetadataDiscoveryService({ project })
+    : null;
   const eventTools = project
     ? createEventTools({
         project,
         diagnosticsTools,
+        metadataDiscoveryService,
         triggerUnsavedChanges,
         onSceneEventsModifiedOutsideEditor,
         forceUpdate,
@@ -217,9 +221,6 @@ export const createRendererIntegration = ({
         forceUpdate,
         onObjectsModifiedOutsideEditor,
       })
-    : null;
-  const metadataDiscoveryService = project
-    ? createMetadataDiscoveryService({ project })
     : null;
   const documentationService = createDocumentationService();
 

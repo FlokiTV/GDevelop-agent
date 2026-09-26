@@ -93,6 +93,102 @@ test('preflight validates known fields recursively and allows unknown future typ
   );
 });
 
+test('granular patch preflight validates revision and stable handles before mutation dispatch', async () => {
+  const calls = [];
+  const rendererBridge = {
+    executeCommand: async options => {
+      calls.push(options);
+      assert.equal(options.command, 'events.read');
+      return {
+        data: {
+          eventsRevision: 'events:current',
+          events: [
+            {
+              handle: 'event:fp:root',
+              path: [0],
+              conditions: [],
+              whileConditions: [],
+              actions: [
+                {
+                  handle: 'action:fp:first',
+                  path: [0],
+                  instructionKind: 'action',
+                  children: [],
+                },
+                {
+                  handle: 'action:fp:second',
+                  path: [1],
+                  instructionKind: 'action',
+                  children: [],
+                },
+              ],
+              children: [],
+            },
+          ],
+        },
+      };
+    },
+  };
+
+  const valid = await preflightEventMutationInput({
+    command: 'events.patch',
+    input: {
+      sceneName: 'Scene',
+      expectedEventsRevision: 'events:current',
+      operation: {
+        kind: 'instruction.move',
+        instructionHandle: 'action:fp:second',
+        beforeHandle: 'action:fp:first',
+      },
+    },
+    rendererBridge,
+  });
+  assert.equal(valid.validatedPatch, true);
+  assert.equal(valid.instructionHandleCount, 2);
+
+  await assert.rejects(
+    preflightEventMutationInput({
+      command: 'events.patch',
+      input: {
+        sceneName: 'Scene',
+        expectedEventsRevision: 'events:stale',
+        operation: {
+          kind: 'instruction.delete',
+          instructionHandle: 'action:fp:first',
+        },
+      },
+      rendererBridge,
+    }),
+    error =>
+      error &&
+      error.code === 'events_revision_conflict' &&
+      error.details.conflictScope === 'events' &&
+      error.details.actualEventsRevision === 'events:current'
+  );
+
+  await assert.rejects(
+    preflightEventMutationInput({
+      command: 'events.patch',
+      input: {
+        sceneName: 'Scene',
+        expectedEventsRevision: 'events:current',
+        operation: {
+          kind: 'instruction.parameter.update',
+          instructionHandle: 'action:fp:missing',
+          parameterIndex: 0,
+          value: '42',
+        },
+      },
+      rendererBridge,
+    }),
+    error =>
+      error &&
+      error.code === 'instruction_handle_not_found' &&
+      error.details.handle === 'action:fp:missing'
+  );
+  assert.equal(calls.length, 3);
+});
+
 const descriptor = (name, metadata = {}) => ({
   name,
   description: `Tool ${name}`,
@@ -221,6 +317,135 @@ test('MCP preflight blocks malformed known event before mutation dispatch but fo
     assert.equal(
       calls.filter(call => call.command === 'events.insert').length,
       1
+    );
+  } finally {
+    await client.close();
+    await host.stop();
+  }
+});
+
+test('MCP events.patch preflight rejects stale/missing handles before mutating and forwards valid patch', async () => {
+  const calls = [];
+  const descriptors = [
+    descriptor('events.patch', {
+      readOnly: false,
+      idempotent: false,
+      modifiesProject: true,
+    }),
+  ];
+  const rendererBridge = {
+    executeCommand: async options => {
+      calls.push(options);
+      if (options.command === 'agent.commands.list') {
+        return {
+          command: options.command,
+          data: { commands: descriptors },
+          meta: { readOnly: true, modifiesProject: false },
+        };
+      }
+      if (options.command === 'events.read') {
+        return {
+          command: options.command,
+          data: {
+            eventsRevision: 'events:current',
+            events: [
+              {
+                handle: 'event:fp:root',
+                path: [0],
+                conditions: [],
+                whileConditions: [],
+                actions: [
+                  {
+                    handle: 'action:fp:target',
+                    path: [0],
+                    instructionKind: 'action',
+                    children: [],
+                  },
+                ],
+                children: [],
+              },
+            ],
+          },
+          meta: { readOnly: true, modifiesProject: false },
+        };
+      }
+      if (options.command === 'events.patch') {
+        return {
+          command: options.command,
+          data: { updated: true, eventsRevision: 'events:next' },
+          meta: {
+            readOnly: false,
+            modifiesProject: true,
+            projectRevision: 3,
+          },
+        };
+      }
+      throw new Error(`unexpected_command:${options.command}`);
+    },
+  };
+
+  const token = 'dx20-patch-preflight-token';
+  const host = await startMcpHttpServer({ rendererBridge, token, port: 0 });
+  const client = await connectClient({ url: host.url, token });
+  try {
+    const stale = await client.callTool({
+      name: 'events.patch',
+      arguments: {
+        sceneName: 'Scene',
+        expectedEventsRevision: 'events:stale',
+        operation: {
+          kind: 'instruction.delete',
+          instructionHandle: 'action:fp:target',
+        },
+      },
+    });
+    assert.equal(stale.isError, true);
+    assert.match(JSON.stringify(stale), /events_revision_conflict/);
+    assert.equal(
+      calls.filter(call => call.command === 'events.patch').length,
+      0
+    );
+
+    const missing = await client.callTool({
+      name: 'events.patch',
+      arguments: {
+        sceneName: 'Scene',
+        expectedEventsRevision: 'events:current',
+        operation: {
+          kind: 'instruction.delete',
+          instructionHandle: 'action:fp:missing',
+        },
+      },
+    });
+    assert.equal(missing.isError, true);
+    assert.match(JSON.stringify(missing), /instruction_handle_not_found/);
+    assert.equal(
+      calls.filter(call => call.command === 'events.patch').length,
+      0
+    );
+
+    const valid = await client.callTool({
+      name: 'events.patch',
+      arguments: {
+        sceneName: 'Scene',
+        expectedEventsRevision: 'events:current',
+        operation: {
+          kind: 'instruction.parameter.update',
+          instructionHandle: 'action:fp:target',
+          parameterIndex: 0,
+          value: '42',
+        },
+      },
+    });
+    assert.equal(valid.isError, undefined);
+    assert.equal(valid.structuredContent.data.updated, true);
+    assert.equal(
+      calls.filter(call => call.command === 'events.patch').length,
+      1
+    );
+    assert.equal(
+      calls.filter(call => call.command === 'events.read').length,
+      3
     );
   } finally {
     await client.close();

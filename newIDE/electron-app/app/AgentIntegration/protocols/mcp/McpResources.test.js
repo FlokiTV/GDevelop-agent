@@ -148,7 +148,7 @@ test('official MCP client lists and reads fresh targeted GDevelop resources', as
     assert.equal(guideDefinition.mimeType, 'text/markdown');
     assert.equal(guideDefinition._meta['gdevelop/cacheScope'], 'process');
     assert.equal(guideDefinition._meta['gdevelop/live'], false);
-    assert.equal(guideDefinition._meta['gdevelop/guideVersion'], 2);
+    assert.equal(guideDefinition._meta['gdevelop/guideVersion'], 3);
 
     listed.resources
       .filter(
@@ -173,6 +173,8 @@ test('official MCP client lists and reads fresh targeted GDevelop resources', as
     assert.match(guide.contents[0].text, /ordered visible parameters/);
     assert.match(guide.contents[0].text, /events\.nodes\.describe/);
     assert.match(guide.contents[0].text, /events\.style\.update/);
+    assert.match(guide.contents[0].text, /events\.patch/);
+    assert.match(guide.contents[0].text, /parameterName/);
     assert.match(guide.contents[0].text, /sanitized replay\/evidence/);
 
     const status = await client.readResource({

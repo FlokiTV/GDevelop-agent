@@ -4,8 +4,20 @@ import {
   metadataDiscoveryInternals,
 } from './MetadataDiscoveryService';
 import { makeTestExtensions } from '../../fixtures/TestExtensions';
+import {
+  reloadProjectEventsFunctionsExtensionMetadata,
+  type EventsFunctionCodeWriter,
+} from '../../EventsFunctionsExtensionsLoader';
+import { makeFakeI18n } from '../../EditorFunctions/TestHelpers';
 
 const gd: libGDevelop = global.gd;
+
+const createFakeEventsFunctionCodeWriter = (): EventsFunctionCodeWriter => ({
+  getIncludeFileFor: (functionName: string) => `${functionName}.js`,
+  writeFunctionCode: () => Promise.resolve(),
+  writeBehaviorCode: () => Promise.resolve(),
+  writeObjectCode: () => Promise.resolve(),
+});
 
 describe('AgentIntegration MetadataDiscoveryService', () => {
   let project: gdProject;
@@ -26,6 +38,53 @@ describe('AgentIntegration MetadataDiscoveryService', () => {
 
   afterEach(() => {
     project.delete();
+  });
+
+  it('preserves authored project-function parameter names at generated metadata indexes', () => {
+    const extension = project.insertNewEventsFunctionsExtension(
+      'DX20MetadataNames',
+      0
+    );
+    extension.setFullName('DX20 Metadata Names');
+    const eventsFunction = extension
+      .getEventsFunctions()
+      .insertNewEventsFunction('PatchAction', 0);
+    eventsFunction.setFunctionType(gd.EventsFunction.Action);
+    eventsFunction.setFullName('DX20 Patch Action');
+    eventsFunction.setDescription('DX20 named parameter regression');
+    eventsFunction.setSentence('Patch value _PARAM0_');
+    eventsFunction
+      .getParameters()
+      .insertNewParameter('Value', 0)
+      .setType('expression');
+
+    reloadProjectEventsFunctionsExtensionMetadata(
+      project,
+      extension,
+      createFakeEventsFunctionCodeWriter(),
+      makeFakeI18n()
+    );
+    service = createMetadataDiscoveryService({ project });
+
+    const described = service.describeInstruction({
+      id: 'DX20MetadataNames::PatchAction',
+      kind: 'action',
+      extension: 'DX20MetadataNames',
+    }).item;
+    const visibleParameters = described.parameters.filter(
+      parameter => !parameter.codeOnly
+    );
+
+    expect(visibleParameters).toHaveLength(1);
+    expect(visibleParameters[0]).toMatchObject({
+      index: 1,
+      name: 'Value',
+      type: 'expression',
+    });
+    expect(described.parameters[0]).toMatchObject({
+      index: 0,
+      codeOnly: true,
+    });
   });
 
   it('lists and describes canonical event node schemas from connected build defaults', () => {

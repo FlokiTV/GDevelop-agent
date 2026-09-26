@@ -1,7 +1,7 @@
 const PROMPT_META = {
   'gdevelop/cacheScope': 'process',
   'gdevelop/ttlMs': 60000,
-  'gdevelop/promptVersion': 3,
+  'gdevelop/promptVersion': 4,
 };
 
 const prompt = (name, title, description, text) => ({
@@ -20,8 +20,8 @@ const NATIVE_EVENT_AUTHORING_GUIDE = [
   '3. Keep eventsRevision from events.read and projectRevision from project.status as write preconditions. Use expectedEventsRevision plus MCP expectedRevision/idempotencyKey when offered; use a checkpoint/transaction for risky multi-step work.',
   '4. Discover unfamiliar actions and conditions with events.instructions.search/describe. Discover numeric/string expressions through the same surface with kind="expression"; there is no separate events.expressions catalog. Author discovered instructions in canonical serialized form as {"type":{"value":"<discovered-id>"},"parameters":["<ordered visible parameters>"],"subInstructions":[]}; derive parameter order/types from the described metadata instead of model memory.',
   '5. Discover canonical event-node types with events.nodes.list and inspect exact connected-build defaults/known fields with events.nodes.describe. Mutation schemas may project those contracts and carry x-gdevelop-schema-reference back to this discovery surface.',
-  '6. Prefer the smallest mutation: events.style.update for Group/Comment RGB-only edits; otherwise events.insert/update/move/delete. Use events.apply only as an explicit bulk replace/append fallback.',
-  '7. Group/Comment style updates use abstract background/text RGB objects. Do not resend conditions, actions or subevents for visual-only changes.',
+  '6. Prefer the smallest mutation: events.style.update for Group/Comment RGB-only edits; events.patch for one action/condition insert/move/delete, one parameter/flag, or a supported small event field; events.insert/move/delete for event/subevent structure. Use events.update only for intentional full-node replacement and events.apply only as an explicit bulk replace/append fallback.',
+  '7. events.patch requires the current expectedEventsRevision and stable handles from events.read. parameterName is resolved from connected-build instruction metadata; use parameterIndex when metadata is ambiguous. Do not resend the parent eventJson for a one-parameter/action/condition change. Group/Comment style updates still use abstract background/text RGB objects.',
   '8. After mutation, re-read or inspect the returned diff/revisions. On stale revision conflicts, read current state and re-target stable handles instead of overwriting.',
   '9. Run diagnostics.inspect and validation.run. Start preview only when missing; otherwise use preview.hot-reload and runtime snapshot/log/assert tools for acceptance.',
   '10. Saving is explicit: call project.save/project.save-as only when the user intends persistence. Never close/reopen the project merely to synchronize state.',

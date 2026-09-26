@@ -89,11 +89,13 @@ const createCanonicalEventIndex = (eventsJson: Array<any>) => {
   const buildInstructions = ({
     instructions,
     kind,
+    instructionKind,
     eventPath,
     parentPath = [],
   }: {|
     instructions: any,
     kind: 'condition' | 'action',
+    instructionKind: 'condition' | 'whileCondition' | 'action',
     eventPath: Array<number>,
     parentPath?: Array<number>,
   |}): Array<any> => {
@@ -110,7 +112,7 @@ const createCanonicalEventIndex = (eventsJson: Array<any>) => {
         ? `${kind}:fp:${fingerprint}`
         : `${kind}:fp:${fingerprint}:event:${eventPath.join(
             '.'
-          )}:path:${path.join('.')}`;
+          )}:list:${instructionKind}:path:${path.join('.')}`;
       const type =
         instructionJson && instructionJson.type
           ? typeof instructionJson.type === 'object'
@@ -123,6 +125,7 @@ const createCanonicalEventIndex = (eventsJson: Array<any>) => {
         eventPath,
         fingerprint,
         handleKind: unique ? 'fingerprint' : 'fingerprint-path',
+        instructionKind,
         type,
         parameters: Array.isArray(instructionJson.parameters)
           ? instructionJson.parameters
@@ -142,6 +145,7 @@ const createCanonicalEventIndex = (eventsJson: Array<any>) => {
         children: buildInstructions({
           instructions: instructionJson && instructionJson.subInstructions,
           kind,
+          instructionKind,
           eventPath,
           parentPath: path,
         }),
@@ -187,16 +191,19 @@ const createCanonicalEventIndex = (eventsJson: Array<any>) => {
         conditions: buildInstructions({
           instructions: eventJson.conditions,
           kind: 'condition',
+          instructionKind: 'condition',
           eventPath: path,
         }),
         whileConditions: buildInstructions({
           instructions: eventJson.whileConditions,
           kind: 'condition',
+          instructionKind: 'whileCondition',
           eventPath: path,
         }),
         actions: buildInstructions({
           instructions: eventJson.actions,
           kind: 'action',
+          instructionKind: 'action',
           eventPath: path,
         }),
         children: Array.isArray(eventJson.events)
@@ -220,6 +227,39 @@ const flattenCanonicalEvents = (events: Array<any>): Array<any> => {
     });
   };
   visit(events);
+  return flattened;
+};
+
+const flattenCanonicalInstructions = (events: Array<any>): Array<any> => {
+  const flattened = [];
+  const visitInstructions = ({
+    instructions,
+    event,
+    parentInstructionHandle = null,
+  }) => {
+    (instructions || []).forEach(instruction => {
+      flattened.push({
+        ...instruction,
+        eventHandle: event.handle,
+        eventPath: event.path,
+        parentInstructionHandle,
+      });
+      visitInstructions({
+        instructions: instruction.children || [],
+        event,
+        parentInstructionHandle: instruction.handle,
+      });
+    });
+  };
+  const visitEvents = nodes => {
+    (nodes || []).forEach(event => {
+      visitInstructions({ instructions: event.conditions, event });
+      visitInstructions({ instructions: event.whileConditions, event });
+      visitInstructions({ instructions: event.actions, event });
+      visitEvents(event.children || []);
+    });
+  };
+  visitEvents(events);
   return flattened;
 };
 
@@ -389,6 +429,7 @@ const getCanonicalEventsState = (eventsList: gdEventsList) => {
     eventsRevision: canonicalIndex.eventsRevision,
     events: canonicalIndex.events,
     flatEvents: flattenCanonicalEvents(canonicalIndex.events),
+    flatInstructions: flattenCanonicalInstructions(canonicalIndex.events),
   };
 };
 
@@ -550,7 +591,12 @@ const assertExpectedEventsRevision = (
     throw makeError(
       'events_revision_conflict',
       'The targeted event tree changed since it was read.',
-      { expectedEventsRevision, currentEventsRevision }
+      {
+        conflictScope: 'events',
+        expectedEventsRevision,
+        actualEventsRevision: currentEventsRevision,
+        currentEventsRevision,
+      }
     );
   }
 };
@@ -584,6 +630,135 @@ const resolveEventHandle = (
 
   throw makeError('event_handle_not_found', undefined, { handle });
 };
+
+const resolveInstructionHandle = (canonicalState: any, handle: any): any => {
+  if (!handle || typeof handle !== 'string') {
+    throw makeError('invalid_instruction_handle');
+  }
+  const matches = canonicalState.flatInstructions.filter(
+    instruction => instruction.handle === handle
+  );
+  if (matches.length === 1) return matches[0];
+  if (matches.length > 1) {
+    throw makeError('ambiguous_instruction_handle', undefined, {
+      handle,
+      matches: matches.map(match => ({
+        eventHandle: match.eventHandle,
+        instructionKind: match.instructionKind,
+        path: match.path,
+      })),
+    });
+  }
+  throw makeError('instruction_handle_not_found', undefined, { handle });
+};
+
+const getInstructionListKey = (instructionKind: string): string => {
+  if (instructionKind === 'action') return 'actions';
+  if (instructionKind === 'condition') return 'conditions';
+  if (instructionKind === 'whileCondition') return 'whileConditions';
+  throw makeError('invalid_instruction_kind', undefined, { instructionKind });
+};
+
+const getInstructionLocation = ({
+  eventJson,
+  instructionKind,
+  path,
+}: {|
+  eventJson: any,
+  instructionKind: string,
+  path: Array<number>,
+|}): {| list: Array<any>, index: number |} => {
+  const key = getInstructionListKey(instructionKind);
+  let list = Array.isArray(eventJson[key]) ? eventJson[key] : [];
+  if (!path.length) throw makeError('invalid_instruction_path');
+  for (let depth = 0; depth < path.length - 1; depth++) {
+    const index = path[depth];
+    if (index < 0 || index >= list.length) {
+      throw makeError('instruction_path_not_found');
+    }
+    const instruction = list[index];
+    list = Array.isArray(instruction.subInstructions)
+      ? instruction.subInstructions
+      : [];
+  }
+  const index = path[path.length - 1];
+  if (index < 0 || index >= list.length) {
+    throw makeError('instruction_path_not_found');
+  }
+  return { list, index };
+};
+
+const cloneCanonicalJson = (value: any): any =>
+  JSON.parse(JSON.stringify(value));
+
+const getSerializedInstructionType = (instructionJson: any): ?string => {
+  if (!instructionJson || typeof instructionJson !== 'object') return null;
+  if (typeof instructionJson.type === 'string') return instructionJson.type;
+  if (
+    instructionJson.type &&
+    typeof instructionJson.type === 'object' &&
+    typeof instructionJson.type.value === 'string'
+  ) {
+    return instructionJson.type.value;
+  }
+  return null;
+};
+
+const findCanonicalInstructionByPath = ({
+  canonicalState,
+  eventPath,
+  instructionKind,
+  path,
+}: {|
+  canonicalState: any,
+  eventPath: Array<number>,
+  instructionKind: string,
+  path: Array<number>,
+|}): any =>
+  canonicalState.flatInstructions.find(
+    instruction =>
+      instruction.instructionKind === instructionKind &&
+      pathsEqual(instruction.eventPath, eventPath) &&
+      pathsEqual(instruction.path, path)
+  ) || null;
+
+const getInstructionListForParentPath = ({
+  eventJson,
+  instructionKind,
+  parentPath,
+}: {|
+  eventJson: any,
+  instructionKind: string,
+  parentPath: Array<number>,
+|}): Array<any> => {
+  const key = getInstructionListKey(instructionKind);
+  if (!Array.isArray(eventJson[key])) eventJson[key] = [];
+  let list = eventJson[key];
+  for (const index of parentPath) {
+    if (index < 0 || index >= list.length) {
+      throw makeError('instruction_path_not_found');
+    }
+    const instruction = list[index];
+    if (!Array.isArray(instruction.subInstructions)) {
+      instruction.subInstructions = [];
+    }
+    list = instruction.subInstructions;
+  }
+  return list;
+};
+
+const summarizeInstruction = (instruction: any): any =>
+  instruction
+    ? {
+        handle: instruction.handle,
+        eventHandle: instruction.eventHandle,
+        eventPath: instruction.eventPath,
+        instructionKind: instruction.instructionKind,
+        path: instruction.path,
+        type: instruction.type,
+        parameters: instruction.parameters,
+      }
+    : null;
 
 const getParentListAndIndex = (
   rootEvents: gdEventsList,
@@ -657,63 +832,78 @@ const resolveInsertionLocation = ({
   parentHandle,
   beforeHandle,
   afterHandle,
+  index,
 }: {|
   rootEvents: gdEventsList,
   canonicalState: any,
   parentHandle?: ?string,
   beforeHandle?: ?string,
   afterHandle?: ?string,
+  index?: ?number,
 |}): {|
   targetList: gdEventsList,
   insertionIndex: number,
   parentPath: Array<number>,
   targetPath: ?Array<number>,
 |} => {
-  const placementHandles = [parentHandle, beforeHandle, afterHandle].filter(
+  const siblingHandles = [beforeHandle, afterHandle].filter(
     handle => typeof handle === 'string' && handle
   );
-  if (placementHandles.length > 1) {
+  if (
+    siblingHandles.length > 1 ||
+    (siblingHandles.length && parentHandle) ||
+    (siblingHandles.length && Number.isInteger(index))
+  ) {
     throw makeError('invalid_event_placement');
   }
 
+  let targetList = rootEvents;
+  let parentPath = [];
+  let targetPath = null;
+
   if (parentHandle) {
     const parentEventPath = resolveEventHandle(canonicalState, parentHandle);
-    const { parentList, index } = getParentListAndIndex(
+    const { parentList, index: parentIndex } = getParentListAndIndex(
       rootEvents,
       parentEventPath
     );
-    const parentEvent = parentList.getEventAt(index);
+    const parentEvent = parentList.getEventAt(parentIndex);
     if (!parentEvent.canHaveSubEvents()) {
       throw makeError('event_cannot_have_subevents', undefined, {
         handle: parentHandle,
       });
     }
-    const targetList = parentEvent.getSubEvents();
-    return {
-      targetList,
-      insertionIndex: targetList.getEventsCount(),
-      parentPath: parentEventPath,
-      targetPath: parentEventPath,
-    };
-  }
-
-  if (beforeHandle || afterHandle) {
+    targetList = parentEvent.getSubEvents();
+    parentPath = parentEventPath;
+    targetPath = parentEventPath;
+  } else if (beforeHandle || afterHandle) {
     const targetHandle = beforeHandle || afterHandle;
-    const targetPath = resolveEventHandle(canonicalState, targetHandle);
-    const location = getParentListAndIndex(rootEvents, targetPath);
+    const siblingPath = resolveEventHandle(canonicalState, targetHandle);
+    const location = getParentListAndIndex(rootEvents, siblingPath);
     return {
       targetList: location.parentList,
       insertionIndex: location.index + (afterHandle ? 1 : 0),
-      parentPath: targetPath.slice(0, -1),
-      targetPath,
+      parentPath: siblingPath.slice(0, -1),
+      targetPath: siblingPath,
     };
   }
 
+  const insertionIndex = Number.isInteger(index)
+    ? index
+    : targetList.getEventsCount();
+  if (insertionIndex < 0 || insertionIndex > targetList.getEventsCount()) {
+    throw makeError('event_insertion_index_out_of_range', undefined, {
+      index: insertionIndex,
+      minimum: 0,
+      maximum: targetList.getEventsCount(),
+    });
+  }
+
   return {
-    targetList: rootEvents,
-    insertionIndex: rootEvents.getEventsCount(),
-    parentPath: [],
-    targetPath: null,
+    targetList,
+    insertionIndex,
+    parentPath,
+    targetPath,
   };
 };
 
@@ -755,12 +945,14 @@ const deserializeEvents = (
 export const createEventTools = ({
   project,
   diagnosticsTools,
+  metadataDiscoveryService,
   triggerUnsavedChanges,
   onSceneEventsModifiedOutsideEditor,
   forceUpdate,
 }: {|
   project: gdProject,
   diagnosticsTools?: ?any,
+  metadataDiscoveryService?: ?any,
   triggerUnsavedChanges: () => void,
   onSceneEventsModifiedOutsideEditor: (changes: any) => void,
   forceUpdate?: ?() => void,
@@ -846,6 +1038,243 @@ export const createEventTools = ({
     ...(details || {}),
   });
 
+  const resolveInstructionParameterIndex = ({
+    instructionJson,
+    instructionKind,
+    parameterIndex,
+    parameterName,
+  }: {|
+    instructionJson: any,
+    instructionKind: string,
+    parameterIndex?: any,
+    parameterName?: any,
+  |}): number => {
+    const hasIndex = Number.isInteger(parameterIndex);
+    const hasName = typeof parameterName === 'string' && !!parameterName;
+    if (hasIndex === hasName) {
+      throw makeError('invalid_instruction_parameter_selector', undefined, {
+        parameterIndex,
+        parameterName,
+      });
+    }
+    const parameters = Array.isArray(instructionJson.parameters)
+      ? instructionJson.parameters
+      : [];
+    if (hasIndex) {
+      if (parameterIndex < 0 || parameterIndex >= parameters.length) {
+        throw makeError('instruction_parameter_index_out_of_range', undefined, {
+          parameterIndex,
+          minimum: 0,
+          maximum: Math.max(-1, parameters.length - 1),
+        });
+      }
+      return parameterIndex;
+    }
+    if (
+      !metadataDiscoveryService ||
+      typeof metadataDiscoveryService.describeInstruction !== 'function'
+    ) {
+      throw makeError('instruction_parameter_metadata_unavailable', undefined, {
+        parameterName,
+      });
+    }
+    const instructionType = getSerializedInstructionType(instructionJson);
+    if (!instructionType) {
+      throw makeError('invalid_instruction_json', undefined, {
+        reason: 'missing_type',
+      });
+    }
+    const metadataKind = instructionKind === 'action' ? 'action' : 'condition';
+    let item;
+    try {
+      const described = metadataDiscoveryService.describeInstruction({
+        id: instructionType,
+        kind: metadataKind,
+        includeHidden: true,
+      });
+      item = described && described.item;
+    } catch (error) {
+      throw makeError(
+        error && error.code === 'metadata_instruction_ambiguous'
+          ? 'instruction_parameter_metadata_ambiguous'
+          : 'instruction_parameter_metadata_not_found',
+        undefined,
+        {
+          instructionType,
+          instructionKind,
+          parameterName,
+          metadataErrorCode: error && error.code ? error.code : null,
+          metadataDetails: error && error.details ? error.details : null,
+        }
+      );
+    }
+    const metadataParameters =
+      item && Array.isArray(item.parameters) ? item.parameters : [];
+    const matches = metadataParameters.filter(
+      parameter => parameter && parameter.name === parameterName
+    );
+    if (matches.length !== 1) {
+      throw makeError(
+        matches.length
+          ? 'instruction_parameter_name_ambiguous'
+          : 'instruction_parameter_name_not_found',
+        undefined,
+        {
+          instructionType,
+          instructionKind,
+          parameterName,
+          availableParameters: metadataParameters.map(parameter => ({
+            index: parameter.index,
+            name: parameter.name,
+          })),
+        }
+      );
+    }
+    const resolvedIndex = matches[0].index;
+    if (
+      !Number.isInteger(resolvedIndex) ||
+      resolvedIndex < 0 ||
+      resolvedIndex >= parameters.length
+    ) {
+      throw makeError('instruction_parameter_index_out_of_range', undefined, {
+        parameterName,
+        parameterIndex: resolvedIndex,
+        minimum: 0,
+        maximum: Math.max(-1, parameters.length - 1),
+      });
+    }
+    return resolvedIndex;
+  };
+
+  const assertParentInstructionCanHaveChildren = ({
+    instructionJson,
+    instructionKind,
+  }: {|
+    instructionJson: any,
+    instructionKind: string,
+  |}) => {
+    if (
+      !metadataDiscoveryService ||
+      typeof metadataDiscoveryService.describeInstruction !== 'function'
+    ) {
+      return;
+    }
+    const instructionType = getSerializedInstructionType(instructionJson);
+    if (!instructionType) return;
+    try {
+      const described = metadataDiscoveryService.describeInstruction({
+        id: instructionType,
+        kind: instructionKind === 'action' ? 'action' : 'condition',
+        includeHidden: true,
+      });
+      const item = described && described.item;
+      if (item && item.canHaveSubInstructions === false) {
+        throw makeError('instruction_cannot_have_subinstructions', undefined, {
+          instructionType,
+          instructionKind,
+        });
+      }
+    } catch (error) {
+      if (error && error.code === 'instruction_cannot_have_subinstructions') {
+        throw error;
+      }
+      // Ambiguous/unavailable metadata must not make canonical editing
+      // impossible. Native deserialization remains the final authority.
+    }
+  };
+
+  const replacePatchedEvent = ({
+    target,
+    beforeState,
+    eventPath,
+    replacementJson,
+    operation,
+    details,
+  }: {|
+    target: any,
+    beforeState: any,
+    eventPath: Array<number>,
+    replacementJson: any,
+    operation: string,
+    details?: any,
+  |}): any => {
+    const beforeEventJson = getSerializedEventByPath(
+      beforeState.eventsJson,
+      eventPath
+    );
+    const changed =
+      JSON.stringify(beforeEventJson) !== JSON.stringify(replacementJson);
+    const beforeEventNode = findCanonicalNodeByPath(beforeState, eventPath);
+    if (!changed) {
+      return {
+        updated: false,
+        changed: false,
+        ...targetResponseFields(target),
+        beforeEventsRevision: beforeState.eventsRevision,
+        eventsRevision: beforeState.eventsRevision,
+        event: beforeEventNode
+          ? {
+              handle: beforeEventNode.handle,
+              path: beforeEventNode.path,
+              fingerprint: beforeEventNode.fingerprint,
+            }
+          : { handle: null, path: eventPath, fingerprint: null },
+        validation: getPostPatchValidation(target),
+        diff: makePatchDiff({
+          operation,
+          beforeState,
+          afterState: beforeState,
+          details: { changed: false, ...(details || {}) },
+        }),
+      };
+    }
+
+    const replacementEvents = deserializeEvents(project, [replacementJson]);
+    if (replacementEvents.getEventsCount() !== 1) {
+      replacementEvents.delete();
+      throw makeError('invalid_event_json');
+    }
+    const targetLocation = getParentListAndIndex(target.rootEvents, eventPath);
+    const aiGeneratedEventIds = collectAiGeneratedEventIds(replacementEvents);
+    try {
+      targetLocation.parentList.removeEventAt(targetLocation.index);
+      targetLocation.parentList.insertEvents(
+        replacementEvents,
+        0,
+        1,
+        targetLocation.index
+      );
+    } finally {
+      replacementEvents.delete();
+    }
+
+    notifyTargetEventsModified(target, aiGeneratedEventIds);
+    const afterState = getCanonicalEventsState(target.rootEvents);
+    const updatedNode = findCanonicalNodeByPath(afterState, eventPath);
+    return {
+      updated: true,
+      changed: true,
+      ...targetResponseFields(target),
+      beforeEventsRevision: beforeState.eventsRevision,
+      eventsRevision: afterState.eventsRevision,
+      event: updatedNode
+        ? {
+            handle: updatedNode.handle,
+            path: updatedNode.path,
+            fingerprint: updatedNode.fingerprint,
+          }
+        : { handle: null, path: eventPath, fingerprint: null },
+      validation: getPostPatchValidation(target),
+      diff: makePatchDiff({
+        operation,
+        beforeState,
+        afterState,
+        details: { changed: true, ...(details || {}) },
+      }),
+      _afterState: afterState,
+    };
+  };
+
   const readEventsJson = (request: any): any => {
     const target = resolveEventsTarget(project, request);
     const canonicalState = getCanonicalEventsState(target.rootEvents);
@@ -907,6 +1336,7 @@ export const createEventTools = ({
       parentHandle: request.parentHandle,
       beforeHandle: request.beforeHandle,
       afterHandle: request.afterHandle,
+      index: request.index,
     });
     const { targetList, insertionIndex, parentPath } = placement;
 
@@ -1010,6 +1440,7 @@ export const createEventTools = ({
       parentHandle: request.parentHandle,
       beforeHandle: request.beforeHandle,
       afterHandle: request.afterHandle,
+      index: request.index,
     });
 
     if (
@@ -1286,6 +1717,636 @@ export const createEventTools = ({
     };
   };
 
+  const patchEvent = (request: any): any => {
+    const target = resolveEventsTarget(project, request);
+    const beforeState = getCanonicalEventsState(target.rootEvents);
+    assertExpectedEventsRevision(
+      request.expectedEventsRevision,
+      beforeState.eventsRevision
+    );
+    const operation = request.operation;
+    if (
+      !operation ||
+      typeof operation !== 'object' ||
+      Array.isArray(operation)
+    ) {
+      throw makeError('invalid_event_patch_operation');
+    }
+    const operationKind =
+      typeof operation.kind === 'string' ? operation.kind : '';
+
+    if (operationKind === 'instruction.insert') {
+      const eventPath = resolveEventHandle(beforeState, operation.eventHandle);
+      const instructionKind = operation.instructionKind;
+      getInstructionListKey(instructionKind);
+      if (
+        !operation.instructionJson ||
+        typeof operation.instructionJson !== 'object' ||
+        Array.isArray(operation.instructionJson) ||
+        !getSerializedInstructionType(operation.instructionJson) ||
+        !Array.isArray(operation.instructionJson.parameters) ||
+        !Array.isArray(operation.instructionJson.subInstructions)
+      ) {
+        throw makeError('invalid_instruction_json');
+      }
+
+      const siblingHandles = [
+        operation.beforeHandle,
+        operation.afterHandle,
+      ].filter(handle => typeof handle === 'string' && handle);
+      if (
+        siblingHandles.length > 1 ||
+        (siblingHandles.length && operation.parentInstructionHandle) ||
+        (siblingHandles.length && Number.isInteger(operation.index))
+      ) {
+        throw makeError('invalid_instruction_placement');
+      }
+
+      const replacementJson = cloneCanonicalJson(
+        getSerializedEventByPath(beforeState.eventsJson, eventPath)
+      );
+      let parentPath = [];
+      let insertionIndex;
+
+      if (siblingHandles.length) {
+        const sibling = resolveInstructionHandle(
+          beforeState,
+          operation.beforeHandle || operation.afterHandle
+        );
+        if (
+          sibling.instructionKind !== instructionKind ||
+          !pathsEqual(sibling.eventPath, eventPath)
+        ) {
+          throw makeError('instruction_placement_scope_mismatch', undefined, {
+            eventHandle: operation.eventHandle,
+            instructionKind,
+            siblingHandle: sibling.handle,
+            siblingEventHandle: sibling.eventHandle,
+            siblingInstructionKind: sibling.instructionKind,
+          });
+        }
+        parentPath = sibling.path.slice(0, -1);
+        insertionIndex =
+          sibling.path[sibling.path.length - 1] +
+          (operation.afterHandle ? 1 : 0);
+      } else if (operation.parentInstructionHandle) {
+        const parentInstruction = resolveInstructionHandle(
+          beforeState,
+          operation.parentInstructionHandle
+        );
+        if (
+          parentInstruction.instructionKind !== instructionKind ||
+          !pathsEqual(parentInstruction.eventPath, eventPath)
+        ) {
+          throw makeError('instruction_placement_scope_mismatch', undefined, {
+            eventHandle: operation.eventHandle,
+            instructionKind,
+            parentInstructionHandle: parentInstruction.handle,
+            parentEventHandle: parentInstruction.eventHandle,
+            parentInstructionKind: parentInstruction.instructionKind,
+          });
+        }
+        const parentLocation = getInstructionLocation({
+          eventJson: replacementJson,
+          instructionKind,
+          path: parentInstruction.path,
+        });
+        assertParentInstructionCanHaveChildren({
+          instructionJson: parentLocation.list[parentLocation.index],
+          instructionKind,
+        });
+        parentPath = parentInstruction.path;
+      }
+
+      const targetList = getInstructionListForParentPath({
+        eventJson: replacementJson,
+        instructionKind,
+        parentPath,
+      });
+      if (!Number.isInteger(insertionIndex)) {
+        insertionIndex = Number.isInteger(operation.index)
+          ? operation.index
+          : targetList.length;
+      }
+      if (insertionIndex < 0 || insertionIndex > targetList.length) {
+        throw makeError('instruction_insertion_index_out_of_range', undefined, {
+          index: insertionIndex,
+          minimum: 0,
+          maximum: targetList.length,
+        });
+      }
+      targetList.splice(
+        insertionIndex,
+        0,
+        cloneCanonicalJson(operation.instructionJson)
+      );
+      const insertedPath = [...parentPath, insertionIndex];
+      const result = replacePatchedEvent({
+        target,
+        beforeState,
+        eventPath,
+        replacementJson,
+        operation: operationKind,
+        details: {
+          eventHandle: operation.eventHandle,
+          instructionKind,
+          insertedPath,
+        },
+      });
+      const afterState = result._afterState || beforeState;
+      delete result._afterState;
+      const inserted = findCanonicalInstructionByPath({
+        canonicalState: afterState,
+        eventPath,
+        instructionKind,
+        path: insertedPath,
+      });
+      return {
+        ...result,
+        inserted: !!inserted,
+        instruction: summarizeInstruction(inserted),
+        diff: {
+          ...result.diff,
+          instruction: summarizeInstruction(inserted),
+        },
+      };
+    }
+
+    if (operationKind === 'instruction.move') {
+      const instruction = resolveInstructionHandle(
+        beforeState,
+        operation.instructionHandle
+      );
+      const eventPath = instruction.eventPath;
+      const instructionKind = instruction.instructionKind;
+      const replacementJson = cloneCanonicalJson(
+        getSerializedEventByPath(beforeState.eventsJson, eventPath)
+      );
+      const siblingHandles = [
+        operation.beforeHandle,
+        operation.afterHandle,
+      ].filter(handle => typeof handle === 'string' && handle);
+      if (
+        siblingHandles.length > 1 ||
+        (siblingHandles.length && operation.parentInstructionHandle) ||
+        (siblingHandles.length && Number.isInteger(operation.index))
+      ) {
+        throw makeError('invalid_instruction_placement');
+      }
+
+      let parentPath = [];
+      let insertionIndex;
+      if (siblingHandles.length) {
+        const sibling = resolveInstructionHandle(
+          beforeState,
+          operation.beforeHandle || operation.afterHandle
+        );
+        if (
+          sibling.handle === instruction.handle ||
+          sibling.instructionKind !== instructionKind ||
+          !pathsEqual(sibling.eventPath, eventPath)
+        ) {
+          throw makeError('instruction_placement_scope_mismatch', undefined, {
+            instructionHandle: instruction.handle,
+            siblingHandle: sibling.handle,
+          });
+        }
+        parentPath = sibling.path.slice(0, -1);
+        insertionIndex =
+          sibling.path[sibling.path.length - 1] +
+          (operation.afterHandle ? 1 : 0);
+      } else if (operation.parentInstructionHandle) {
+        const parentInstruction = resolveInstructionHandle(
+          beforeState,
+          operation.parentInstructionHandle
+        );
+        if (
+          parentInstruction.handle === instruction.handle ||
+          parentInstruction.instructionKind !== instructionKind ||
+          !pathsEqual(parentInstruction.eventPath, eventPath)
+        ) {
+          throw makeError('instruction_placement_scope_mismatch', undefined, {
+            instructionHandle: instruction.handle,
+            parentInstructionHandle: parentInstruction.handle,
+          });
+        }
+        const parentLocation = getInstructionLocation({
+          eventJson: replacementJson,
+          instructionKind,
+          path: parentInstruction.path,
+        });
+        assertParentInstructionCanHaveChildren({
+          instructionJson: parentLocation.list[parentLocation.index],
+          instructionKind,
+        });
+        parentPath = parentInstruction.path;
+      }
+
+      if (isPathPrefix(instruction.path, parentPath)) {
+        throw makeError('invalid_instruction_move_destination');
+      }
+
+      const sourceParentPath = instruction.path.slice(0, -1);
+      const sourceIndex = instruction.path[instruction.path.length - 1];
+      const sourceLocation = getInstructionLocation({
+        eventJson: replacementJson,
+        instructionKind,
+        path: instruction.path,
+      });
+      const movingInstructionJson = cloneCanonicalJson(
+        sourceLocation.list[sourceLocation.index]
+      );
+
+      const adjustParentPathAfterRemoval = pathToAdjust => {
+        const adjusted = [...pathToAdjust];
+        if (
+          adjusted.length >= instruction.path.length &&
+          pathsEqual(
+            adjusted.slice(0, instruction.path.length - 1),
+            sourceParentPath
+          ) &&
+          adjusted[instruction.path.length - 1] > sourceIndex
+        ) {
+          adjusted[instruction.path.length - 1]--;
+        }
+        return adjusted;
+      };
+
+      if (!Number.isInteger(insertionIndex)) {
+        const preRemovalTargetList = getInstructionListForParentPath({
+          eventJson: replacementJson,
+          instructionKind,
+          parentPath,
+        });
+        insertionIndex = Number.isInteger(operation.index)
+          ? operation.index
+          : preRemovalTargetList.length;
+      }
+      if (
+        pathsEqual(sourceParentPath, parentPath) &&
+        sourceIndex < insertionIndex
+      ) {
+        insertionIndex--;
+      }
+      if (
+        pathsEqual(sourceParentPath, parentPath) &&
+        sourceIndex === insertionIndex
+      ) {
+        throw makeError('instruction_move_noop');
+      }
+
+      sourceLocation.list.splice(sourceLocation.index, 1);
+      const adjustedParentPath = adjustParentPathAfterRemoval(parentPath);
+      const targetList = getInstructionListForParentPath({
+        eventJson: replacementJson,
+        instructionKind,
+        parentPath: adjustedParentPath,
+      });
+      if (insertionIndex < 0 || insertionIndex > targetList.length) {
+        throw makeError('instruction_insertion_index_out_of_range', undefined, {
+          index: insertionIndex,
+          minimum: 0,
+          maximum: targetList.length,
+        });
+      }
+      targetList.splice(insertionIndex, 0, movingInstructionJson);
+      const movedPath = [...adjustedParentPath, insertionIndex];
+
+      const result = replacePatchedEvent({
+        target,
+        beforeState,
+        eventPath,
+        replacementJson,
+        operation: operationKind,
+        details: {
+          instructionHandle: instruction.handle,
+          instructionKind,
+          fromPath: instruction.path,
+          toPath: movedPath,
+        },
+      });
+      const afterState = result._afterState || beforeState;
+      delete result._afterState;
+      const movedInstruction = findCanonicalInstructionByPath({
+        canonicalState: afterState,
+        eventPath,
+        instructionKind,
+        path: movedPath,
+      });
+      return {
+        ...result,
+        moved: true,
+        fromPath: instruction.path,
+        instruction: summarizeInstruction(movedInstruction),
+      };
+    }
+
+    if (operationKind === 'instruction.delete') {
+      const instruction = resolveInstructionHandle(
+        beforeState,
+        operation.instructionHandle
+      );
+      const eventPath = instruction.eventPath;
+      const replacementJson = cloneCanonicalJson(
+        getSerializedEventByPath(beforeState.eventsJson, eventPath)
+      );
+      const location = getInstructionLocation({
+        eventJson: replacementJson,
+        instructionKind: instruction.instructionKind,
+        path: instruction.path,
+      });
+      const deletedJson = cloneCanonicalJson(location.list[location.index]);
+      location.list.splice(location.index, 1);
+      const result = replacePatchedEvent({
+        target,
+        beforeState,
+        eventPath,
+        replacementJson,
+        operation: operationKind,
+        details: {
+          instruction: summarizeInstruction(instruction),
+          deletedType: getSerializedInstructionType(deletedJson),
+        },
+      });
+      delete result._afterState;
+      return {
+        ...result,
+        deleted: true,
+        deletedInstruction: summarizeInstruction(instruction),
+      };
+    }
+
+    if (operationKind === 'instruction.parameter.update') {
+      const instruction = resolveInstructionHandle(
+        beforeState,
+        operation.instructionHandle
+      );
+      const eventPath = instruction.eventPath;
+      const replacementJson = cloneCanonicalJson(
+        getSerializedEventByPath(beforeState.eventsJson, eventPath)
+      );
+      const location = getInstructionLocation({
+        eventJson: replacementJson,
+        instructionKind: instruction.instructionKind,
+        path: instruction.path,
+      });
+      const instructionJson = location.list[location.index];
+      const parameterIndex = resolveInstructionParameterIndex({
+        instructionJson,
+        instructionKind: instruction.instructionKind,
+        parameterIndex: operation.parameterIndex,
+        parameterName: operation.parameterName,
+      });
+      if (typeof operation.value !== 'string') {
+        throw makeError('invalid_instruction_parameter_value');
+      }
+      const beforeValue = instructionJson.parameters[parameterIndex];
+      instructionJson.parameters[parameterIndex] = operation.value;
+      const result = replacePatchedEvent({
+        target,
+        beforeState,
+        eventPath,
+        replacementJson,
+        operation: operationKind,
+        details: {
+          instructionHandle: operation.instructionHandle,
+          instructionKind: instruction.instructionKind,
+          instructionPath: instruction.path,
+          parameterIndex,
+          parameterName:
+            typeof operation.parameterName === 'string'
+              ? operation.parameterName
+              : null,
+          beforeValue,
+          afterValue: operation.value,
+        },
+      });
+      const afterState = result._afterState || beforeState;
+      delete result._afterState;
+      const updatedInstruction = findCanonicalInstructionByPath({
+        canonicalState: afterState,
+        eventPath,
+        instructionKind: instruction.instructionKind,
+        path: instruction.path,
+      });
+      return {
+        ...result,
+        instruction: summarizeInstruction(updatedInstruction),
+        parameter: {
+          index: parameterIndex,
+          name:
+            typeof operation.parameterName === 'string'
+              ? operation.parameterName
+              : null,
+          beforeValue,
+          value: operation.value,
+        },
+      };
+    }
+
+    if (operationKind === 'instruction.flags.update') {
+      const instruction = resolveInstructionHandle(
+        beforeState,
+        operation.instructionHandle
+      );
+      if (
+        instruction.instructionKind !== 'condition' &&
+        instruction.instructionKind !== 'whileCondition'
+      ) {
+        throw makeError('instruction_flag_unsupported', undefined, {
+          instructionHandle: operation.instructionHandle,
+          instructionKind: instruction.instructionKind,
+          flag: 'inverted',
+        });
+      }
+      if (typeof operation.inverted !== 'boolean') {
+        throw makeError('invalid_instruction_flag_value', undefined, {
+          flag: 'inverted',
+        });
+      }
+      const eventPath = instruction.eventPath;
+      const replacementJson = cloneCanonicalJson(
+        getSerializedEventByPath(beforeState.eventsJson, eventPath)
+      );
+      const location = getInstructionLocation({
+        eventJson: replacementJson,
+        instructionKind: instruction.instructionKind,
+        path: instruction.path,
+      });
+      const instructionJson = location.list[location.index];
+      if (
+        !instructionJson.type ||
+        typeof instructionJson.type !== 'object' ||
+        Array.isArray(instructionJson.type)
+      ) {
+        throw makeError('instruction_flag_unsupported', undefined, {
+          instructionHandle: operation.instructionHandle,
+          flag: 'inverted',
+        });
+      }
+      const beforeInverted = !!instructionJson.type.inverted;
+      instructionJson.type.inverted = operation.inverted;
+      const result = replacePatchedEvent({
+        target,
+        beforeState,
+        eventPath,
+        replacementJson,
+        operation: operationKind,
+        details: {
+          instructionHandle: operation.instructionHandle,
+          instructionKind: instruction.instructionKind,
+          instructionPath: instruction.path,
+          beforeInverted,
+          inverted: operation.inverted,
+        },
+      });
+      const afterState = result._afterState || beforeState;
+      delete result._afterState;
+      return {
+        ...result,
+        instruction: summarizeInstruction(
+          findCanonicalInstructionByPath({
+            canonicalState: afterState,
+            eventPath,
+            instructionKind: instruction.instructionKind,
+            path: instruction.path,
+          })
+        ),
+        flags: {
+          before: { inverted: beforeInverted },
+          after: { inverted: operation.inverted },
+        },
+      };
+    }
+
+    if (operationKind === 'event.flags.update') {
+      const eventPath = resolveEventHandle(beforeState, operation.eventHandle);
+      const replacementJson = cloneCanonicalJson(
+        getSerializedEventByPath(beforeState.eventsJson, eventPath)
+      );
+      const requestedFlags = {};
+      const beforeFlags = {};
+      if (operation.enabled !== undefined) {
+        if (
+          typeof operation.enabled !== 'boolean' ||
+          !Object.prototype.hasOwnProperty.call(replacementJson, 'disabled')
+        ) {
+          throw makeError('event_flag_unsupported', undefined, {
+            eventHandle: operation.eventHandle,
+            flag: 'enabled',
+          });
+        }
+        beforeFlags.enabled = !replacementJson.disabled;
+        requestedFlags.enabled = operation.enabled;
+        replacementJson.disabled = !operation.enabled;
+      }
+      if (operation.folded !== undefined) {
+        if (
+          typeof operation.folded !== 'boolean' ||
+          !Object.prototype.hasOwnProperty.call(replacementJson, 'folded')
+        ) {
+          throw makeError('event_flag_unsupported', undefined, {
+            eventHandle: operation.eventHandle,
+            flag: 'folded',
+          });
+        }
+        beforeFlags.folded = !!replacementJson.folded;
+        requestedFlags.folded = operation.folded;
+        replacementJson.folded = operation.folded;
+      }
+      if (!Object.keys(requestedFlags).length) {
+        throw makeError('empty_event_flags_patch');
+      }
+      const result = replacePatchedEvent({
+        target,
+        beforeState,
+        eventPath,
+        replacementJson,
+        operation: operationKind,
+        details: {
+          eventHandle: operation.eventHandle,
+          beforeFlags,
+          flags: requestedFlags,
+        },
+      });
+      delete result._afterState;
+      return {
+        ...result,
+        flags: { before: beforeFlags, after: requestedFlags },
+      };
+    }
+
+    if (operationKind === 'event.fields.update') {
+      const eventPath = resolveEventHandle(beforeState, operation.eventHandle);
+      const replacementJson = cloneCanonicalJson(
+        getSerializedEventByPath(beforeState.eventsJson, eventPath)
+      );
+      const fields = operation.fields;
+      if (!fields || typeof fields !== 'object' || Array.isArray(fields)) {
+        throw makeError('invalid_event_fields_patch');
+      }
+      const keys = Object.keys(fields);
+      if (!keys.length) throw makeError('empty_event_fields_patch');
+      const supportedFields = ['comment', 'name', 'source'];
+      const unsupportedField = keys.find(
+        field => !supportedFields.includes(field)
+      );
+      if (unsupportedField) {
+        throw makeError('event_field_unsupported', undefined, {
+          field: unsupportedField,
+          supportedFields,
+        });
+      }
+      const beforeFields = {};
+      keys.forEach(field => {
+        if (
+          typeof fields[field] !== 'string' ||
+          !Object.prototype.hasOwnProperty.call(replacementJson, field)
+        ) {
+          throw makeError('event_field_unsupported', undefined, {
+            eventHandle: operation.eventHandle,
+            field,
+            supportedFields: supportedFields.filter(candidate =>
+              Object.prototype.hasOwnProperty.call(replacementJson, candidate)
+            ),
+          });
+        }
+        beforeFields[field] = replacementJson[field];
+        replacementJson[field] = fields[field];
+      });
+      const result = replacePatchedEvent({
+        target,
+        beforeState,
+        eventPath,
+        replacementJson,
+        operation: operationKind,
+        details: {
+          eventHandle: operation.eventHandle,
+          beforeFields,
+          fields,
+        },
+      });
+      delete result._afterState;
+      return {
+        ...result,
+        fields: { before: beforeFields, after: fields },
+      };
+    }
+
+    throw makeError('unsupported_event_patch_operation', undefined, {
+      operation: operationKind,
+      supportedOperations: [
+        'instruction.insert',
+        'instruction.move',
+        'instruction.delete',
+        'instruction.parameter.update',
+        'instruction.flags.update',
+        'event.flags.update',
+        'event.fields.update',
+      ],
+    });
+  };
+
   const applyEventsJson = (request: any): any => {
     const target = resolveEventsTarget(project, request);
     const mode = request.mode === 'append' ? 'append' : 'replace';
@@ -1333,6 +2394,7 @@ export const createEventTools = ({
     moveEvent,
     updateEvent,
     updateEventStyle,
+    patchEvent,
     applyEventsJson,
     // Compatibility aliases for renderer callers/tests written before event
     // targets were generalized beyond scenes.
