@@ -57,6 +57,40 @@ test('preview.viewport.set advertises exact bounded content sizing', () => {
   assert.equal(descriptor.metadata.idempotent, true);
 });
 
+test('preview input exposes canonical deterministic inspect/interact schemas', () => {
+  const inspect = DESCRIPTORS.find(
+    candidate => candidate.name === 'preview.input.inspect'
+  );
+  const interact = DESCRIPTORS.find(
+    candidate => candidate.name === 'preview.input.interact'
+  );
+  assert.ok(inspect);
+  assert.ok(interact);
+  assert.equal(inspect.metadata.readOnly, true);
+  assert.equal(interact.metadata.longRunning, true);
+  assert.deepEqual(interact.inputSchema.properties.action.enum, [
+    'move',
+    'hover',
+    'press',
+    'release',
+    'click',
+    'double-click',
+    'drag',
+  ]);
+  assert.equal(
+    interact.inputSchema.properties.target.properties.instanceId.type,
+    'integer'
+  );
+  assert.equal(
+    interact.inputSchema.properties.waitFor.properties.timeoutMs.maximum,
+    10000
+  );
+  assert.deepEqual(interact.inputSchema.properties.coordinateSpace.enum, [
+    'viewport',
+    'scene',
+  ]);
+});
+
 test('executes windows, viewport, capture and preview input through injected services', async () => {
   const calls = [];
   const registry = createDesktopCommandRegistry({
@@ -90,6 +124,21 @@ test('executes windows, viewport, capture and preview input through injected ser
       },
     },
     previewInteractionService: {
+      inspect: async input => {
+        calls.push(['inspect', input]);
+        return {
+          previewWindowId: input.previewWindowId,
+          point: { x: 100, y: 120 },
+        };
+      },
+      interact: async input => {
+        calls.push(['interact', input]);
+        return {
+          previewWindowId: input.previewWindowId,
+          action: input.action,
+          dispatched: [],
+        };
+      },
       sendInput: input => {
         calls.push(['sendInput', input]);
         return { sent: true };
@@ -317,7 +366,6 @@ test('rejects unknown desktop commands', async () => {
   );
 });
 
-
 test('routes managed temp workspace commands with caller identity metadata', async () => {
   const calls = [];
   const identity = {
@@ -415,9 +463,11 @@ test('routes managed temp workspace commands with caller identity metadata', asy
     requestContext,
   });
 
-  assert.deepEqual(
-    calls.map(call => call[0]),
-    ['create', 'write', 'read', 'release']
-  );
+  assert.deepEqual(calls.map(call => call[0]), [
+    'create',
+    'write',
+    'read',
+    'release',
+  ]);
   calls.forEach(call => assert.deepEqual(call[2].identity, identity));
 });

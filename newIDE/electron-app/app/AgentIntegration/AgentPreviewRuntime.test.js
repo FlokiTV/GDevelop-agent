@@ -11,7 +11,14 @@ const makeHarness = () => {
   const canvasEvents = [];
   const windowEvents = [];
   const canvas = {
-    getBoundingClientRect: () => ({ width: 800, height: 600 }),
+    tagName: 'CANVAS',
+    style: { cursor: 'pointer' },
+    getBoundingClientRect: () => ({
+      left: 10,
+      top: 20,
+      width: 800,
+      height: 600,
+    }),
     focus: () => {},
     dispatchEvent: event => {
       canvasEvents.push(event);
@@ -59,7 +66,9 @@ const makeHarness = () => {
     performance: { now: () => 123 },
     navigator: { getGamepads: () => [] },
     document: {
+      body: { style: { cursor: '' } },
       querySelectorAll: selector => (selector === 'canvas' ? [canvas] : []),
+      elementFromPoint: () => canvas,
     },
   };
   context.window = context;
@@ -75,6 +84,27 @@ const makeHarness = () => {
   context.window.dispatchEvent = event => {
     windowEvents.push(event);
     return true;
+  };
+  context.window.getComputedStyle = element => ({
+    cursor:
+      element && element.style ? element.style.cursor || 'default' : 'default',
+  });
+  context.window.requestAnimationFrame = callback => {
+    const runtimeGame = context.window.__GDevelopAgentRuntimeGame;
+    const sceneStack =
+      runtimeGame && typeof runtimeGame.getSceneStack === 'function'
+        ? runtimeGame.getSceneStack()
+        : null;
+    const scene =
+      sceneStack && typeof sceneStack.getCurrentScene === 'function'
+        ? sceneStack.getCurrentScene()
+        : null;
+    if (scene && scene._timeManager) {
+      scene._timeManager._elapsedTime = 16;
+      scene._timeManager._timeFromStart += 16;
+    }
+    callback(16);
+    return 1;
   };
   const vmContext = vm.createContext(context);
 
@@ -128,7 +158,7 @@ test('installs runtime and dispatches a synthetic touch to the game canvas', asy
   const { runtime, canvasEvents } = makeHarness();
   const status = await runtime.ensureInstalled(12);
   assert.equal(status.installed, true);
-  assert.equal(status.version, 3);
+  assert.equal(status.version, 4);
 
   const result = await runtime.call(
     12,
@@ -305,6 +335,193 @@ test('captures a bounded structured runtime snapshot without serializing Runtime
   assert.equal(snapshot.truncatedInstances, 1);
 });
 
+test('inspects scaled runtime hitboxes and excludes hidden stale controls from hit ownership', async () => {
+  const { runtime, context } = makeHarness();
+  const layer = {
+    isVisible: () => true,
+    getCameraRotationX: () => 0,
+    getCameraRotationY: () => 0,
+    getWidth: () => 400,
+    getHeight: () => 300,
+    convertInverseCoords: (x, y, z, result) => {
+      result[0] = x;
+      result[1] = y;
+      return result;
+    },
+    convertCoords: (x, y, z, result) => {
+      result[0] = x;
+      result[1] = y;
+      return result;
+    },
+  };
+  const makeObject = ({ name, id, hidden, zOrder }) => ({
+    id,
+    name,
+    type: 'Sprite',
+    livingOnScene: true,
+    getName: () => name,
+    getLayer: () => '',
+    getZOrder: () => zOrder,
+    isHidden: () => hidden,
+    getWidth: () => 40,
+    getHeight: () => 40,
+    getCenterXInScene: () => 60,
+    getCenterYInScene: () => 50,
+    getDrawableX: () => 40,
+    getDrawableY: () => 30,
+    getAABB: () => ({ min: [40, 30], max: [80, 70] }),
+    getHitBoxes: () => [{ vertices: [[40, 30], [80, 30], [80, 70], [40, 70]] }],
+    _variables: { _variables: { items: {} } },
+    _behaviors: [],
+  });
+  const stale = makeObject({
+    name: 'LegacyButton',
+    id: 1,
+    hidden: true,
+    zOrder: 99,
+  });
+  const replacement = makeObject({
+    name: 'VisibleButton',
+    id: 2,
+    hidden: false,
+    zOrder: 1,
+  });
+  const noHit = {
+    ...makeObject({
+      name: 'NoHitButton',
+      id: 3,
+      hidden: false,
+      zOrder: 0,
+    }),
+    getHitBoxes: () => [],
+  };
+  const scene = {
+    _name: 'Interaction',
+    getName: () => 'Interaction',
+    _timeManager: {
+      _elapsedTime: 16,
+      _timeFromStart: 100,
+      _timeScale: 1,
+    },
+    _variables: {
+      _variables: {
+        items: {
+          Tab: { _type: 'string', _str: 'shop' },
+        },
+      },
+    },
+    _instances: {
+      items: {
+        LegacyButton: [stale],
+        VisibleButton: [replacement],
+        NoHitButton: [noHit],
+      },
+    },
+    _orderedLayers: [layer],
+    getLayer: () => layer,
+  };
+  context.window.__GDevelopAgentRuntimeGame = {
+    getGameResolutionWidth: () => 400,
+    getGameResolutionHeight: () => 300,
+    getRenderer: () => ({
+      getCanvas: () => context.document.querySelectorAll('canvas')[0],
+    }),
+    getSceneStack: () => ({
+      getCurrentScene: () => scene,
+    }),
+    _variables: { _variables: { items: {} } },
+  };
+
+  const inspected = await runtime.call(12, 'inspect', {
+    target: { objectName: 'VisibleButton' },
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(inspected.result.point)), {
+    x: 130,
+    y: 120,
+    coordinateSpace: 'viewport-css-px',
+    insideViewport: true,
+    insideCanvas: true,
+  });
+  assert.equal(inspected.result.target.size.width, 40);
+  assert.equal(inspected.result.target.viewport.bounds.width, 80);
+  assert.equal(inspected.result.target.viewport.bounds.height, 80);
+  assert.equal(
+    inspected.result.hitTest.owner.identity.objectName,
+    'VisibleButton'
+  );
+  assert.equal(inspected.result.hitTest.excluded.length, 1);
+  assert.equal(
+    inspected.result.hitTest.excluded[0].identity.objectName,
+    'LegacyButton'
+  );
+  assert.deepEqual(
+    Array.from(inspected.result.hitTest.excluded[0].state.blockedReasons),
+    ['hidden']
+  );
+  assert.equal(inspected.result.pointer.cursor, 'pointer');
+  assert.equal(inspected.result.viewport.devicePixelRatio, 1.25);
+
+  const hidden = await runtime.call(12, 'inspect', {
+    target: { objectName: 'LegacyButton' },
+  });
+  assert.equal(
+    hidden.result.diagnostics.some(
+      diagnostic => diagnostic.code === 'preview_target_hidden'
+    ),
+    true
+  );
+  assert.equal(
+    hidden.result.hitTest.owner.identity.objectName,
+    'VisibleButton'
+  );
+
+  const noHitResult = await runtime.call(12, 'inspect', {
+    target: { objectName: 'NoHitButton' },
+  });
+  assert.equal(
+    noHitResult.result.diagnostics.some(
+      diagnostic => diagnostic.code === 'preview_target_not_hit_testable'
+    ),
+    true
+  );
+
+  const outside = await runtime.call(12, 'inspect', {
+    x: 2000,
+    y: 2000,
+    coordinateSpace: 'viewport',
+  });
+  assert.equal(
+    outside.result.diagnostics.some(
+      diagnostic => diagnostic.code === 'preview_target_outside_viewport'
+    ),
+    true
+  );
+  assert.equal(
+    outside.result.diagnostics.some(
+      diagnostic => diagnostic.code === 'preview_target_outside_canvas'
+    ),
+    true
+  );
+
+  const synchronized = await runtime.call(12, 'synchronize', {
+    maxFrames: 2,
+    timeoutMs: 100,
+  });
+  assert.equal(synchronized.result.processed, true);
+  assert.ok(synchronized.result.after.timeFromStartMs > 100);
+
+  const state = await runtime.call(12, 'waitForState', {
+    scope: 'scene',
+    variable: 'Tab',
+    operator: 'equals',
+    value: 'shop',
+    timeoutMs: 100,
+    stableFrames: 1,
+  });
+  assert.equal(state.result.matched, true);
+  assert.equal(state.result.evaluation.actual, 'shop');
+});
+
 test('captured RuntimeGame identity is authoritative over a stale window.game alias', async () => {
   const { runtime, context } = makeHarness();
   const capturedMessages = [];
@@ -322,7 +539,7 @@ test('captured RuntimeGame identity is authoritative over a stale window.game al
   };
 
   const status = await runtime.ensureInstalled(12, { focus: false });
-  assert.equal(status.version, 3);
+  assert.equal(status.version, 4);
   assert.equal(status.identity.announced, true);
   assert.equal(capturedMessages.length, 1);
   assert.equal(staleMessages.length, 0);

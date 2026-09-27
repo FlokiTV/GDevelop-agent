@@ -321,6 +321,26 @@ const createPreviewInputTools = ({
     };
   };
 
+  const getInputState = ({ windowId }) => {
+    const targetWindow = resolvePreviewWindow({
+      BrowserWindow,
+      isEditorWindow,
+      isRegisteredPreviewWindow,
+      windowId,
+    });
+    return {
+      windowId: targetWindow.id,
+      pressedKeys: Array.from(pressedKeysByWindow.get(targetWindow.id) || []),
+      pressedButtons: Array.from(
+        pressedButtonsByWindow.get(targetWindow.id) || []
+      ),
+      pointer: lastMousePositionByWindow.get(targetWindow.id) || {
+        x: null,
+        y: null,
+      },
+    };
+  };
+
   const resetInput = ({ windowId }) => {
     const targetWindow = resolvePreviewWindow({
       BrowserWindow,
@@ -368,6 +388,7 @@ const createPreviewInputTools = ({
   return {
     sendInput,
     sendSequence,
+    getInputState,
     resetInput,
   };
 };

@@ -1,0 +1,81 @@
+{
+  "schemaVersion": 1,
+  "task": "DX-22 — Deterministic preview input, hit-test and interaction QA",
+  "agent": "GDevelop-Input-A1",
+  "date": "2026-09-27",
+  "implementation": {
+    "tools": [
+      "preview.input.inspect",
+      "preview.input.interact"
+    ],
+    "actions": [
+      "move",
+      "hover",
+      "press",
+      "release",
+      "click",
+      "double-click",
+      "drag"
+    ],
+    "selectorFields": [
+      "objectName",
+      "instanceId",
+      "instanceIndex"
+    ],
+    "coordinateSpaces": [
+      "viewport",
+      "scene"
+    ],
+    "frameSynchronized": true,
+    "fixedSleepInCanonicalPath": false,
+    "waitForState": true,
+    "assertAfterInput": true,
+    "hitTestAuthority": "RuntimeObject hitboxes + RuntimeLayer transforms/order/visibility",
+    "hiddenCandidatesExcludedFromOwnership": true,
+    "disabledLegacyAuthority": "explicit runtime state predicates; no name/visual heuristics"
+  },
+  "acceptance": {
+    "broadRegression": {
+      "passed": 62,
+      "failed": 0
+    },
+    "runtimeUnit": {
+      "passed": 7,
+      "failed": 0
+    },
+    "interactionService": {
+      "passed": 6,
+      "failed": 0
+    },
+    "deterministicAcceptance": {
+      "passed": 3,
+      "failed": 0
+    },
+    "repeatedIdenticalClicks": {
+      "iterations": 20,
+      "uniqueSignatures": 1
+    },
+    "cases": [
+      "tab switching",
+      "language toggle",
+      "buy",
+      "locked upgrade ignored",
+      "unlocked upgrade applied",
+      "hidden stale rejected",
+      "visible replacement owns overlap"
+    ],
+    "contractsPreserved": [
+      "MCP response envelope",
+      "preview target isolation",
+      "official MCP transport",
+      "legacy raw preview input"
+    ]
+  },
+  "commands": [
+    "node --test newIDE/electron-app/app/AgentIntegration/AgentPreviewRuntime.test.js",
+    "node --test newIDE/electron-app/app/AgentIntegration/PreviewInteractionService.test.js",
+    "node --test newIDE/electron-app/app/AgentIntegration/PreviewDeterministicInteractionAcceptance.test.js",
+    "node --test <10-file DX-22 regression set> (62/62 passed)",
+    "git diff --check"
+  ]
+}

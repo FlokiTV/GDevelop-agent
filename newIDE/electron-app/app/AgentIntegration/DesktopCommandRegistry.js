@@ -4,6 +4,55 @@ const PREVIEW_WINDOW_SCHEMA = {
   description: 'Electron window id of a running GDevelop preview.',
 };
 
+const PREVIEW_TARGET_SELECTOR_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    objectName: { type: 'string', minLength: 1, maxLength: 500 },
+    instanceId: { type: 'integer', minimum: 0 },
+    instanceIndex: { type: 'integer', minimum: 0, maximum: 100000 },
+  },
+  description:
+    'Runtime-object selector. Provide objectName and optional instanceIndex, or a runtime instanceId from runtime/preview inspection.',
+};
+
+const PREVIEW_STATE_CONDITION_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['variable'],
+  properties: {
+    scope: { type: 'string', enum: ['scene', 'global'] },
+    variable: { type: 'string', minLength: 1, maxLength: 500 },
+    operator: {
+      type: 'string',
+      enum: [
+        'equals',
+        'not-equals',
+        'gt',
+        'gte',
+        'lt',
+        'lte',
+        'truthy',
+        'falsy',
+      ],
+    },
+    value: {},
+    timeoutMs: { type: 'integer', minimum: 1, maximum: 10000 },
+    stableFrames: { type: 'integer', minimum: 1, maximum: 10 },
+  },
+};
+
+const PREVIEW_CONTROL_STATE_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    disabledWhen: PREVIEW_STATE_CONDITION_SCHEMA,
+    legacyWhen: PREVIEW_STATE_CONDITION_SCHEMA,
+  },
+  description:
+    'Optional explicit runtime-state predicates used to classify disabled/legacy controls without guessing from names or visuals.',
+};
+
 const emptyObjectSchema = () => ({
   type: 'object',
   additionalProperties: false,
@@ -227,6 +276,81 @@ const DESCRIPTORS = [
       },
     },
     metadata: metadata({ idempotent: true, longRunning: true }),
+  },
+  {
+    name: 'preview.input.inspect',
+    description:
+      'Resolve a preview runtime object selector or coordinate into authoritative runtime bounds, transformed hitboxes, hit-test owner, visibility diagnostics, viewport/DPI mapping and cursor state without dispatching input.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['previewWindowId'],
+      properties: {
+        previewWindowId: PREVIEW_WINDOW_SCHEMA,
+        target: PREVIEW_TARGET_SELECTOR_SCHEMA,
+        x: { type: 'number' },
+        y: { type: 'number' },
+        coordinateSpace: {
+          type: 'string',
+          enum: ['viewport', 'scene'],
+          description:
+            'viewport means Electron content CSS pixels; scene uses RuntimeLayer coordinates and optional layer.',
+        },
+        layer: { type: 'string', maxLength: 500 },
+        controlState: PREVIEW_CONTROL_STATE_SCHEMA,
+      },
+    },
+    metadata: metadata({ readOnly: true, idempotent: true }),
+  },
+  {
+    name: 'preview.input.interact',
+    description:
+      'Deterministically move/hover/press/release/click/double-click/drag a preview target or coordinate. Every state-changing mouse event is followed by an observed runtime frame; optional waitFor/assertAfter use runtime variables instead of sleeps.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['previewWindowId', 'action'],
+      properties: {
+        previewWindowId: PREVIEW_WINDOW_SCHEMA,
+        action: {
+          type: 'string',
+          enum: [
+            'move',
+            'hover',
+            'press',
+            'release',
+            'click',
+            'double-click',
+            'drag',
+          ],
+        },
+        target: PREVIEW_TARGET_SELECTOR_SCHEMA,
+        x: { type: 'number' },
+        y: { type: 'number' },
+        coordinateSpace: { type: 'string', enum: ['viewport', 'scene'] },
+        layer: { type: 'string', maxLength: 500 },
+        button: { type: 'string', enum: ['left', 'middle', 'right'] },
+        allowOccluded: { type: 'boolean' },
+        controlState: PREVIEW_CONTROL_STATE_SCHEMA,
+        toTarget: PREVIEW_TARGET_SELECTOR_SCHEMA,
+        toX: { type: 'number' },
+        toY: { type: 'number' },
+        toCoordinateSpace: { type: 'string', enum: ['viewport', 'scene'] },
+        toLayer: { type: 'string', maxLength: 500 },
+        allowDestinationOccluded: { type: 'boolean' },
+        toControlState: PREVIEW_CONTROL_STATE_SCHEMA,
+        dragSteps: { type: 'integer', minimum: 1, maximum: 20 },
+        frameTimeoutMs: { type: 'integer', minimum: 1, maximum: 10000 },
+        frameMaxAnimationFrames: {
+          type: 'integer',
+          minimum: 1,
+          maximum: 120,
+        },
+        waitFor: PREVIEW_STATE_CONDITION_SCHEMA,
+        assertAfter: PREVIEW_STATE_CONDITION_SCHEMA,
+      },
+    },
+    metadata: metadata({ longRunning: true }),
   },
   {
     name: 'preview.input.send',
@@ -468,7 +592,8 @@ const DESCRIPTORS = [
         mode: {
           type: 'string',
           enum: ['exact', 'pixel-tolerance', 'perceptual'],
-          description: 'Comparison mode. Defaults to exact for backwards compatibility.',
+          description:
+            'Comparison mode. Defaults to exact for backwards compatibility.',
         },
         channelThreshold: { type: 'integer', minimum: 0, maximum: 255 },
         maxDifferentPixelRatio: { type: 'number', minimum: 0, maximum: 1 },
@@ -701,6 +826,10 @@ const createDesktopCommandRegistry = ({
       previewViewportService.status(input || {}),
     'preview.viewport.set': input =>
       previewViewportService.setViewport(input || {}),
+    'preview.input.inspect': input =>
+      previewInteractionService.inspect(input || {}),
+    'preview.input.interact': input =>
+      previewInteractionService.interact(input || {}),
     'preview.input.send': input =>
       previewInteractionService.sendInput(input || {}),
     'preview.input.sequence': input =>
