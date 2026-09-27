@@ -8,6 +8,7 @@ const {
   createManagedTempWorkspaceService,
 } = require('./ManagedTempWorkspaceService');
 const { createPreviewQaService } = require('./PreviewQaService');
+const { createPreviewLayoutService } = require('./PreviewLayoutService');
 const { createPreviewViewportService } = require('./PreviewViewportService');
 const {
   createMultiplayerPreviewService,
@@ -73,6 +74,10 @@ const createDesktopIntegrationHost = ({
     previewInteractionService,
     previewViewportService,
   });
+  const previewLayoutService = createPreviewLayoutService({
+    windowCaptureService,
+    previewInteractionService,
+  });
   const multiplayerPreviewService = createMultiplayerPreviewService({
     BrowserWindow,
     isRegisteredPreviewWindow,
@@ -91,6 +96,7 @@ const createDesktopIntegrationHost = ({
     previewInteractionService,
     previewViewportService,
     previewQaService,
+    previewLayoutService,
     multiplayerPreviewService,
     previewNetworkDiagnosticsService,
   });
@@ -115,6 +121,7 @@ const createDesktopIntegrationHost = ({
     previewRuntimeSnapshotIpc,
     previewLifecycleIpc,
     previewQaService,
+    previewLayoutService,
     previewViewportService,
     multiplayerPreviewService,
     previewNetworkDiagnosticsService,

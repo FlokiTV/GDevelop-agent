@@ -53,6 +53,105 @@ const PREVIEW_CONTROL_STATE_SCHEMA = {
     'Optional explicit runtime-state predicates used to classify disabled/legacy controls without guessing from names or visuals.',
 };
 
+const PREVIEW_LAYOUT_REGION_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['name', 'x', 'y', 'width', 'height'],
+  properties: {
+    name: { type: 'string', minLength: 1, maxLength: 160 },
+    x: { type: 'number' },
+    y: { type: 'number' },
+    width: { type: 'number', exclusiveMinimum: 0 },
+    height: { type: 'number', exclusiveMinimum: 0 },
+  },
+  description:
+    'Caller-declared named region in preview viewport CSS pixels for structural containment or safe-area assertions.',
+};
+
+const PREVIEW_LAYOUT_TARGET_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    id: { type: 'string', minLength: 1, maxLength: 160 },
+    kind: { type: 'string', enum: ['object', 'layer', 'region'] },
+    objectName: { type: 'string', minLength: 1, maxLength: 500 },
+    instanceId: { type: 'integer', minimum: 0 },
+    instanceIndex: { type: 'integer', minimum: 0, maximum: 100000 },
+    layer: { type: 'string', minLength: 1, maxLength: 500 },
+    region: { type: 'string', minLength: 1, maxLength: 160 },
+    includeHidden: { type: 'boolean' },
+  },
+  description:
+    'Structural target selector. Object targets use objectName/instanceId/instanceIndex, layer targets use layer, and region targets reference a named region.',
+};
+
+const PREVIEW_LAYOUT_ASSERTION_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['type'],
+  properties: {
+    id: { type: 'string', minLength: 1, maxLength: 160 },
+    type: {
+      type: 'string',
+      enum: [
+        'visible',
+        'not-clipped',
+        'within',
+        'no-overlap',
+        'min-gap',
+        'align',
+        'safe-area',
+        'text-fit',
+      ],
+    },
+    severity: { type: 'string', enum: ['error', 'warning', 'info'] },
+    targets: {
+      type: 'array',
+      maxItems: 200,
+      items: { type: 'string', minLength: 1, maxLength: 160 },
+    },
+    includeHidden: { type: 'boolean' },
+    scope: { type: 'string', enum: ['viewport', 'canvas'] },
+    container: { type: 'string', minLength: 1, maxLength: 160 },
+    region: { type: 'string', minLength: 1, maxLength: 160 },
+    padding: { type: 'number', minimum: 0 },
+    allowPairs: {
+      type: 'array',
+      maxItems: 200,
+      items: {
+        type: 'array',
+        minItems: 2,
+        maxItems: 2,
+        items: { type: 'string', minLength: 1, maxLength: 160 },
+      },
+    },
+    axis: { type: 'string', enum: ['horizontal', 'vertical'] },
+    minimum: { type: 'number', minimum: 0 },
+    edge: {
+      type: 'string',
+      enum: ['left', 'right', 'top', 'bottom', 'center-x', 'center-y'],
+    },
+    tolerance: { type: 'number', minimum: 0 },
+    relation: { type: 'string', enum: ['inside', 'outside'] },
+    textTarget: { type: 'string', minLength: 1, maxLength: 160 },
+  },
+  description:
+    'Deterministic structural assertion evaluated against resolved runtime visual bounds.',
+};
+
+const PREVIEW_CAPTURE_REGION_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['x', 'y', 'width', 'height'],
+  properties: {
+    x: { type: 'number' },
+    y: { type: 'number' },
+    width: { type: 'number', exclusiveMinimum: 0 },
+    height: { type: 'number', exclusiveMinimum: 0 },
+  },
+  description: 'Explicit preview viewport rectangle in CSS pixels.',
+};
+
 const emptyObjectSchema = () => ({
   type: 'object',
   additionalProperties: false,
@@ -276,6 +375,95 @@ const DESCRIPTORS = [
       },
     },
     metadata: metadata({ idempotent: true, longRunning: true }),
+  },
+  {
+    name: 'preview.layout.capabilities',
+    description:
+      'Describe MCP-native structural preview layout inspection, assertions, hidden-object semantics, text-fit authority and bounds-based region capture.',
+    inputSchema: emptyObjectSchema(),
+    metadata: metadata({ readOnly: true, idempotent: true }),
+  },
+  {
+    name: 'preview.layout.inspect',
+    description:
+      'Resolve runtime object/instance, layer and named-region selectors into structured scene/viewport bounds, transformed hitboxes, visibility and clipping diagnostics without game instrumentation.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['previewWindowId', 'targets'],
+      properties: {
+        previewWindowId: PREVIEW_WINDOW_SCHEMA,
+        targets: {
+          type: 'array',
+          minItems: 1,
+          maxItems: 200,
+          items: PREVIEW_LAYOUT_TARGET_SCHEMA,
+        },
+        regions: {
+          type: 'array',
+          maxItems: 200,
+          items: PREVIEW_LAYOUT_REGION_SCHEMA,
+        },
+        maxInstances: { type: 'integer', minimum: 1, maximum: 1000 },
+      },
+    },
+    metadata: metadata({ readOnly: true, idempotent: true }),
+  },
+  {
+    name: 'preview.layout.assert',
+    description:
+      'Run deterministic structural layout assertions for visibility, clipping/offscreen, containment, overlap, gaps, alignment, safe areas and runtime text-fit, returning machine-readable violations.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['previewWindowId', 'targets', 'assertions'],
+      properties: {
+        previewWindowId: PREVIEW_WINDOW_SCHEMA,
+        targets: {
+          type: 'array',
+          minItems: 1,
+          maxItems: 200,
+          items: PREVIEW_LAYOUT_TARGET_SCHEMA,
+        },
+        regions: {
+          type: 'array',
+          maxItems: 200,
+          items: PREVIEW_LAYOUT_REGION_SCHEMA,
+        },
+        assertions: {
+          type: 'array',
+          minItems: 1,
+          maxItems: 200,
+          items: PREVIEW_LAYOUT_ASSERTION_SCHEMA,
+        },
+        maxInstances: { type: 'integer', minimum: 1, maximum: 1000 },
+      },
+    },
+    metadata: metadata({ readOnly: true, idempotent: true }),
+  },
+  {
+    name: 'preview.capture.region',
+    description:
+      'Capture only an explicit preview rectangle or the resolved transformed bounds of one runtime object/instance, optionally padded and clamped to the logical viewport, and return the actual captured region.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['previewWindowId'],
+      properties: {
+        previewWindowId: PREVIEW_WINDOW_SCHEMA,
+        target: PREVIEW_TARGET_SELECTOR_SCHEMA,
+        region: PREVIEW_CAPTURE_REGION_SCHEMA,
+        padding: { type: 'number', minimum: 0, maximum: 8192 },
+        clampToViewport: { type: 'boolean' },
+        maxInstances: { type: 'integer', minimum: 1, maximum: 1000 },
+        maxWidth: { type: 'integer', minimum: 1, maximum: 8192 },
+        maxHeight: { type: 'integer', minimum: 1, maximum: 8192 },
+        captureAttempts: { type: 'integer', minimum: 1, maximum: 8 },
+        retryDelayMs: { type: 'integer', minimum: 0, maximum: 2000 },
+        readyTimeoutMs: { type: 'integer', minimum: 0, maximum: 10000 },
+      },
+    },
+    metadata: metadata({ readOnly: true, idempotent: true, longRunning: true }),
   },
   {
     name: 'preview.input.inspect',
@@ -783,6 +971,7 @@ const createDesktopCommandRegistry = ({
   previewInteractionService,
   previewViewportService,
   previewQaService,
+  previewLayoutService,
   multiplayerPreviewService,
   previewNetworkDiagnosticsService,
 }) => {
@@ -826,6 +1015,12 @@ const createDesktopCommandRegistry = ({
       previewViewportService.status(input || {}),
     'preview.viewport.set': input =>
       previewViewportService.setViewport(input || {}),
+    'preview.layout.capabilities': () => previewLayoutService.capabilities(),
+    'preview.layout.inspect': input =>
+      previewLayoutService.inspect(input || {}),
+    'preview.layout.assert': input => previewLayoutService.assert(input || {}),
+    'preview.capture.region': input =>
+      previewLayoutService.captureRegion(input || {}),
     'preview.input.inspect': input =>
       previewInteractionService.inspect(input || {}),
     'preview.input.interact': input =>

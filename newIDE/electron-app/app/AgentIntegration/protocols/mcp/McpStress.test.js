@@ -101,6 +101,11 @@ test('runs 50 mutate hot-reload snapshot cycles over one MCP server without rest
           meta: { traceId: null, readOnly: true, modifiesProject: false },
         };
       }
+      if (options.command === 'events.nodes.describe') {
+        const error = new Error('metadata_event_node_not_found');
+        error.code = 'metadata_event_node_not_found';
+        throw error;
+      }
       if (options.command === 'events.update') {
         assert.equal(options.expectedRevision, projectRevision);
         projectRevision++;
@@ -204,7 +209,12 @@ test('runs 50 mutate hot-reload snapshot cycles over one MCP server without rest
     const executedCommands = calls.filter(
       call => call.command !== 'agent.commands.list'
     );
-    assert.equal(executedCommands.length, 150);
+    assert.equal(executedCommands.length, 200);
+    assert.equal(
+      executedCommands.filter(call => call.command === 'events.nodes.describe')
+        .length,
+      50
+    );
     assert.equal(projectRevision, 50);
     assert.equal(hotReloadCount, 50);
     assert.equal(snapshotCount, 50);
@@ -274,6 +284,11 @@ test('reconnects a fresh MCP client and continues the same project revision with
           data: { commands: descriptors },
           meta: { traceId: null, readOnly: true, modifiesProject: false },
         };
+      }
+      if (options.command === 'events.nodes.describe') {
+        const error = new Error('metadata_event_node_not_found');
+        error.code = 'metadata_event_node_not_found';
+        throw error;
       }
       if (options.command !== 'events.update') {
         throw new Error(`unexpected_command:${options.command}`);
@@ -347,7 +362,11 @@ test('reconnects a fresh MCP client and continues the same project revision with
     const executed = calls.filter(
       call => call.command !== 'agent.commands.list'
     );
-    assert.equal(executed.length, 20);
+    assert.equal(executed.length, 40);
+    assert.equal(
+      executed.filter(call => call.command === 'events.nodes.describe').length,
+      20
+    );
     assert.equal(
       executed.some(
         call =>

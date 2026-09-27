@@ -88,6 +88,14 @@ const createPreviewQaService = ({
         maxRegions: 64,
       },
       diffImage: { supported: true, format: 'png', kind: 'heatmap' },
+      structuralLayout: {
+        supported: true,
+        inspect: 'preview.layout.inspect',
+        assert: 'preview.layout.assert',
+        captureRegion: 'preview.capture.region',
+        instrumentationRequired: false,
+        complementsPerceptualComparison: true,
+      },
       ignoreRegions: {
         supported: false,
         reason: 'ignore_region_mask_not_exposed',

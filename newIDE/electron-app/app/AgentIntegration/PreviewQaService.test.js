@@ -91,6 +91,19 @@ test('reports truthful deterministic and device capability gaps', () => {
     true
   );
   assert.equal(capabilities.visualRegression.diffImage.supported, true);
+  assert.equal(
+    capabilities.visualRegression.structuralLayout.assert,
+    'preview.layout.assert'
+  );
+  assert.equal(
+    capabilities.visualRegression.structuralLayout.captureRegion,
+    'preview.capture.region'
+  );
+  assert.equal(
+    capabilities.visualRegression.structuralLayout
+      .complementsPerceptualComparison,
+    true
+  );
   assert.equal(capabilities.deviceSimulation.viewportResize.supported, true);
   assert.equal(
     capabilities.deviceSimulation.viewportResize.units,
