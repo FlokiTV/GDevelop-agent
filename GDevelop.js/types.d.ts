@@ -868,6 +868,8 @@ export class Layout extends EmscriptenObject {
   constructor();
   setName(name: string): void;
   getName(): string;
+  resetPersistentUuid(): Layout;
+  getPersistentUuid(): string;
   setBackgroundColor(r: number, g: number, b: number): void;
   getBackgroundColorRed(): number;
   getBackgroundColorGreen(): number;
@@ -907,6 +909,8 @@ export class ExternalEvents extends EmscriptenObject {
   constructor();
   setName(name: string): void;
   getName(): string;
+  resetPersistentUuid(): ExternalEvents;
+  getPersistentUuid(): string;
   getAssociatedLayout(): string;
   setAssociatedLayout(name: string): void;
   getEvents(): EventsList;

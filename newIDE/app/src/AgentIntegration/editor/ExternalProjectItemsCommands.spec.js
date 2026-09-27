@@ -6,9 +6,12 @@ const makeHost = (project: any = {}) => {
   const service = {
     listExternalEvents: jest.fn(() => ({ items: [], total: 0 })),
     inspectExternalEvents: jest.fn(input => input),
+    externalEventsUsages: jest.fn(input => input),
     createExternalEvents: jest.fn(input => input),
     updateExternalEvents: jest.fn(input => input),
+    duplicateExternalEvents: jest.fn(input => input),
     renameExternalEvents: jest.fn(input => input),
+    reorderExternalEvents: jest.fn(input => input),
     deleteExternalEvents: jest.fn(input => input),
     listExternalLayouts: jest.fn(() => ({ items: [], total: 0 })),
     inspectExternalLayout: jest.fn(input => input),
@@ -40,10 +43,13 @@ describe('ExternalProjectItemsCommands', () => {
     expect(names).toEqual([
       'external-events.create',
       'external-events.delete',
+      'external-events.duplicate',
       'external-events.inspect',
       'external-events.list',
       'external-events.rename',
+      'external-events.reorder',
       'external-events.update',
+      'external-events.usages',
       'external-layouts.create',
       'external-layouts.delete',
       'external-layouts.duplicate',
@@ -56,17 +62,23 @@ describe('ExternalProjectItemsCommands', () => {
       'external-layouts.rename',
       'external-layouts.update',
     ]);
-    expect(host.describeCommand('external-events.list').metadata).toMatchObject({
-      readOnly: true,
-      requiresProject: true,
-      modifiesProject: false,
-    });
-    expect(host.describeCommand('external-layouts.instances.create').metadata).toMatchObject({
+    expect(host.describeCommand('external-events.list').metadata).toMatchObject(
+      {
+        readOnly: true,
+        requiresProject: true,
+        modifiesProject: false,
+      }
+    );
+    expect(
+      host.describeCommand('external-layouts.instances.create').metadata
+    ).toMatchObject({
       readOnly: false,
       modifiesProject: true,
       destructive: false,
     });
-    expect(host.describeCommand('external-layouts.delete').metadata).toMatchObject({
+    expect(
+      host.describeCommand('external-layouts.delete').metadata
+    ).toMatchObject({
       destructive: true,
       modifiesProject: true,
     });
@@ -96,7 +108,9 @@ describe('ExternalProjectItemsCommands', () => {
 
   test('requires a project before execution', async () => {
     const { host } = makeHost(null);
-    await expect(host.execute('external-layouts.list', {})).rejects.toMatchObject({
+    await expect(
+      host.execute('external-layouts.list', {})
+    ).rejects.toMatchObject({
       code: 'no_project_open',
     });
   });

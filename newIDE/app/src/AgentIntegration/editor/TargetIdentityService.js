@@ -36,11 +36,59 @@ const normalizeProjectPath = (
     : normalized;
 };
 
-const sceneSelector = (sceneName: string): string => `scene:${sceneName}`;
-const externalEventsSelector = (name: string): string =>
-  `external-events:${name}`;
+const sceneSelector = (sceneId: string): string => `scene:${sceneId}`;
+const externalEventsSelector = (id: string): string => `external-events:${id}`;
 const externalLayoutSelector = (name: string): string =>
   `external-layout:${name}`;
+
+const getSceneIdentity = (project: ?gdProject, sceneName: string): any => {
+  let sceneId = sceneName;
+  let identityKind = 'name-fallback';
+  try {
+    if (project && project.hasLayoutNamed(sceneName)) {
+      const scene = project.getLayout(sceneName);
+      if (typeof scene.getPersistentUuid === 'function') {
+        const persistentUuid = scene.getPersistentUuid();
+        if (persistentUuid) {
+          sceneId = persistentUuid;
+          identityKind = 'persistent-uuid';
+        }
+      }
+    }
+  } catch (error) {}
+  return {
+    sceneName,
+    sceneId,
+    selector: sceneSelector(sceneId),
+    identityKind,
+  };
+};
+
+const getExternalEventsIdentity = (
+  project: ?gdProject,
+  externalEventsName: string
+): any => {
+  let externalEventsId = externalEventsName;
+  let identityKind = 'name-fallback';
+  try {
+    if (project && project.hasExternalEventsNamed(externalEventsName)) {
+      const externalEvents = project.getExternalEvents(externalEventsName);
+      if (typeof externalEvents.getPersistentUuid === 'function') {
+        const persistentUuid = externalEvents.getPersistentUuid();
+        if (persistentUuid) {
+          externalEventsId = persistentUuid;
+          identityKind = 'persistent-uuid';
+        }
+      }
+    }
+  } catch (error) {}
+  return {
+    externalEventsName,
+    externalEventsId,
+    selector: externalEventsSelector(externalEventsId),
+    identityKind,
+  };
+};
 
 const getTabSequence = (id: any): number => {
   if (typeof id !== 'string') return -1;
@@ -77,9 +125,7 @@ const summarizeEditorTarget = ({
     return {
       ...base,
       targetKind: 'scene',
-      sceneName: projectItemName,
-      sceneId: sceneSelector(projectItemName),
-      selector: sceneSelector(projectItemName),
+      ...getSceneIdentity(project, projectItemName),
     };
   }
 
@@ -94,15 +140,23 @@ const summarizeEditorTarget = ({
         }
       }
     } catch (error) {}
+    const externalEventsIdentity = getExternalEventsIdentity(
+      project,
+      projectItemName
+    );
+    const associatedSceneIdentity = associatedSceneName
+      ? getSceneIdentity(project, associatedSceneName)
+      : null;
     return {
       ...base,
       targetKind: 'external-events',
-      externalEventsName: projectItemName,
-      externalEventsId: externalEventsSelector(projectItemName),
-      selector: externalEventsSelector(projectItemName),
+      ...externalEventsIdentity,
       associatedSceneName,
-      associatedSceneId: associatedSceneName
-        ? sceneSelector(associatedSceneName)
+      associatedSceneId: associatedSceneIdentity
+        ? associatedSceneIdentity.sceneId
+        : null,
+      associatedSceneSelector: associatedSceneIdentity
+        ? associatedSceneIdentity.selector
         : null,
     };
   }
@@ -175,6 +229,34 @@ export const createTargetIdentityService = ({
   const getProjectIdentity = () => {
     const currentProject = resolveProject();
     const projectId = getProjectId(currentProject);
+    const scenes =
+      currentProject && typeof currentProject.getLayoutsCount === 'function'
+        ? Array.from(
+            { length: currentProject.getLayoutsCount() },
+            (_, index) => {
+              const scene = currentProject.getLayoutAt(index);
+              return {
+                ...getSceneIdentity(currentProject, scene.getName()),
+                order: index,
+              };
+            }
+          )
+        : [];
+    const externalEvents =
+      currentProject &&
+      typeof currentProject.getExternalEventsCount === 'function'
+        ? Array.from(
+            { length: currentProject.getExternalEventsCount() },
+            (_, index) => {
+              const item = currentProject.getExternalEventsAt(index);
+              return {
+                ...getExternalEventsIdentity(currentProject, item.getName()),
+                order: index,
+                associatedSceneName: item.getAssociatedLayout() || null,
+              };
+            }
+          )
+        : [];
     return {
       open: !!currentProject && !!projectId,
       projectId,
@@ -182,6 +264,8 @@ export const createTargetIdentityService = ({
       projectName: getProjectName(currentProject),
       fileIdentifier: fileIdentifier || null,
       normalizedProjectPath: normalizeProjectPath(fileIdentifier, pathModule),
+      scenes,
+      externalEvents,
     };
   };
 
@@ -200,7 +284,7 @@ export const createTargetIdentityService = ({
               targetKind: 'scene',
               sceneName: target.associatedSceneName,
               sceneId: target.associatedSceneId,
-              selector: target.associatedSceneId,
+              selector: target.associatedSceneSelector,
               sourceEditorSelector: target.editorSelector,
               sourceTargetSelector: target.selector,
             };
@@ -255,6 +339,9 @@ export const createTargetIdentityService = ({
             target && typeof target.debuggerId === 'string'
               ? target.debuggerId
               : null;
+          const sceneIdentity = sceneName
+            ? getSceneIdentity(resolveProject(), sceneName)
+            : null;
           return {
             ...target,
             targetId: windowId
@@ -264,8 +351,8 @@ export const createTargetIdentityService = ({
               : null,
             projectId: projectIdentity.projectId,
             sceneName,
-            sceneId: sceneName ? sceneSelector(sceneName) : null,
-            sceneSelector: sceneName ? sceneSelector(sceneName) : null,
+            sceneId: sceneIdentity ? sceneIdentity.sceneId : null,
+            sceneSelector: sceneIdentity ? sceneIdentity.selector : null,
           };
         })
       : [];

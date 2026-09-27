@@ -23,6 +23,13 @@ const DESTRUCTIVE_METADATA = makeCommandMetadata({
 });
 
 const NAME = { type: 'string', minLength: 1 };
+const EXTERNAL_EVENTS_TARGET = {
+  name: NAME,
+  externalEventsName: NAME,
+  id: NAME,
+  externalEventsId: NAME,
+  selector: NAME,
+};
 const ASSOCIATED_LAYOUT = { type: 'string' };
 const INSTANCE_PATCH = {
   objectName: NAME,
@@ -71,69 +78,129 @@ export const createExternalProjectItemsCommandDescriptors = ({
   {
     name: 'external-events.inspect',
     description:
-      'Inspect one External Events sheet and its associated scene.',
+      'Inspect one External Events sheet by persistent UUID/selector or current name.',
     inputSchema: {
       type: 'object',
       additionalProperties: false,
-      required: ['name'],
-      properties: { name: NAME },
+      properties: EXTERNAL_EVENTS_TARGET,
     },
     metadata: READ_METADATA,
-    execute: ({ input }) => externalProjectItemsService.inspectExternalEvents(input),
+    execute: ({ input }) =>
+      externalProjectItemsService.inspectExternalEvents(input),
+  },
+  {
+    name: 'external-events.usages',
+    description:
+      'Dry-run the native External Events refactorer on a project clone and report every link/reference GDevelop would rewrite on rename.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: EXTERNAL_EVENTS_TARGET,
+    },
+    metadata: READ_METADATA,
+    execute: ({ input }) =>
+      externalProjectItemsService.externalEventsUsages(input),
   },
   {
     name: 'external-events.create',
     description:
-      'Create an External Events sheet, optionally associated with an existing scene.',
-    inputSchema: {
-      type: 'object',
-      additionalProperties: false,
-      required: ['name'],
-      properties: { name: NAME, associatedLayout: ASSOCIATED_LAYOUT },
-    },
-    metadata: MUTATION_METADATA,
-    execute: ({ input }) => externalProjectItemsService.createExternalEvents(input),
-  },
-  {
-    name: 'external-events.update',
-    description: 'Update the scene associated with an External Events sheet.',
-    inputSchema: {
-      type: 'object',
-      additionalProperties: false,
-      required: ['name'],
-      properties: { name: NAME, associatedLayout: ASSOCIATED_LAYOUT },
-    },
-    metadata: MUTATION_METADATA,
-    execute: ({ input }) => externalProjectItemsService.updateExternalEvents(input),
-  },
-  {
-    name: 'external-events.rename',
-    description:
-      'Rename External Events with WholeProjectRefactorer so project references are rewritten.',
-    inputSchema: {
-      type: 'object',
-      additionalProperties: false,
-      required: ['name', 'newName'],
-      properties: { name: NAME, newName: NAME },
-    },
-    metadata: MUTATION_METADATA,
-    execute: ({ input }) => externalProjectItemsService.renameExternalEvents(input),
-  },
-  {
-    name: 'external-events.delete',
-    description:
-      'Delete External Events. Because GDevelop has no authoritative project-wide usage finder, allowReferenced=true is required.',
+      'Create an External Events sheet, optionally associated with an existing scene and inserted at an exact order position.',
     inputSchema: {
       type: 'object',
       additionalProperties: false,
       required: ['name'],
       properties: {
         name: NAME,
+        associatedLayout: ASSOCIATED_LAYOUT,
+        position: { type: 'integer', minimum: 0 },
+      },
+    },
+    metadata: MUTATION_METADATA,
+    execute: ({ input }) =>
+      externalProjectItemsService.createExternalEvents(input),
+  },
+  {
+    name: 'external-events.update',
+    description:
+      'Update the scene associated with an External Events sheet, targeting it by persistent identity or name.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        ...EXTERNAL_EVENTS_TARGET,
+        associatedLayout: ASSOCIATED_LAYOUT,
+      },
+    },
+    metadata: MUTATION_METADATA,
+    execute: ({ input }) =>
+      externalProjectItemsService.updateExternalEvents(input),
+  },
+  {
+    name: 'external-events.duplicate',
+    description:
+      'Duplicate an External Events sheet while assigning a new persistent UUID and preserving copied event content.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['newName'],
+      properties: {
+        ...EXTERNAL_EVENTS_TARGET,
+        newName: NAME,
+        position: { type: 'integer', minimum: 0 },
+      },
+    },
+    metadata: MUTATION_METADATA,
+    execute: ({ input }) =>
+      externalProjectItemsService.duplicateExternalEvents(input),
+  },
+  {
+    name: 'external-events.rename',
+    description:
+      'Rename External Events with WholeProjectRefactorer while preserving its persistent UUID and returning rewritten references.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['newName'],
+      properties: { ...EXTERNAL_EVENTS_TARGET, newName: NAME },
+    },
+    metadata: MUTATION_METADATA,
+    execute: ({ input }) =>
+      externalProjectItemsService.renameExternalEvents(input),
+  },
+  {
+    name: 'external-events.reorder',
+    description:
+      'Move an External Events sheet to an exact zero-based order position without rebuilding unrelated sheets.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['position'],
+      properties: {
+        ...EXTERNAL_EVENTS_TARGET,
+        position: { type: 'integer', minimum: 0 },
+      },
+    },
+    metadata: MUTATION_METADATA,
+    execute: ({ input }) =>
+      externalProjectItemsService.reorderExternalEvents(input),
+  },
+  {
+    name: 'external-events.delete',
+    description:
+      'Delete or dry-run deletion of External Events. Referenced sheets are blocked unless allowReferenced=true is explicit.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        ...EXTERNAL_EVENTS_TARGET,
+        dryRun: { type: 'boolean', default: false },
         allowReferenced: { type: 'boolean', default: false },
       },
     },
     metadata: DESTRUCTIVE_METADATA,
-    execute: ({ input }) => externalProjectItemsService.deleteExternalEvents(input),
+    modifiesProjectWhen: input => !input.dryRun,
+    execute: ({ input }) =>
+      externalProjectItemsService.deleteExternalEvents(input),
   },
   {
     name: 'external-layouts.list',
@@ -153,7 +220,8 @@ export const createExternalProjectItemsCommandDescriptors = ({
       properties: { name: NAME },
     },
     metadata: READ_METADATA,
-    execute: ({ input }) => externalProjectItemsService.inspectExternalLayout(input),
+    execute: ({ input }) =>
+      externalProjectItemsService.inspectExternalLayout(input),
   },
   {
     name: 'external-layouts.create',
@@ -166,7 +234,8 @@ export const createExternalProjectItemsCommandDescriptors = ({
       properties: { name: NAME, associatedLayout: ASSOCIATED_LAYOUT },
     },
     metadata: MUTATION_METADATA,
-    execute: ({ input }) => externalProjectItemsService.createExternalLayout(input),
+    execute: ({ input }) =>
+      externalProjectItemsService.createExternalLayout(input),
   },
   {
     name: 'external-layouts.update',
@@ -178,7 +247,8 @@ export const createExternalProjectItemsCommandDescriptors = ({
       properties: { name: NAME, associatedLayout: ASSOCIATED_LAYOUT },
     },
     metadata: MUTATION_METADATA,
-    execute: ({ input }) => externalProjectItemsService.updateExternalLayout(input),
+    execute: ({ input }) =>
+      externalProjectItemsService.updateExternalLayout(input),
   },
   {
     name: 'external-layouts.duplicate',
@@ -191,7 +261,8 @@ export const createExternalProjectItemsCommandDescriptors = ({
       properties: { name: NAME, newName: NAME },
     },
     metadata: MUTATION_METADATA,
-    execute: ({ input }) => externalProjectItemsService.duplicateExternalLayout(input),
+    execute: ({ input }) =>
+      externalProjectItemsService.duplicateExternalLayout(input),
   },
   {
     name: 'external-layouts.rename',
@@ -204,7 +275,8 @@ export const createExternalProjectItemsCommandDescriptors = ({
       properties: { name: NAME, newName: NAME },
     },
     metadata: MUTATION_METADATA,
-    execute: ({ input }) => externalProjectItemsService.renameExternalLayout(input),
+    execute: ({ input }) =>
+      externalProjectItemsService.renameExternalLayout(input),
   },
   {
     name: 'external-layouts.delete',
@@ -220,7 +292,8 @@ export const createExternalProjectItemsCommandDescriptors = ({
       },
     },
     metadata: DESTRUCTIVE_METADATA,
-    execute: ({ input }) => externalProjectItemsService.deleteExternalLayout(input),
+    execute: ({ input }) =>
+      externalProjectItemsService.deleteExternalLayout(input),
   },
   {
     name: 'external-layouts.instances.list',

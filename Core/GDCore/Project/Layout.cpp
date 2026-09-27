@@ -29,6 +29,7 @@
 #include "GDCore/String.h"
 #include "GDCore/Tools/Log.h"
 #include "GDCore/Tools/PolymorphicClone.h"
+#include "GDCore/Tools/UUID/UUID.h"
 
 using namespace std;
 
@@ -50,7 +51,8 @@ Layout& Layout::operator=(const Layout& other) {
 Layout::~Layout() {};
 
 Layout::Layout()
-    : backgroundColorR(247),
+    : persistentUuid(UUID::MakeUuid4()),
+      backgroundColorR(247),
       backgroundColorG(249),
       backgroundColorB(255),
       stopSoundsOnStartup(true),
@@ -65,6 +67,11 @@ void Layout::SetName(const gd::String& name_) {
   name = name_;
   mangledName = gd::SceneNameMangler::Get()->GetMangledSceneName(name);
 };
+
+Layout& Layout::ResetPersistentUuid() {
+  persistentUuid = UUID::MakeUuid4();
+  return *this;
+}
 
 bool Layout::HasBehaviorSharedData(const gd::String& behaviorName) {
   return behaviorsSharedData.find(behaviorName) != behaviorsSharedData.end();
@@ -239,6 +246,7 @@ std::unique_ptr<gd::BehaviorsSharedData> Layout::CreateBehaviorsSharedData(
 
 void Layout::SerializeTo(SerializerElement& element) const {
   element.SetAttribute("name", GetName());
+  element.SetStringAttribute("persistentUuid", persistentUuid);
   element.SetAttribute("mangledName", GetMangledName());
   element.SetAttribute("r", (int)GetBackgroundColorRed());
   element.SetAttribute("v", (int)GetBackgroundColorGreen());
@@ -303,6 +311,8 @@ void Layout::SerializeTo(SerializerElement& element) const {
 
 void Layout::UnserializeFrom(gd::Project& project,
                              const SerializerElement& element) {
+  persistentUuid = element.GetStringAttribute("persistentUuid");
+  if (persistentUuid.empty()) ResetPersistentUuid();
   SetBackgroundColor(element.GetIntAttribute("r"),
                      element.GetIntAttribute("v"),
                      element.GetIntAttribute("b"));
@@ -395,6 +405,7 @@ void Layout::UnserializeFrom(gd::Project& project,
 
 void Layout::Init(const Layout& other) {
   SetName(other.name);
+  persistentUuid = other.persistentUuid;
   backgroundColorR = other.backgroundColorR;
   backgroundColorG = other.backgroundColorG;
   backgroundColorB = other.backgroundColorB;

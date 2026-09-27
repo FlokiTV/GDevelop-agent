@@ -3,6 +3,8 @@ declare class gdLayout {
   constructor(): void;
   setName(name: string): void;
   getName(): string;
+  resetPersistentUuid(): gdLayout;
+  getPersistentUuid(): string;
   setBackgroundColor(r: number, g: number, b: number): void;
   getBackgroundColorRed(): number;
   getBackgroundColorGreen(): number;

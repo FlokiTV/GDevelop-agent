@@ -1029,6 +1029,8 @@ interface Layout {
 
     void SetName([Const] DOMString name);
     [Const, Ref] DOMString GetName();
+    [Ref] Layout ResetPersistentUuid();
+    [Const, Ref] DOMString GetPersistentUuid();
     void SetBackgroundColor(unsigned long r, unsigned long g, unsigned long b);
     unsigned long GetBackgroundColorRed();
     unsigned long GetBackgroundColorGreen();
@@ -1076,6 +1078,8 @@ interface ExternalEvents {
 
     void SetName([Const] DOMString name);
     [Const, Ref] DOMString GetName();
+    [Ref] ExternalEvents ResetPersistentUuid();
+    [Const, Ref] DOMString GetPersistentUuid();
 
     [Const, Ref] DOMString GetAssociatedLayout();
     void SetAssociatedLayout([Const] DOMString name);

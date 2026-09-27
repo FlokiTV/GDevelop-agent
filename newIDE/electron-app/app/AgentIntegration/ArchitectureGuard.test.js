@@ -7,7 +7,7 @@ const {
   runArchitectureGuard,
 } = require('./ArchitectureGuard');
 
-test('allows agent-owned files, MCP manifests, repository metadata and the three explicit upstream hooks', () => {
+test('allows agent-owned files, repository metadata and only the explicit upstream/native hooks', () => {
   assert.equal(
     isAllowedAgentChange('newIDE/app/src/AgentIntegration/ExportTools.js'),
     true
@@ -32,6 +32,19 @@ test('allows agent-owned files, MCP manifests, repository metadata and the three
     isAllowedAgentChange('newIDE/electron-app/app/PreviewWindow.js'),
     true
   );
+  assert.equal(isAllowedAgentChange('Core/GDCore/Project/Layout.cpp'), true);
+  assert.equal(
+    isAllowedAgentChange('Core/GDCore/Project/ExternalEvents.h'),
+    true
+  );
+  assert.equal(isAllowedAgentChange('GDevelop.js/Bindings/Bindings.idl'), true);
+  assert.equal(
+    isAllowedAgentChange(
+      'GDevelop.js/__tests__/PersistentProjectStructureIdentity.js'
+    ),
+    true
+  );
+  assert.equal(isAllowedAgentChange('newIDE/app/src/Utils/Layout.js'), true);
   assert.equal(
     isAllowedAgentChange('newIDE/electron-app/app/package.json'),
     true
@@ -63,22 +76,29 @@ test('rejects changes elsewhere in GDevelop upstream', () => {
     findDisallowedAgentChanges([
       'newIDE/app/src/AgentIntegration/useAgentIntegration.js',
       'GDJS/Runtime/runtimegame.js',
+      'Core/GDCore/Project/Project.cpp',
+      'GDevelop.js/Bindings/Other.idl',
       'newIDE/app/package.json',
     ]),
-    ['GDJS/Runtime/runtimegame.js', 'newIDE/app/package.json']
+    [
+      'GDJS/Runtime/runtimegame.js',
+      'Core/GDCore/Project/Project.cpp',
+      'GDevelop.js/Bindings/Other.idl',
+      'newIDE/app/package.json',
+    ]
   );
 });
 
 test('current fork delta stays inside the isolation allowlist when upstream is available', t => {
   const repoRoot = path.resolve(__dirname, '../../../..');
   try {
-    const result = runArchitectureGuard({ repoRoot, baseRef: 'upstream/master' });
+    const result = runArchitectureGuard({
+      repoRoot,
+      baseRef: 'upstream/master',
+    });
     assert.deepEqual(result.disallowedFiles, []);
   } catch (error) {
-    if (
-      error &&
-      error.code === 'architecture_guard_git_diff_failed'
-    ) {
+    if (error && error.code === 'architecture_guard_git_diff_failed') {
       t.skip('upstream/master is not available in this checkout');
       return;
     }

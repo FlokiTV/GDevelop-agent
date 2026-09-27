@@ -94,9 +94,13 @@ export const renameLayoutInProject = (
   newName: string
 ): void => {
   const wasFirstScene = project.getFirstLayout() === oldName;
+  const wasPreviewScene = project.getPreviewLayout() === oldName;
   project.getLayout(oldName).setName(newName);
   gd.WholeProjectRefactorer.renameLayout(project, oldName, newName);
   if (wasFirstScene) {
     project.setFirstLayout(newName);
+  }
+  if (wasPreviewScene) {
+    project.setPreviewLayout(newName);
   }
 };

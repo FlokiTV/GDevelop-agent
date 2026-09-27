@@ -1,0 +1,62 @@
+{
+  "kind": "dx33-project-structure-acceptance",
+  "label": "win-unpacked",
+  "generatedAt": "2026-09-27T04:51:36.832Z",
+  "protocolVersion": "2026-07-28",
+  "cleanRoom": {
+    "repositoryImplementationOrTestsReadDuringScenario": false,
+    "repositoryReadGuard": true,
+    "authoringInputSource": "live MCP discovery and reads"
+  },
+  "discovery": {
+    "toolCount": 255,
+    "sceneLifecyclePublished": true,
+    "externalEventsLifecyclePublished": true,
+    "stableTargetSchemasPublished": true
+  },
+  "sceneLifecycle": {
+    "sourceSceneId": "5d8a57cc-5c2b-4105-89e2-60acfe260916",
+    "duplicatedSceneId": "fc8dd9d1-78b2-4bda-babf-7e4ec3dd6345",
+    "duplicateHasDistinctIdentity": true,
+    "renamedSceneName": "DX33 Scene B Renamed",
+    "renamePreservedIdentity": true,
+    "eventReferenceRefactored": true,
+    "externalEventsAssociationRefactored": true,
+    "reorderPreservedUnrelatedIdentities": true,
+    "persistedAcrossReload": true
+  },
+  "externalEventsLifecycle": {
+    "referencedId": "4a365b28-9411-4d63-81c4-0236114fb8be",
+    "renamePreservedIdentity": true,
+    "eventReferenceRefactored": true,
+    "dryRunFoundBlockers": 1,
+    "referencedDeleteBlocked": true,
+    "unreferencedDeleteSucceeded": true,
+    "persistedAcrossReload": true
+  },
+  "targetIntegration": {
+    "sceneSelector": "scene:fc8dd9d1-78b2-4bda-babf-7e4ec3dd6345",
+    "targetStatusUsesPersistentIdentity": true,
+    "previewStartPinnedByPersistentSelector": true,
+    "runtimePinnedByPersistentSelector": true
+  },
+  "revisionOwnership": {
+    "expectedRevisionUsedOnMutations": true,
+    "blockedDeleteDidNotAdvanceRevision": true,
+    "canonicalStructuredErrorObserved": "external_events_delete_blocked"
+  },
+  "persistence": {
+    "saved": true,
+    "reloaded": true,
+    "eventReferencesSurvivedReload": true
+  },
+  "validation": {
+    "errors": 0,
+    "summary": {
+      "diagnosticErrors": 0,
+      "diagnosticWarnings": 0,
+      "checksRun": 0,
+      "checksFailed": 0
+    }
+  }
+}

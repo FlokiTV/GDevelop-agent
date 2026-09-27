@@ -66,6 +66,16 @@ class GD_CORE_API Layout {
   const gd::String& GetName() const { return name; };
 
   /**
+   * Reset the persistent UUID used to identify this scene across renames.
+   */
+  Layout& ResetPersistentUuid();
+
+  /**
+   * Return the persistent UUID used to identify this scene across renames.
+   */
+  const gd::String& GetPersistentUuid() const { return persistentUuid; }
+
+  /**
    * Return the name of the layout mangled by SceneNameMangler.
    */
   const gd::String& GetMangledName() const { return mangledName; };
@@ -402,6 +412,7 @@ class GD_CORE_API Layout {
 
   gd::String name;         ///< Scene name
   gd::String mangledName;  ///< The scene name mangled by SceneNameMangler
+  gd::String persistentUuid;  ///< Stable scene identity persisted across renames.
   unsigned int backgroundColorR = 0;     ///< Background color Red component
   unsigned int backgroundColorG = 0;     ///< Background color Green component
   unsigned int backgroundColorB = 0;     ///< Background color Blue component

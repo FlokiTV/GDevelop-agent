@@ -211,6 +211,64 @@ describe('AgentHost', () => {
     expect(read.meta.projectRevision).toBe(1);
   });
 
+  it('does not advance revisions when a conditional mutation runs as dry-run', async () => {
+    let changesCount = 0;
+    const projectRevisionTracker = new ProjectRevisionTracker({
+      getChangesCount: () => changesCount,
+    });
+    projectRevisionTracker.setSource({ projectKey: 'project-1' });
+    const semanticConcurrency = new SemanticConcurrency();
+    const host = new AgentHost({
+      environment: {
+        project: {},
+        projectRevisionTracker,
+        semanticConcurrency,
+      },
+      descriptors: [
+        makeDescriptor('scene.delete', {
+          metadata: makeCommandMetadata({
+            readOnly: false,
+            destructive: true,
+            idempotent: false,
+            requiresProject: true,
+            modifiesProject: true,
+            semanticScopes: ['scenes'],
+          }),
+          modifiesProjectWhen: input => !input.dryRun,
+          execute: ({ input }) => ({ dryRun: !!input.dryRun }),
+        }),
+      ],
+    });
+
+    const dryRun = await host.execute(
+      'scene.delete',
+      { dryRun: true },
+      { expectedRevision: 0 }
+    );
+    expect(dryRun.meta).toMatchObject({
+      modifiesProject: false,
+      projectRevision: 0,
+    });
+    expect(
+      (dryRun.meta.semanticRevisions || []).every(entry => entry.revision === 0)
+    ).toBe(true);
+
+    const mutation = await host.execute(
+      'scene.delete',
+      { dryRun: false },
+      { expectedRevision: 0 }
+    );
+    expect(mutation.meta).toMatchObject({
+      modifiesProject: true,
+      projectRevision: 1,
+    });
+    expect(
+      (mutation.meta.semanticRevisions || []).some(
+        entry => entry.revision === 1
+      )
+    ).toBe(true);
+  });
+
   it('enforces granular semantic revisions and owner-aware leases in addition to project revision', async () => {
     const semanticConcurrency = new SemanticConcurrency();
     const execute = jest.fn(() => ({ created: true }));
@@ -430,7 +488,6 @@ describe('core commands', () => {
     expect(capabilities.data.commands).toHaveLength(9);
   });
 });
-
 
 describe('DX-19 multi-agent guards', () => {
   const identityA = {

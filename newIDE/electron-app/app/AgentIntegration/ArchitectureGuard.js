@@ -12,6 +12,19 @@ const ALLOWED_UPSTREAM_HOOKS = new Set([
   'newIDE/electron-app/app/PreviewWindow.js',
 ]);
 
+const ALLOWED_NATIVE_MODEL_HOOKS = new Set([
+  'Core/GDCore/Project/Layout.cpp',
+  'Core/GDCore/Project/Layout.h',
+  'Core/GDCore/Project/ExternalEvents.cpp',
+  'Core/GDCore/Project/ExternalEvents.h',
+  'GDevelop.js/Bindings/Bindings.idl',
+  'GDevelop.js/types.d.ts',
+  'GDevelop.js/types/gdlayout.js',
+  'GDevelop.js/types/gdexternalevents.js',
+  'GDevelop.js/__tests__/PersistentProjectStructureIdentity.js',
+  'newIDE/app/src/Utils/Layout.js',
+]);
+
 const ALLOWED_DEPENDENCY_MANIFESTS = new Set([
   'newIDE/electron-app/app/package.json',
   'newIDE/electron-app/app/package-lock.json',
@@ -24,12 +37,14 @@ const ALLOWED_REPOSITORY_METADATA = new Set([
   '.github/workflows/update-translations.yml',
 ]);
 
-const normalizeRepositoryPath = filePath => String(filePath).replace(/\\/g, '/');
+const normalizeRepositoryPath = filePath =>
+  String(filePath).replace(/\\/g, '/');
 
 const isAllowedAgentChange = filePath => {
   const normalized = normalizeRepositoryPath(filePath);
   return (
     ALLOWED_UPSTREAM_HOOKS.has(normalized) ||
+    ALLOWED_NATIVE_MODEL_HOOKS.has(normalized) ||
     ALLOWED_DEPENDENCY_MANIFESTS.has(normalized) ||
     ALLOWED_REPOSITORY_METADATA.has(normalized) ||
     ALLOWED_PREFIXES.some(prefix => normalized.startsWith(prefix))
@@ -50,9 +65,9 @@ const listChangedFiles = ({ repoRoot, baseRef }) => {
   });
   if (mergeBaseResult.status !== 0) {
     const error = new Error(
-      `architecture_guard_merge_base_failed:${baseRef}:${
-        mergeBaseResult.stderr || mergeBaseResult.stdout || 'unknown_error'
-      }`
+      `architecture_guard_merge_base_failed:${baseRef}:${mergeBaseResult.stderr ||
+        mergeBaseResult.stdout ||
+        'unknown_error'}`
     );
     error.code = 'architecture_guard_git_diff_failed';
     throw error;
@@ -71,9 +86,9 @@ const listChangedFiles = ({ repoRoot, baseRef }) => {
 
   if (result.status !== 0) {
     const error = new Error(
-      `architecture_guard_git_diff_failed:${baseRef}:${
-        result.stderr || result.stdout || 'unknown_error'
-      }`
+      `architecture_guard_git_diff_failed:${baseRef}:${result.stderr ||
+        result.stdout ||
+        'unknown_error'}`
     );
     error.code = 'architecture_guard_git_diff_failed';
     throw error;
@@ -94,6 +109,7 @@ const runArchitectureGuard = ({ repoRoot, baseRef = 'upstream/master' }) => {
     changedFiles,
     disallowedFiles,
     allowedUpstreamHooks: Array.from(ALLOWED_UPSTREAM_HOOKS),
+    allowedNativeModelHooks: Array.from(ALLOWED_NATIVE_MODEL_HOOKS),
     allowedPrefixes: [...ALLOWED_PREFIXES],
   };
 };
@@ -101,19 +117,27 @@ const runArchitectureGuard = ({ repoRoot, baseRef = 'upstream/master' }) => {
 if (require.main === module) {
   const repoRoot = path.resolve(__dirname, '../../../..');
   const baseRef =
-    process.argv[2] || process.env.GDEVELOP_AGENT_UPSTREAM_REF || 'upstream/master';
+    process.argv[2] ||
+    process.env.GDEVELOP_AGENT_UPSTREAM_REF ||
+    'upstream/master';
 
   try {
     const result = runArchitectureGuard({ repoRoot, baseRef });
     if (!result.ok) {
-      console.error('[AgentIntegration architecture guard] Disallowed upstream changes:');
+      console.error(
+        '[AgentIntegration architecture guard] Disallowed upstream changes:'
+      );
       for (const filePath of result.disallowedFiles) {
         console.error(`- ${filePath}`);
       }
       process.exitCode = 1;
     } else {
       console.log(
-        `[AgentIntegration architecture guard] OK: ${result.changedFiles.length} changed files; upstream hooks limited to ${result.allowedUpstreamHooks.length}.`
+        `[AgentIntegration architecture guard] OK: ${
+          result.changedFiles.length
+        } changed files; upstream hooks limited to ${
+          result.allowedUpstreamHooks.length
+        }.`
       );
     }
   } catch (error) {
@@ -129,6 +153,7 @@ if (require.main === module) {
 module.exports = {
   ALLOWED_PREFIXES,
   ALLOWED_UPSTREAM_HOOKS,
+  ALLOWED_NATIVE_MODEL_HOOKS,
   ALLOWED_DEPENDENCY_MANIFESTS,
   ALLOWED_REPOSITORY_METADATA,
   normalizeRepositoryPath,

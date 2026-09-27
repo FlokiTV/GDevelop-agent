@@ -1,16 +1,41 @@
 // @flow
 import { createTargetIdentityService } from './TargetIdentityService';
 
-const makeProject = () => ({
-  getProjectUuid: () => 'project-uuid-a',
-  getName: () => 'Project A',
-  hasExternalEventsNamed: name => name === 'SharedEvents',
-  getExternalEvents: name => {
-    if (name !== 'SharedEvents') throw new Error('external_events_not_found');
-    return { getAssociatedLayout: () => 'SceneB' };
-  },
-  hasLayoutNamed: name => ['SceneA', 'SceneB'].includes(name),
-});
+const makeProject = () => {
+  const scenes = {
+    SceneA: {
+      getName: () => 'SceneA',
+      getPersistentUuid: () => 'scene-uuid-a',
+    },
+    SceneB: {
+      getName: () => 'SceneB',
+      getPersistentUuid: () => 'scene-uuid-b',
+    },
+  };
+  const externalEvents = {
+    getName: () => 'SharedEvents',
+    getPersistentUuid: () => 'external-events-uuid-a',
+    getAssociatedLayout: () => 'SceneB',
+  };
+  return {
+    getProjectUuid: () => 'project-uuid-a',
+    getName: () => 'Project A',
+    hasExternalEventsNamed: name => name === 'SharedEvents',
+    getExternalEvents: name => {
+      if (name !== 'SharedEvents') throw new Error('external_events_not_found');
+      return externalEvents;
+    },
+    getExternalEventsCount: () => 1,
+    getExternalEventsAt: index => {
+      if (index !== 0) throw new Error('external_events_not_found');
+      return externalEvents;
+    },
+    hasLayoutNamed: name => !!scenes[name],
+    getLayout: name => scenes[name],
+    getLayoutsCount: () => 2,
+    getLayoutAt: index => [scenes.SceneA, scenes.SceneB][index],
+  };
+};
 
 describe('TargetIdentityService', () => {
   it('separates project, active editor scene, external events and last-opened scene identity', async () => {
@@ -87,24 +112,31 @@ describe('TargetIdentityService', () => {
     expect(status.editor.activeSceneAmbiguous).toBe(true);
     expect(status.editor.activeSceneCandidates).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ sceneId: 'scene:SceneA' }),
-        expect.objectContaining({ sceneId: 'scene:SceneB' }),
+        expect.objectContaining({
+          sceneId: 'scene-uuid-a',
+          selector: 'scene:scene-uuid-a',
+        }),
+        expect.objectContaining({
+          sceneId: 'scene-uuid-b',
+          selector: 'scene:scene-uuid-b',
+        }),
       ])
     );
     expect(status.editor.activeExternalEvents).toMatchObject({
       externalEventsName: 'SharedEvents',
-      externalEventsId: 'external-events:SharedEvents',
+      externalEventsId: 'external-events-uuid-a',
       associatedSceneName: 'SceneB',
     });
     expect(status.editor.lastOpenedScene).toMatchObject({
       sceneName: 'SceneB',
-      sceneId: 'scene:SceneB',
+      sceneId: 'scene-uuid-b',
+      selector: 'scene:scene-uuid-b',
     });
     expect(status.preview.targets[0]).toMatchObject({
       targetId: 'preview-window:42',
       projectId: 'project-uuid-a',
-      sceneId: 'scene:SceneB',
-      sceneSelector: 'scene:SceneB',
+      sceneId: 'scene-uuid-b',
+      sceneSelector: 'scene:scene-uuid-b',
     });
   });
 
@@ -136,7 +168,7 @@ describe('TargetIdentityService', () => {
     expect(status.editor.activeSceneAmbiguous).toBe(false);
     expect(status.editor.activeScene).toMatchObject({
       sceneName: 'SceneB',
-      selector: 'scene:SceneB',
+      selector: 'scene:scene-uuid-b',
     });
     expect(status.editor.primaryTarget).toMatchObject({
       editorSelector: 'editor-tab:editor-tab-9',

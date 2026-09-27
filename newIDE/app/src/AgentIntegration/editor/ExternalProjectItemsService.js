@@ -4,6 +4,7 @@ import {
   serializeToJSObject,
   unserializeFromJSObject,
 } from '../../Utils/Serializer';
+import { analyzeExternalEventsRenameImpact } from './ProjectStructureImpact';
 
 const gd: libGDevelop = global.gd;
 
@@ -121,19 +122,97 @@ export const createExternalProjectItemsService = ({
     return currentProject.getLayout(associatedLayout);
   };
 
-  const requireExternalEvents = (name: any): gdExternalEvents => {
-    const externalEventsName = requireNonEmptyName(
-      name,
-      'invalid_external_events_name'
-    );
+  const getExternalEventsId = (externalEvents: gdExternalEvents): string => {
+    if (typeof externalEvents.getPersistentUuid !== 'function') {
+      throw new AgentError({
+        code: 'external_events_identity_unavailable',
+        hint:
+          'This build does not expose persistent External Events UUIDs. Rebuild libGD.js with the DX-33 native model changes.',
+      });
+    }
+    const id = externalEvents.getPersistentUuid();
+    if (!id) throw new AgentError({ code: 'external_events_identity_missing' });
+    return id;
+  };
+
+  const findExternalEventsById = (id: string): ?gdExternalEvents => {
     const currentProject = requireProject();
-    if (!currentProject.hasExternalEventsNamed(externalEventsName)) {
+    for (
+      let index = 0;
+      index < currentProject.getExternalEventsCount();
+      index++
+    ) {
+      const externalEvents = currentProject.getExternalEventsAt(index);
+      if (getExternalEventsId(externalEvents) === id) return externalEvents;
+    }
+    return null;
+  };
+
+  const requireExternalEvents = (target: any): gdExternalEvents => {
+    const input = typeof target === 'string' ? { name: target } : target || {};
+    const rawId =
+      typeof input.externalEventsId === 'string'
+        ? input.externalEventsId
+        : typeof input.id === 'string'
+        ? input.id
+        : typeof input.selector === 'string' &&
+          input.selector.startsWith('external-events:')
+        ? input.selector.slice('external-events:'.length)
+        : null;
+    const externalEventsName =
+      typeof input.name === 'string' && input.name
+        ? input.name
+        : typeof input.externalEventsName === 'string' &&
+          input.externalEventsName
+        ? input.externalEventsName
+        : null;
+
+    if (!rawId && !externalEventsName) {
+      throw new AgentError({
+        code: 'missing_external_events_target',
+        hint:
+          'Pass externalEventsId/selector from external-events.list, or a sheet name.',
+      });
+    }
+
+    const currentProject = requireProject();
+    const byId = rawId ? findExternalEventsById(rawId) : null;
+    const byName =
+      externalEventsName &&
+      currentProject.hasExternalEventsNamed(externalEventsName)
+        ? currentProject.getExternalEvents(externalEventsName)
+        : null;
+
+    if (rawId && !byId) {
+      throw new AgentError({
+        code: 'external_events_not_found',
+        details: { externalEventsId: rawId },
+      });
+    }
+    if (externalEventsName && !byName) {
       throw new AgentError({
         code: 'external_events_not_found',
         details: { name: externalEventsName },
       });
     }
-    return currentProject.getExternalEvents(externalEventsName);
+    if (
+      byId &&
+      byName &&
+      getExternalEventsId(byId) !== getExternalEventsId(byName)
+    ) {
+      throw new AgentError({
+        code: 'stale_external_events_target',
+        retryable: true,
+        details: {
+          expectedExternalEventsId: getExternalEventsId(byId),
+          name: externalEventsName,
+          actualExternalEventsIdForName: getExternalEventsId(byName),
+        },
+        hint:
+          'The External Events name now resolves to a different persistent identity. Re-read external-events.list/get and retry.',
+      });
+    }
+    return byId || byName;
   };
 
   const requireExternalLayout = (name: any): gdExternalLayout => {
@@ -151,11 +230,22 @@ export const createExternalProjectItemsService = ({
     return currentProject.getExternalLayout(externalLayoutName);
   };
 
-  const summarizeExternalEvents = (externalEvents: gdExternalEvents) => ({
-    name: externalEvents.getName(),
-    associatedLayout: externalEvents.getAssociatedLayout(),
-    eventCount: externalEvents.getEvents().getEventsCount(),
-  });
+  const summarizeExternalEvents = (
+    externalEvents: gdExternalEvents,
+    index: ?number = null
+  ) => {
+    const id = getExternalEventsId(externalEvents);
+    return {
+      id,
+      externalEventsId: id,
+      selector: `external-events:${id}`,
+      name: externalEvents.getName(),
+      displayName: externalEvents.getName(),
+      order: index,
+      associatedLayout: externalEvents.getAssociatedLayout(),
+      eventCount: externalEvents.getEvents().getEventsCount(),
+    };
+  };
 
   const summarizeExternalLayout = (externalLayout: gdExternalLayout) => ({
     name: externalLayout.getName(),
@@ -167,16 +257,48 @@ export const createExternalProjectItemsService = ({
     const currentProject = requireProject();
     const items = Array.from(
       { length: currentProject.getExternalEventsCount() },
-      (_, index) => summarizeExternalEvents(currentProject.getExternalEventsAt(index))
+      (_, index) =>
+        summarizeExternalEvents(
+          currentProject.getExternalEventsAt(index),
+          index
+        )
     );
     return { items, total: items.length };
   };
 
-  const inspectExternalEvents = ({ name }: any) => ({
-    externalEvents: summarizeExternalEvents(requireExternalEvents(name)),
-  });
+  const inspectExternalEvents = (input: any) => {
+    const currentProject = requireProject();
+    const externalEvents = requireExternalEvents(input);
+    return {
+      externalEvents: summarizeExternalEvents(
+        externalEvents,
+        currentProject.getExternalEventsPosition(externalEvents.getName())
+      ),
+    };
+  };
 
-  const createExternalEvents = ({ name, associatedLayout = '' }: any) => {
+  const externalEventsUsages = (input: any) => {
+    const currentProject = requireProject();
+    const externalEvents = requireExternalEvents(input);
+    const impact = analyzeExternalEventsRenameImpact(
+      currentProject,
+      externalEvents.getName()
+    );
+    return {
+      externalEvents: summarizeExternalEvents(
+        externalEvents,
+        currentProject.getExternalEventsPosition(externalEvents.getName())
+      ),
+      references: impact.references,
+      total: impact.total,
+    };
+  };
+
+  const createExternalEvents = ({
+    name,
+    associatedLayout = '',
+    position,
+  }: any) => {
     const currentProject = requireProject();
     const externalEventsName = requireNonEmptyName(
       name,
@@ -189,34 +311,134 @@ export const createExternalProjectItemsService = ({
       });
     }
     requireAssociatedLayout(associatedLayout);
+    const count = currentProject.getExternalEventsCount();
+    const targetPosition = position == null ? count : Number(position);
+    if (
+      !Number.isInteger(targetPosition) ||
+      targetPosition < 0 ||
+      targetPosition > count
+    ) {
+      throw new AgentError({
+        code: 'invalid_external_events_order',
+        details: { position, count },
+      });
+    }
     const externalEvents = currentProject.insertNewExternalEvents(
       externalEventsName,
-      currentProject.getExternalEventsCount()
+      targetPosition
     );
     if (associatedLayout) externalEvents.setAssociatedLayout(associatedLayout);
     notifyMutation();
-    return { created: true, externalEvents: summarizeExternalEvents(externalEvents) };
+    return {
+      created: true,
+      externalEvents: summarizeExternalEvents(
+        externalEvents,
+        currentProject.getExternalEventsPosition(externalEventsName)
+      ),
+    };
   };
 
-  const updateExternalEvents = ({ name, associatedLayout }: any) => {
-    const externalEvents = requireExternalEvents(name);
-    if (associatedLayout !== undefined) {
-      requireAssociatedLayout(associatedLayout);
-      externalEvents.setAssociatedLayout(associatedLayout || '');
+  const updateExternalEvents = (input: any) => {
+    const currentProject = requireProject();
+    const externalEvents = requireExternalEvents(input);
+    if (input.associatedLayout !== undefined) {
+      requireAssociatedLayout(input.associatedLayout);
+      externalEvents.setAssociatedLayout(input.associatedLayout || '');
     }
     notifyMutation();
-    return { updated: true, externalEvents: summarizeExternalEvents(externalEvents) };
+    return {
+      updated: true,
+      externalEvents: summarizeExternalEvents(
+        externalEvents,
+        currentProject.getExternalEventsPosition(externalEvents.getName())
+      ),
+    };
   };
 
-  const renameExternalEvents = ({ name, newName }: any) => {
+  const duplicateExternalEvents = ({
+    name,
+    externalEventsName,
+    externalEventsId,
+    id,
+    selector,
+    newName,
+    position,
+  }: any) => {
     const currentProject = requireProject();
-    const externalEvents = requireExternalEvents(name);
-    const nextName = requireNonEmptyName(newName, 'invalid_external_events_name');
-    if (nextName === name) {
+    const source = requireExternalEvents({
+      name: name || externalEventsName,
+      externalEventsId: externalEventsId || id,
+      selector,
+    });
+    const nextName = requireNonEmptyName(
+      newName,
+      'invalid_external_events_name'
+    );
+    if (currentProject.hasExternalEventsNamed(nextName)) {
+      throw new AgentError({
+        code: 'external_events_name_taken',
+        details: { name: nextName },
+      });
+    }
+    const sourceIndex = currentProject.getExternalEventsPosition(
+      source.getName()
+    );
+    const count = currentProject.getExternalEventsCount();
+    const targetPosition =
+      position == null ? Math.min(sourceIndex + 1, count) : Number(position);
+    if (
+      !Number.isInteger(targetPosition) ||
+      targetPosition < 0 ||
+      targetPosition > count
+    ) {
+      throw new AgentError({
+        code: 'invalid_external_events_order',
+        details: { position, count },
+      });
+    }
+    const serialized = serializeToJSObject(source);
+    const copy = currentProject.insertNewExternalEvents(
+      nextName,
+      targetPosition
+    );
+    unserializeFromJSObject(
+      copy,
+      serialized,
+      'unserializeFrom',
+      currentProject
+    );
+    copy.setName(nextName);
+    if (typeof copy.resetPersistentUuid === 'function') {
+      copy.resetPersistentUuid();
+    }
+    notifyMutation();
+    return {
+      duplicated: true,
+      source: summarizeExternalEvents(source, sourceIndex),
+      externalEvents: summarizeExternalEvents(
+        copy,
+        currentProject.getExternalEventsPosition(nextName)
+      ),
+    };
+  };
+
+  const renameExternalEvents = (input: any) => {
+    const currentProject = requireProject();
+    const externalEvents = requireExternalEvents(input);
+    const oldName = externalEvents.getName();
+    const nextName = requireNonEmptyName(
+      input.newName,
+      'invalid_external_events_name'
+    );
+    const id = getExternalEventsId(externalEvents);
+    if (nextName === oldName) {
       return {
         renamed: false,
         reason: 'same_name',
-        externalEvents: summarizeExternalEvents(externalEvents),
+        externalEvents: summarizeExternalEvents(
+          externalEvents,
+          currentProject.getExternalEventsPosition(oldName)
+        ),
       };
     }
     if (currentProject.hasExternalEventsNamed(nextName)) {
@@ -225,39 +447,112 @@ export const createExternalProjectItemsService = ({
         details: { name: nextName },
       });
     }
+    const impact = analyzeExternalEventsRenameImpact(currentProject, oldName);
     externalEvents.setName(nextName);
-    gd.WholeProjectRefactorer.renameExternalEvents(currentProject, name, nextName);
+    gd.WholeProjectRefactorer.renameExternalEvents(
+      currentProject,
+      oldName,
+      nextName
+    );
+    if (getExternalEventsId(externalEvents) !== id) {
+      throw new AgentError({
+        code: 'external_events_identity_changed_during_rename',
+      });
+    }
     notifyMutation();
     return {
       renamed: true,
-      oldName: name,
+      oldName,
       newName: nextName,
-      externalEvents: summarizeExternalEvents(externalEvents),
+      preservedExternalEventsId: id,
+      referencesUpdated: impact.total,
+      references: impact.references,
+      externalEvents: summarizeExternalEvents(
+        externalEvents,
+        currentProject.getExternalEventsPosition(nextName)
+      ),
     };
   };
 
-  const deleteExternalEvents = ({ name, allowReferenced = false }: any) => {
+  const reorderExternalEvents = ({ position, ...target }: any) => {
     const currentProject = requireProject();
-    requireExternalEvents(name);
-    if (!allowReferenced) {
+    const externalEvents = requireExternalEvents(target);
+    const oldIndex = currentProject.getExternalEventsPosition(
+      externalEvents.getName()
+    );
+    const newIndex = Number(position);
+    const count = currentProject.getExternalEventsCount();
+    if (!Number.isInteger(newIndex) || newIndex < 0 || newIndex >= count) {
       throw new AgentError({
-        code: 'external_events_delete_requires_reference_opt_in',
-        message:
-          'GDevelop exposes no authoritative project-wide External Events usage finder. Set allowReferenced=true only after checking call sites.',
-        recovery:
-          'Inspect project event links, create a checkpoint, then retry with allowReferenced=true.',
+        code: 'invalid_external_events_order',
+        details: { position, count },
       });
     }
-    currentProject.removeExternalEvents(name);
+    if (oldIndex === newIndex) {
+      return {
+        reordered: false,
+        reason: 'same_position',
+        externalEvents: summarizeExternalEvents(externalEvents, oldIndex),
+      };
+    }
+    currentProject.moveExternalEvents(oldIndex, newIndex);
     notifyMutation();
-    return { deleted: true, name, allowedReferenced: true };
+    return {
+      reordered: true,
+      oldIndex,
+      newIndex,
+      externalEvents: summarizeExternalEvents(externalEvents, newIndex),
+    };
+  };
+
+  const deleteExternalEvents = ({
+    dryRun = false,
+    allowReferenced = false,
+    ...target
+  }: any) => {
+    const currentProject = requireProject();
+    const externalEvents = requireExternalEvents(target);
+    const summary = summarizeExternalEvents(
+      externalEvents,
+      currentProject.getExternalEventsPosition(externalEvents.getName())
+    );
+    const impact = analyzeExternalEventsRenameImpact(
+      currentProject,
+      externalEvents.getName()
+    );
+    const result = {
+      dryRun: !!dryRun,
+      wouldDelete: true,
+      externalEvents: summary,
+      blockers: impact.references,
+      blockerCount: impact.total,
+    };
+    if (dryRun) return result;
+    if (impact.total > 0 && !allowReferenced) {
+      throw new AgentError({
+        code: 'external_events_delete_blocked',
+        retryable: true,
+        details: result,
+        hint:
+          'Inspect external-events.usages. Delete or refactor the links first, or set allowReferenced=true only when broken references are intentional.',
+      });
+    }
+    currentProject.removeExternalEvents(externalEvents.getName());
+    notifyMutation();
+    return {
+      deleted: true,
+      externalEvents: summary,
+      removedReferencedTarget: impact.total > 0,
+      referencesAtDeletion: impact.references,
+    };
   };
 
   const listExternalLayouts = () => {
     const currentProject = requireProject();
     const items = Array.from(
       { length: currentProject.getExternalLayoutsCount() },
-      (_, index) => summarizeExternalLayout(currentProject.getExternalLayoutAt(index))
+      (_, index) =>
+        summarizeExternalLayout(currentProject.getExternalLayoutAt(index))
     );
     return { items, total: items.length };
   };
@@ -285,7 +580,10 @@ export const createExternalProjectItemsService = ({
     );
     if (associatedLayout) externalLayout.setAssociatedLayout(associatedLayout);
     notifyMutation();
-    return { created: true, externalLayout: summarizeExternalLayout(externalLayout) };
+    return {
+      created: true,
+      externalLayout: summarizeExternalLayout(externalLayout),
+    };
   };
 
   const updateExternalLayout = ({ name, associatedLayout }: any) => {
@@ -295,13 +593,19 @@ export const createExternalProjectItemsService = ({
       externalLayout.setAssociatedLayout(associatedLayout || '');
     }
     notifyMutation();
-    return { updated: true, externalLayout: summarizeExternalLayout(externalLayout) };
+    return {
+      updated: true,
+      externalLayout: summarizeExternalLayout(externalLayout),
+    };
   };
 
   const duplicateExternalLayout = ({ name, newName }: any) => {
     const currentProject = requireProject();
     const source = requireExternalLayout(name);
-    const nextName = requireNonEmptyName(newName, 'invalid_external_layout_name');
+    const nextName = requireNonEmptyName(
+      newName,
+      'invalid_external_layout_name'
+    );
     if (currentProject.hasExternalLayoutNamed(nextName)) {
       throw new AgentError({
         code: 'external_layout_name_taken',
@@ -313,7 +617,12 @@ export const createExternalProjectItemsService = ({
       nextName,
       currentProject.getExternalLayoutPosition(name) + 1
     );
-    unserializeFromJSObject(copy, serialized, 'unserializeFrom', currentProject);
+    unserializeFromJSObject(
+      copy,
+      serialized,
+      'unserializeFrom',
+      currentProject
+    );
     copy.setName(nextName);
     notifyMutation();
     return {
@@ -326,7 +635,10 @@ export const createExternalProjectItemsService = ({
   const renameExternalLayout = ({ name, newName }: any) => {
     const currentProject = requireProject();
     const externalLayout = requireExternalLayout(name);
-    const nextName = requireNonEmptyName(newName, 'invalid_external_layout_name');
+    const nextName = requireNonEmptyName(
+      newName,
+      'invalid_external_layout_name'
+    );
     if (nextName === name) {
       return {
         renamed: false,
@@ -341,7 +653,11 @@ export const createExternalProjectItemsService = ({
       });
     }
     externalLayout.setName(nextName);
-    gd.WholeProjectRefactorer.renameExternalLayout(currentProject, name, nextName);
+    gd.WholeProjectRefactorer.renameExternalLayout(
+      currentProject,
+      name,
+      nextName
+    );
     notifyMutation();
     return {
       renamed: true,
@@ -374,14 +690,18 @@ export const createExternalProjectItemsService = ({
   ): gdObject => {
     const currentProject = requireProject();
     const globals = currentProject.getObjects();
-    if (globals.hasObjectNamed(objectName)) return globals.getObject(objectName);
+    if (globals.hasObjectNamed(objectName))
+      return globals.getObject(objectName);
     const associatedLayoutName = externalLayout.getAssociatedLayout();
     if (
       associatedLayoutName &&
       currentProject.hasLayoutNamed(associatedLayoutName)
     ) {
-      const sceneObjects = currentProject.getLayout(associatedLayoutName).getObjects();
-      if (sceneObjects.hasObjectNamed(objectName)) return sceneObjects.getObject(objectName);
+      const sceneObjects = currentProject
+        .getLayout(associatedLayoutName)
+        .getObjects();
+      if (sceneObjects.hasObjectNamed(objectName))
+        return sceneObjects.getObject(objectName);
     }
     throw new AgentError({
       code: 'external_layout_object_not_found',
@@ -418,13 +738,19 @@ export const createExternalProjectItemsService = ({
     if (matches.length === 0) {
       throw new AgentError({
         code: 'external_layout_instance_not_found',
-        details: { externalLayoutName: externalLayout.getName(), instanceId: id },
+        details: {
+          externalLayoutName: externalLayout.getName(),
+          instanceId: id,
+        },
       });
     }
     if (matches.length > 1) {
       throw new AgentError({
         code: 'ambiguous_instance_id',
-        details: { externalLayoutName: externalLayout.getName(), instanceId: id },
+        details: {
+          externalLayoutName: externalLayout.getName(),
+          instanceId: id,
+        },
       });
     }
     return matches[0];
@@ -436,7 +762,10 @@ export const createExternalProjectItemsService = ({
     patch: any
   ) => {
     if (patch.objectName !== undefined) {
-      const objectName = requireNonEmptyName(patch.objectName, 'invalid_object_name');
+      const objectName = requireNonEmptyName(
+        patch.objectName,
+        'invalid_object_name'
+      );
       resolveExternalLayoutObject(externalLayout, objectName);
       instance.setObjectName(objectName);
     }
@@ -452,18 +781,31 @@ export const createExternalProjectItemsService = ({
     });
   };
 
-  const createExternalLayoutInstance = ({ name, objectName, ...patch }: any) => {
+  const createExternalLayoutInstance = ({
+    name,
+    objectName,
+    ...patch
+  }: any) => {
     const externalLayout = requireExternalLayout(name);
-    const targetObjectName = requireNonEmptyName(objectName, 'invalid_object_name');
+    const targetObjectName = requireNonEmptyName(
+      objectName,
+      'invalid_object_name'
+    );
     resolveExternalLayoutObject(externalLayout, targetObjectName);
-    const instance = externalLayout.getInitialInstances().insertNewInitialInstance();
+    const instance = externalLayout
+      .getInitialInstances()
+      .insertNewInitialInstance();
     instance.setObjectName(targetObjectName);
     applyInstancePatch(externalLayout, instance, patch);
     notifyMutation();
     return { created: true, instance: serializeInstance(instance) };
   };
 
-  const updateExternalLayoutInstance = ({ name, instanceId, ...patch }: any) => {
+  const updateExternalLayoutInstance = ({
+    name,
+    instanceId,
+    ...patch
+  }: any) => {
     const externalLayout = requireExternalLayout(name);
     const instance = requireInstance(externalLayout, instanceId);
     applyInstancePatch(externalLayout, instance, patch);
@@ -484,9 +826,12 @@ export const createExternalProjectItemsService = ({
   return {
     listExternalEvents,
     inspectExternalEvents,
+    externalEventsUsages,
     createExternalEvents,
     updateExternalEvents,
+    duplicateExternalEvents,
     renameExternalEvents,
+    reorderExternalEvents,
     deleteExternalEvents,
     listExternalLayouts,
     inspectExternalLayout,

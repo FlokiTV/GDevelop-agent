@@ -269,6 +269,8 @@ See [`docs/GAME_CREATION_COVERAGE_ROADMAP.md`](./docs/GAME_CREATION_COVERAGE_ROA
 
 For the post-roadmap developer-experience gaps exposed by real autonomous authoring — especially canonical `eventsJson` versus normalized handles, event-node schema introspection, instruction/expression discovery, visual Event Sheet styling and external-client connection ergonomics — see [`docs/MCP_INTROSPECTION_AGENT_DX.md`](./docs/MCP_INTROSPECTION_AGENT_DX.md).
 
+For persistent scene/External Events identity and refactor-safe project structure lifecycle (`project.scenes.*`, External Events usages/duplicate/reorder/dry-run delete), see [`docs/MCP_PROJECT_STRUCTURE_LIFECYCLE.md`](./docs/MCP_PROJECT_STRUCTURE_LIFECYCLE.md).
+
 ## 3D workflows
 
 For material 3D work, use the dedicated quality guidance:

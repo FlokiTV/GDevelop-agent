@@ -3,6 +3,8 @@ declare class gdExternalEvents {
   constructor(): void;
   setName(name: string): void;
   getName(): string;
+  resetPersistentUuid(): gdExternalEvents;
+  getPersistentUuid(): string;
   getAssociatedLayout(): string;
   setAssociatedLayout(name: string): void;
   getEvents(): gdEventsList;

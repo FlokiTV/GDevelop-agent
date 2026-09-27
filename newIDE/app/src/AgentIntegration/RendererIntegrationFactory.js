@@ -21,6 +21,7 @@ import { createBuildService } from './editor/BuildService';
 import { createPublicationService } from './editor/PublicationService';
 import { createExportService } from './editor/ExportService';
 import { createProjectLifecycleService } from './editor/ProjectLifecycleService';
+import { createSceneLifecycleService } from './editor/SceneLifecycleService';
 import { createTargetIdentityService } from './editor/TargetIdentityService';
 import { createValidationService } from './editor/ValidationService';
 import { createPreviewService } from './runtime/PreviewService';
@@ -197,6 +198,14 @@ export const createRendererIntegration = ({
         project,
         triggerUnsavedChanges,
         forceUpdate,
+      })
+    : null;
+  const sceneLifecycleService = project
+    ? createSceneLifecycleService({
+        project,
+        triggerUnsavedChanges,
+        forceUpdate,
+        onWillDeleteScene,
       })
     : null;
   const extensionAuthoringService = project
@@ -425,6 +434,7 @@ export const createRendererIntegration = ({
       editorVisualService,
       eventTools,
       externalProjectItemsService,
+      sceneLifecycleService,
       extensionAuthoringService,
       extensionLifecycleService,
       objectStructureService,

@@ -135,6 +135,10 @@ export class AgentHost {
     const startedAt = Date.now();
     const descriptor = this.registry.get(name);
     const normalizedInput = normalizeInput(input);
+    const modifiesProject =
+      descriptor.metadata.modifiesProject &&
+      (typeof descriptor.modifiesProjectWhen !== 'function' ||
+        descriptor.modifiesProjectWhen(normalizedInput));
     const environment = this._environment || {};
     const revisionTracker = environment.projectRevisionTracker || null;
     const semanticConcurrency = environment.semanticConcurrency || null;
@@ -184,7 +188,7 @@ export class AgentHost {
       }
 
       if (
-        descriptor.metadata.modifiesProject &&
+        modifiesProject &&
         environment.project &&
         typeof environment.getTransactionStatus === 'function'
       ) {
@@ -253,7 +257,7 @@ export class AgentHost {
       }
 
       try {
-        if (descriptor.metadata.modifiesProject && semanticConcurrency) {
+        if (modifiesProject && semanticConcurrency) {
           semanticConcurrency.assertExpected(
             requestContext.expectedSemanticRevisions
           );
@@ -269,7 +273,7 @@ export class AgentHost {
           requestContext,
           registry: this.registry,
         });
-        const projectRevision = descriptor.metadata.modifiesProject
+        const projectRevision = modifiesProject
           ? revisionTracker
             ? revisionTracker.markMutation({
                 command: descriptor.name,
@@ -279,7 +283,7 @@ export class AgentHost {
             : null
           : readCurrentRevision();
         const semanticRevisions =
-          descriptor.metadata.modifiesProject && semanticConcurrency
+          modifiesProject && semanticConcurrency
             ? semanticConcurrency.mark(semanticScopes)
             : semanticConcurrency
             ? semanticConcurrency.snapshot(semanticScopes)
@@ -299,7 +303,7 @@ export class AgentHost {
 
     let idempotencyReplayed = false;
     const idempotencyKey =
-      descriptor.metadata.modifiesProject &&
+      modifiesProject &&
       typeof requestContext.idempotencyKey === 'string' &&
       requestContext.idempotencyKey
         ? requestContext.idempotencyKey
@@ -326,7 +330,7 @@ export class AgentHost {
             ? requestContext.traceId
             : null,
         readOnly: descriptor.metadata.readOnly,
-        modifiesProject: descriptor.metadata.modifiesProject,
+        modifiesProject,
         projectRevision: execution.projectRevision,
         ...(execution.semanticRevisions && execution.semanticRevisions.length
           ? { semanticRevisions: execution.semanticRevisions }

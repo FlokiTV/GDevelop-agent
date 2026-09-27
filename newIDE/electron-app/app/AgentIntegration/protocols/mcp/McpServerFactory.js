@@ -236,13 +236,23 @@ const assertTargetPreconditions = async ({
       : typeof commandInput.scene_name === 'string' && commandInput.scene_name
       ? commandInput.scene_name
       : null;
+  const projectScenes =
+    project && Array.isArray(project.scenes) ? project.scenes : [];
+  const explicitSceneIdentity = explicitSceneName
+    ? projectScenes.find(
+        scene => scene && scene.sceneName === explicitSceneName
+      ) || null
+    : null;
   const actualScene = explicitSceneName
-    ? {
-        sceneName: explicitSceneName,
-        sceneId: `scene:${explicitSceneName}`,
-        selector: `scene:${explicitSceneName}`,
-        source: 'command-input',
-      }
+    ? explicitSceneIdentity
+      ? { ...explicitSceneIdentity, source: 'command-input' }
+      : {
+          sceneName: explicitSceneName,
+          sceneId: explicitSceneName,
+          selector: `scene:${explicitSceneName}`,
+          identityKind: 'name-fallback',
+          source: 'command-input',
+        }
     : editor && editor.activeScene
     ? editor.activeScene
     : null;

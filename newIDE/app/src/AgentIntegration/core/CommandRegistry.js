@@ -29,6 +29,7 @@ export type CommandDescriptor = {|
   metadata: CommandMetadata,
   validateInput?: (input: { [string]: any }) => void,
   execute: (context: CommandExecutionContext) => any | Promise<any>,
+  modifiesProjectWhen?: (input: { [string]: any }) => boolean,
   deprecated?: {|
     since?: string,
     replacement?: string,
@@ -134,6 +135,15 @@ const assertDescriptor = (descriptor: CommandDescriptor) => {
   ) {
     throw new AgentError({
       code: 'invalid_command_semantic_scopes',
+      details: { name: descriptor.name },
+    });
+  }
+  if (
+    descriptor.modifiesProjectWhen !== undefined &&
+    typeof descriptor.modifiesProjectWhen !== 'function'
+  ) {
+    throw new AgentError({
+      code: 'invalid_command_modification_predicate',
       details: { name: descriptor.name },
     });
   }

@@ -7,18 +7,30 @@ const makeIdentity = () => ({
     open: true,
     projectId: 'project-a',
     normalizedProjectPath: 'c:\\games\\a\\game.json',
+    scenes: [
+      {
+        sceneName: 'SceneA',
+        sceneId: 'scene-uuid-a',
+        selector: 'scene:scene-uuid-a',
+      },
+      {
+        sceneName: 'SceneB',
+        sceneId: 'scene-uuid-b',
+        selector: 'scene:scene-uuid-b',
+      },
+    ],
   },
   editor: {
     activeTargets: [
       {
         editorSelector: 'editor-tab:editor-tab-1',
-        selector: 'scene:SceneA',
+        selector: 'scene:scene-uuid-a',
       },
     ],
     activeScene: {
       sceneName: 'SceneA',
-      sceneId: 'scene:SceneA',
-      selector: 'scene:SceneA',
+      sceneId: 'scene-uuid-a',
+      selector: 'scene:scene-uuid-a',
     },
   },
   preview: {
@@ -27,7 +39,7 @@ const makeIdentity = () => ({
         targetId: 'preview-window:8',
         windowId: 8,
         debuggerId: 'debugger-a',
-        sceneSelector: 'scene:SceneA',
+        sceneSelector: 'scene:scene-uuid-a',
       },
     ],
   },
@@ -65,7 +77,7 @@ test('rejects pinned project and scene mismatches with structured target_mismatc
     assertTargetPreconditions({
       registration: { name: 'preview.start' },
       commandInput: {},
-      preconditions: { expectedSceneSelector: 'scene:SceneB' },
+      preconditions: { expectedSceneSelector: 'scene:scene-uuid-b' },
       rendererBridge: makeBridge(identity),
       targeting: { windowId: '1' },
       identity: { ownerKey: 'agent::session' },
@@ -76,7 +88,7 @@ test('rejects pinned project and scene mismatches with structured target_mismatc
       error &&
       error.code === 'target_mismatch' &&
       error.details.conflictScope === 'scene' &&
-      error.details.actual.selector === 'scene:SceneA'
+      error.details.actual.selector === 'scene:scene-uuid-a'
   );
 });
 
@@ -85,7 +97,7 @@ test('accepts explicit scene mutation target independently from currently active
   const result = await assertTargetPreconditions({
     registration: { name: 'events.update' },
     commandInput: { sceneName: 'SceneB' },
-    preconditions: { expectedSceneSelector: 'scene:SceneB' },
+    preconditions: { expectedSceneSelector: 'scene:scene-uuid-b' },
     rendererBridge: makeBridge(identity),
     targeting: {},
     identity: {},
@@ -183,7 +195,7 @@ test('binds expectedPreviewTarget to the same requested preview window when mult
     targetId: 'preview-window:9',
     windowId: 9,
     debuggerId: 'debugger-b',
-    sceneSelector: 'scene:SceneA',
+    sceneSelector: 'scene:scene-uuid-a',
   });
 
   await assert.rejects(

@@ -51,6 +51,16 @@ class GD_CORE_API ExternalEvents {
   virtual void SetName(const gd::String& name_) { name = name_; };
 
   /**
+   * \brief Reset the persistent UUID used to identify this External Events sheet across renames.
+   */
+  ExternalEvents& ResetPersistentUuid();
+
+  /**
+   * \brief Get the persistent UUID used to identify this External Events sheet across renames.
+   */
+  const gd::String& GetPersistentUuid() const { return persistentUuid; }
+
+  /**
    * \brief Get the layout associated with external events.
    *
    * This is used in the IDE to remember the layout used to edit the external
@@ -90,6 +100,7 @@ class GD_CORE_API ExternalEvents {
 
  private:
   gd::String name;
+  gd::String persistentUuid;
   gd::String associatedScene;
   gd::EventsList events;       ///< List of events
 

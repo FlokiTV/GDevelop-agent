@@ -34,58 +34,106 @@ describe('AgentIntegration ExternalProjectItemsService', () => {
     project.delete();
   });
 
-  it('creates, updates, lists, renames and safely deletes External Events', () => {
-    expect(
-      service.createExternalEvents({
-        name: 'SharedLogic',
-        associatedLayout: 'Game',
-      })
-    ).toMatchObject({
+  it('manages External Events by persistent identity with refactor-safe usages and deletion', () => {
+    const created = service.createExternalEvents({
+      name: 'SharedLogic',
+      associatedLayout: 'Game',
+    });
+    expect(created).toMatchObject({
       created: true,
       externalEvents: {
         name: 'SharedLogic',
         associatedLayout: 'Game',
         eventCount: 0,
+        order: 0,
       },
     });
-    expect(service.listExternalEvents()).toMatchObject({
-      total: 1,
-      items: [{ name: 'SharedLogic', associatedLayout: 'Game' }],
-    });
+    const stableId = created.externalEvents.externalEventsId;
+    expect(stableId).toEqual(expect.any(String));
+    expect(created.externalEvents.selector).toBe(`external-events:${stableId}`);
 
-    service.updateExternalEvents({
-      name: 'SharedLogic',
-      associatedLayout: '',
-    });
-    expect(
-      service.inspectExternalEvents({ name: 'SharedLogic' }).externalEvents
-        .associatedLayout
-    ).toBe('');
+    const linkBaseEvent = project
+      .getLayout('Game')
+      .getEvents()
+      .insertNewEvent(project, 'BuiltinCommonInstructions::Link', 0);
+    gd.asLinkEvent(linkBaseEvent).setTarget('SharedLogic');
 
     expect(
-      service.renameExternalEvents({
-        name: 'SharedLogic',
-        newName: 'SharedLogic2',
-      })
+      service.externalEventsUsages({ externalEventsId: stableId })
     ).toMatchObject({
+      total: 1,
+      references: [
+        expect.objectContaining({
+          before: 'SharedLogic',
+          kind: 'event-reference',
+        }),
+      ],
+    });
+
+    const renamed = service.renameExternalEvents({
+      externalEventsId: stableId,
+      newName: 'SharedLogic2',
+    });
+    expect(renamed).toMatchObject({
       renamed: true,
       oldName: 'SharedLogic',
       newName: 'SharedLogic2',
+      preservedExternalEventsId: stableId,
+      referencesUpdated: 1,
     });
     expect(project.hasExternalEventsNamed('SharedLogic2')).toBe(true);
+    expect(project.getExternalEvents('SharedLogic2').getPersistentUuid()).toBe(
+      stableId
+    );
+    expect(gd.asLinkEvent(linkBaseEvent).getTarget()).toBe('SharedLogic2');
 
+    service.updateExternalEvents({
+      externalEventsId: stableId,
+      associatedLayout: '',
+    });
+    expect(
+      service.inspectExternalEvents({ selector: `external-events:${stableId}` })
+        .externalEvents.associatedLayout
+    ).toBe('');
+
+    const duplicated = service.duplicateExternalEvents({
+      externalEventsId: stableId,
+      newName: 'SharedLogic Copy',
+    });
+    expect(duplicated.externalEvents.externalEventsId).not.toBe(stableId);
+    expect(service.listExternalEvents().items.map(item => item.name)).toEqual([
+      'SharedLogic2',
+      'SharedLogic Copy',
+    ]);
+
+    expect(
+      service.reorderExternalEvents({
+        externalEventsId: duplicated.externalEvents.externalEventsId,
+        position: 0,
+      })
+    ).toMatchObject({ reordered: true, oldIndex: 1, newIndex: 0 });
+    expect(service.listExternalEvents().items.map(item => item.name)).toEqual([
+      'SharedLogic Copy',
+      'SharedLogic2',
+    ]);
+
+    const dryRun = service.deleteExternalEvents({
+      externalEventsId: stableId,
+      dryRun: true,
+    });
+    expect(dryRun.blockerCount).toBe(1);
     expect(() =>
-      service.deleteExternalEvents({ name: 'SharedLogic2' })
-    ).toThrow(expect.objectContaining({
-      code: 'external_events_delete_requires_reference_opt_in',
-    }));
+      service.deleteExternalEvents({ externalEventsId: stableId })
+    ).toThrow(
+      expect.objectContaining({ code: 'external_events_delete_blocked' })
+    );
+
     expect(
       service.deleteExternalEvents({
-        name: 'SharedLogic2',
-        allowReferenced: true,
+        externalEventsId: duplicated.externalEvents.externalEventsId,
       })
-    ).toMatchObject({ deleted: true, allowedReferenced: true });
-    expect(service.listExternalEvents().total).toBe(0);
+    ).toMatchObject({ deleted: true });
+    expect(project.hasExternalEventsNamed('SharedLogic Copy')).toBe(false);
   });
 
   it('duplicates External Layouts with independent instances and refactors names', () => {
@@ -164,7 +212,9 @@ describe('AgentIntegration ExternalProjectItemsService', () => {
         hidden: false,
       }).instance
     ).toMatchObject({ x: 5, y: 6, hidden: false });
-    expect(service.listExternalLayoutInstances({ name: 'Overlay' })).toMatchObject({
+    expect(
+      service.listExternalLayoutInstances({ name: 'Overlay' })
+    ).toMatchObject({
       total: 1,
       items: [expect.objectContaining({ objectName: 'GlobalSprite' })],
     });
@@ -174,7 +224,9 @@ describe('AgentIntegration ExternalProjectItemsService', () => {
         name: 'Overlay',
         objectName: 'MissingObject',
       })
-    ).toThrow(expect.objectContaining({ code: 'external_layout_object_not_found' }));
+    ).toThrow(
+      expect.objectContaining({ code: 'external_layout_object_not_found' })
+    );
 
     expect(
       service.deleteExternalLayoutInstance({
@@ -182,13 +234,15 @@ describe('AgentIntegration ExternalProjectItemsService', () => {
         instanceId: shortId,
       })
     ).toMatchObject({ deleted: true });
-    expect(service.listExternalLayoutInstances({ name: 'Overlay' }).total).toBe(0);
+    expect(service.listExternalLayoutInstances({ name: 'Overlay' }).total).toBe(
+      0
+    );
 
-    expect(() =>
-      service.deleteExternalLayout({ name: 'Overlay' })
-    ).toThrow(expect.objectContaining({
-      code: 'external_layout_delete_requires_reference_opt_in',
-    }));
+    expect(() => service.deleteExternalLayout({ name: 'Overlay' })).toThrow(
+      expect.objectContaining({
+        code: 'external_layout_delete_requires_reference_opt_in',
+      })
+    );
     expect(
       service.deleteExternalLayout({ name: 'Overlay', allowReferenced: true })
     ).toMatchObject({ deleted: true, allowedReferenced: true });
