@@ -85,6 +85,26 @@ describe('ProjectLifecycleService', () => {
     expect(() => makeService({ project: transientProject })).not.toThrow();
   });
 
+  test('uses the dynamic current project and ignores a destroyed stale wrapper during close transitions', () => {
+    const staleProject = {
+      getName: () => 'Destroyed',
+      getProjectUuid: () => {
+        throw new Error('object already destroyed');
+      },
+      getProjectFile: () => {
+        throw new Error('object already destroyed');
+      },
+      isFolderProject: () => false,
+    };
+
+    expect(() =>
+      makeService({
+        project: staleProject,
+        getCurrentProject: () => null,
+      })
+    ).not.toThrow();
+  });
+
   test('creates a project only when no project is open', async () => {
     const { service } = makeService({ project: null });
     await expect(service.create({ name: 'Created' })).resolves.toMatchObject({

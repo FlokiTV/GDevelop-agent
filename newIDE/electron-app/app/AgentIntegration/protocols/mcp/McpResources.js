@@ -1,4 +1,5 @@
 const { NATIVE_EVENT_AUTHORING_GUIDE } = require('./McpPrompts');
+const { RESPONSE_CONTRACT_GUIDE } = require('./McpResponseContract');
 
 const RESOURCE_DEFINITIONS = [
   {
@@ -12,6 +13,18 @@ const RESOURCE_DEFINITIONS = [
     cacheScope: 'process',
     live: false,
     guideVersion: 3,
+  },
+  {
+    name: 'gdevelop-response-contract-guide',
+    uri: 'gdevelop://guides/response-contract',
+    title: 'MCP response and error contract',
+    description:
+      'Versioned canonical tools/call success, error, metadata and pagination contract for external GDevelop MCP clients.',
+    mimeType: 'text/markdown',
+    text: RESPONSE_CONTRACT_GUIDE,
+    cacheScope: 'process',
+    live: false,
+    guideVersion: 1,
   },
   {
     name: 'gdevelop-project-status',

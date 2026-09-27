@@ -8,13 +8,19 @@ import {
 } from '../../Utils/GDevelopServices/Asset';
 import { getIDEVersionWithHash } from '../../Version';
 import { AgentError } from '../core/AgentError';
+import { makeBoundedPagination } from '../core/Pagination';
 
 const DEFAULT_TIMEOUT_MS = 15000;
 const MAX_TIMEOUT_MS = 45000;
 const DEFAULT_CACHE_TTL_MS = 5 * 60 * 1000;
 const DEFAULT_MAX_CATALOG_BYTES = 48 * 1024 * 1024;
 
-const clampInteger = (value: any, fallback: number, min: number, max: number) => {
+const clampInteger = (
+  value: any,
+  fallback: number,
+  min: number,
+  max: number
+) => {
   const number = Number.isFinite(value) ? Math.floor(value) : fallback;
   return Math.min(max, Math.max(min, number));
 };
@@ -305,12 +311,22 @@ export const createStoreService = ({
           ]) + (normalize(asset.id) === normalize(query) ? 500 : 0),
       }))
       .filter(entry => entry.score > 0)
-      .sort((a, b) => b.score - a.score || a.asset.name.localeCompare(b.asset.name));
+      .sort(
+        (a, b) => b.score - a.score || a.asset.name.localeCompare(b.asset.name)
+      );
+    const results = ranked
+      .slice(0, limit)
+      .map(entry => makeAssetSummary(entry.asset));
     return {
       query,
       objectType: objectType || null,
       total: ranked.length,
-      results: ranked.slice(0, limit).map(entry => makeAssetSummary(entry.asset)),
+      results,
+      pagination: makeBoundedPagination({
+        limit,
+        total: ranked.length,
+        returned: results.length,
+      }),
       source: makeSource('gdevelop-public-asset-store'),
       cache: { policy: 'process-memory', ttlMs: cacheTtlMs },
     };
@@ -318,7 +334,9 @@ export const createStoreService = ({
 
   const inspectObject = async (request: any, signal?: any) => {
     const assetId =
-      request && typeof request.assetId === 'string' ? request.assetId.trim() : '';
+      request && typeof request.assetId === 'string'
+        ? request.assetId.trim()
+        : '';
     if (!assetId) throw new AgentError({ code: 'missing_asset_id' });
     const assets = await loadAssets(request, signal);
     const header = assets.find(asset => asset.id === assetId);
@@ -339,7 +357,10 @@ export const createStoreService = ({
       loadAttribution(request, signal),
     ]);
     ensureBounded(asset, 'object_store_payload_too_large');
-    const authorDetails = (Array.isArray(asset.authors) ? asset.authors : []).map(
+    const authorDetails = (Array.isArray(asset.authors)
+      ? asset.authors
+      : []
+    ).map(
       authorName =>
         attribution.authors.find(author => author.name === authorName) || {
           name: authorName,
@@ -379,9 +400,12 @@ export const createStoreService = ({
   };
 
   const importObject = async (request: any, signal?: any) => {
-    if (!editorFunctionService) throw new AgentError({ code: 'no_project_open' });
+    if (!editorFunctionService)
+      throw new AgentError({ code: 'no_project_open' });
     const assetId =
-      request && typeof request.assetId === 'string' ? request.assetId.trim() : '';
+      request && typeof request.assetId === 'string'
+        ? request.assetId.trim()
+        : '';
     const objectName =
       request && typeof request.objectName === 'string'
         ? request.objectName.trim()
@@ -395,7 +419,8 @@ export const createStoreService = ({
     if (!sceneName) throw new AgentError({ code: 'missing_scene_name' });
     const assets = await loadAssets(request, signal);
     const header = assets.find(asset => asset.id === assetId);
-    if (!header) throw new AgentError({ code: 'asset_not_found', details: { assetId } });
+    if (!header)
+      throw new AgentError({ code: 'asset_not_found', details: { assetId } });
     throwIfCancelled(signal);
     const result = await editorFunctionService.run({
       calls: [
@@ -406,7 +431,8 @@ export const createStoreService = ({
             object_name: objectName,
             asset_id: assetId,
             object_type: header.objectType,
-            target_object_scope: request.targetScope === 'global' ? 'global' : 'scene',
+            target_object_scope:
+              request.targetScope === 'global' ? 'global' : 'scene',
             replace_existing_object: request.replaceExistingObject === true,
           },
         },
@@ -449,13 +475,19 @@ export const createStoreService = ({
         (a, b) =>
           b.score - a.score || a.resource.name.localeCompare(b.resource.name)
       );
+    const results = ranked
+      .slice(0, limit)
+      .map(entry => makeResourceSummary(entry.resource));
     return {
       query,
       kind: kind || null,
       total: ranked.length,
-      results: ranked
-        .slice(0, limit)
-        .map(entry => makeResourceSummary(entry.resource)),
+      results,
+      pagination: makeBoundedPagination({
+        limit,
+        total: ranked.length,
+        returned: results.length,
+      }),
       source: makeSource('gdevelop-public-resource-store'),
       cache: { policy: 'process-memory', ttlMs: cacheTtlMs },
     };
@@ -466,7 +498,8 @@ export const createStoreService = ({
       request && typeof request.resourceUrl === 'string'
         ? request.resourceUrl.trim()
         : '';
-    if (!resourceUrl) throw new AgentError({ code: 'missing_resource_store_url' });
+    if (!resourceUrl)
+      throw new AgentError({ code: 'missing_resource_store_url' });
     const resources = await loadResources(request, signal);
     const resource = resources.find(item => item.url === resourceUrl);
     if (!resource) {
@@ -488,9 +521,7 @@ export const createStoreService = ({
     );
     const licenseDetails =
       attribution.licenses.find(license => license.name === resource.license) ||
-      (resource.license
-        ? { name: resource.license, website: null }
-        : null);
+      (resource.license ? { name: resource.license, website: null } : null);
     return {
       resource: {
         ...makeResourceSummary(resource),
@@ -513,7 +544,8 @@ export const createStoreService = ({
       request && typeof request.resourceUrl === 'string'
         ? request.resourceUrl.trim()
         : '';
-    if (!resourceUrl) throw new AgentError({ code: 'missing_resource_store_url' });
+    if (!resourceUrl)
+      throw new AgentError({ code: 'missing_resource_store_url' });
     const resources = await loadResources(request, signal);
     const resource = resources.find(item => item.url === resourceUrl);
     if (!resource) {

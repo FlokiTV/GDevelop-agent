@@ -357,6 +357,7 @@ export const createRendererIntegration = ({
   });
   const projectLifecycleService = createProjectLifecycleService({
     project,
+    getCurrentProject,
     fileIdentifier,
     hasUnsavedChanges,
     projectRevisionTracker,

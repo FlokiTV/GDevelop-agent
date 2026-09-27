@@ -200,10 +200,12 @@ test('official MCP client initializes, lists registry tools and calls them direc
     assert.deepEqual(saveTool.inputSchema.examples, [{}]);
     assert.equal(saveTool.outputSchema.type, 'object');
     assert.deepEqual(saveTool.outputSchema.required, [
+      'contractVersion',
       'command',
       'data',
       'meta',
     ]);
+    assert.equal(saveTool.outputSchema.properties.contractVersion.const, 1);
 
     const result = await client.callTool({
       name: 'project.status',

@@ -16,6 +16,10 @@ export type CommandResult = {|
     modifiesProject: boolean,
     projectRevision: ?number,
     semanticRevisions?: Array<any>,
+    transactionId?: string,
+    semanticLeaseOwner?: string,
+    leaseId?: string,
+    leaseIds?: Array<string>,
     identity?: any,
     targetIdentity?: any,
     durationMs: number,
@@ -72,6 +76,20 @@ export const resolveSemanticScopes = (
     if (resourceName) scopes.add(`resource:${resourceName}`);
   }
   return Array.from(scopes).sort();
+};
+
+const getTargetIdentityMetadata = (environment: any): any => {
+  if (!environment || typeof environment.getTargetIdentity !== 'function') {
+    return undefined;
+  }
+  try {
+    return environment.getTargetIdentity();
+  } catch (error) {
+    // Lifecycle commands can successfully close/replace the project before
+    // post-command metadata is assembled. Target identity is supplemental
+    // metadata and must never turn an already-applied command into a failure.
+    return null;
+  }
 };
 
 const getProjectConflictContext = (environment: any) => {
@@ -171,6 +189,12 @@ export class AgentHost {
       identityOwner || requestContext.semanticLeaseOwner || null;
     const readCurrentRevision = () =>
       revisionTracker ? revisionTracker.synchronize() : null;
+    const transactionAtRequestStart =
+      modifiesProject &&
+      environment.project &&
+      typeof environment.getTransactionStatus === 'function'
+        ? environment.getTransactionStatus()
+        : null;
 
     const executeOnce = async () => {
       const currentRevision = readCurrentRevision();
@@ -187,12 +211,8 @@ export class AgentHost {
         });
       }
 
-      if (
-        modifiesProject &&
-        environment.project &&
-        typeof environment.getTransactionStatus === 'function'
-      ) {
-        const transaction = environment.getTransactionStatus();
+      if (modifiesProject && environment.project) {
+        const transaction = transactionAtRequestStart;
         const transactionOwner =
           transaction &&
           transaction.active &&
@@ -321,6 +341,19 @@ export class AgentHost {
         })
       : await executeOnce();
 
+    const activeTransaction = transactionAtRequestStart;
+    const activeLeases =
+      modifiesProject && semanticConcurrency
+        ? semanticConcurrency
+            .listLeases()
+            .filter(
+              lease =>
+                semanticScopes.includes(lease.scope) &&
+                (!semanticLeaseOwner || lease.owner === semanticLeaseOwner)
+            )
+        : [];
+    const activeLeaseIds = activeLeases.map(lease => lease.leaseId);
+
     return {
       command: descriptor.name,
       data: execution.data,
@@ -335,9 +368,24 @@ export class AgentHost {
         ...(execution.semanticRevisions && execution.semanticRevisions.length
           ? { semanticRevisions: execution.semanticRevisions }
           : {}),
+        ...(activeTransaction &&
+        activeTransaction.active &&
+        typeof activeTransaction.transactionId === 'string' &&
+        activeTransaction.transactionId
+          ? { transactionId: activeTransaction.transactionId }
+          : {}),
+        ...(activeLeaseIds.length
+          ? {
+              semanticLeaseOwner: semanticLeaseOwner || activeLeases[0].owner,
+              leaseIds: activeLeaseIds,
+              ...(activeLeaseIds.length === 1
+                ? { leaseId: activeLeaseIds[0] }
+                : {}),
+            }
+          : {}),
         ...(requestIdentity ? { identity: requestIdentity } : {}),
         ...(typeof environment.getTargetIdentity === 'function'
-          ? { targetIdentity: environment.getTargetIdentity() }
+          ? { targetIdentity: getTargetIdentityMetadata(environment) }
           : {}),
         durationMs: Math.max(0, Date.now() - startedAt),
         idempotencyReplayed,

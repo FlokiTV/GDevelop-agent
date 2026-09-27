@@ -2,45 +2,74 @@ const { fromJsonSchema } = require('@modelcontextprotocol/server');
 
 const MCP_META_PREFIX = 'gdevelop/';
 
-const withCommandResultEnvelope = outputSchema => {
-  if (!outputSchema || typeof outputSchema !== 'object') return null;
+const deferStandardSchemaValidationToHandler = schema => {
+  const standard = schema && schema['~standard'];
+  if (!standard || typeof standard !== 'object') return schema;
   return {
-    type: 'object',
-    additionalProperties: false,
-    required: ['command', 'data', 'meta'],
-    properties: {
-      command: { type: 'string' },
-      data: outputSchema,
-      meta: {
-        type: 'object',
-        additionalProperties: true,
-        required: ['readOnly', 'modifiesProject'],
-        properties: {
-          traceId: {
-            anyOf: [{ type: 'string' }, { type: 'null' }],
-          },
-          readOnly: { type: 'boolean' },
-          modifiesProject: { type: 'boolean' },
-          projectRevision: {
-            anyOf: [{ type: 'integer', minimum: 0 }, { type: 'null' }],
-          },
-          semanticRevisions: {
-            type: 'array',
-            items: {
-              type: 'object',
-              additionalProperties: false,
-              required: ['scope', 'revision'],
-              properties: {
-                scope: { type: 'string' },
-                revision: { type: 'integer', minimum: 0 },
-              },
-            },
-          },
-        },
-      },
+    '~standard': {
+      ...standard,
+      validate: value => ({ value }),
     },
   };
 };
+
+const withCommandResultEnvelope = (outputSchema = {}) => ({
+  type: 'object',
+  additionalProperties: false,
+  required: ['contractVersion', 'command', 'data', 'meta'],
+  properties: {
+    contractVersion: { type: 'integer', const: 1 },
+    command: { type: 'string' },
+    data: outputSchema && typeof outputSchema === 'object' ? outputSchema : {},
+    meta: {
+      type: 'object',
+      additionalProperties: true,
+      required: [
+        'traceId',
+        'readOnly',
+        'modifiesProject',
+        'projectRevision',
+        'semanticRevisions',
+        'durationMs',
+        'idempotencyReplayed',
+      ],
+      properties: {
+        traceId: {
+          anyOf: [{ type: 'string' }, { type: 'null' }],
+        },
+        readOnly: { type: 'boolean' },
+        modifiesProject: { type: 'boolean' },
+        projectRevision: {
+          anyOf: [{ type: 'integer', minimum: 0 }, { type: 'null' }],
+        },
+        semanticRevisions: {
+          type: 'array',
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['scope', 'revision'],
+            properties: {
+              scope: { type: 'string' },
+              revision: { type: 'integer', minimum: 0 },
+            },
+          },
+        },
+        durationMs: {
+          anyOf: [{ type: 'number', minimum: 0 }, { type: 'null' }],
+        },
+        idempotencyReplayed: { type: 'boolean' },
+        transactionId: { type: 'string', minLength: 1 },
+        leaseId: { type: 'string', minLength: 1 },
+        leaseIds: {
+          type: 'array',
+          items: { type: 'string', minLength: 1 },
+          uniqueItems: true,
+        },
+        semanticLeaseOwner: { type: 'string', minLength: 1 },
+      },
+    },
+  },
+});
 
 const withRevisionPrecondition = (inputSchema, modifiesProject) => {
   const schema = inputSchema || {
@@ -169,23 +198,19 @@ const withTargetPreconditions = (inputSchema, descriptor) => {
 const descriptorToToolRegistration = descriptor => {
   const metadata = descriptor.metadata || {};
   const modifiesProject = !!metadata.modifiesProject;
+  const projectedInputSchema = withTargetPreconditions(
+    withRevisionPrecondition(descriptor.inputSchema, modifiesProject),
+    descriptor
+  );
+  const strictInputSchema = fromJsonSchema(projectedInputSchema);
   return {
     name: descriptor.name,
     config: {
       description: descriptor.description,
-      inputSchema: fromJsonSchema(
-        withTargetPreconditions(
-          withRevisionPrecondition(descriptor.inputSchema, modifiesProject),
-          descriptor
-        )
+      inputSchema: deferStandardSchemaValidationToHandler(strictInputSchema),
+      outputSchema: fromJsonSchema(
+        withCommandResultEnvelope(descriptor.outputSchema || {})
       ),
-      ...(descriptor.outputSchema
-        ? {
-            outputSchema: fromJsonSchema(
-              withCommandResultEnvelope(descriptor.outputSchema)
-            ),
-          }
-        : {}),
       annotations: {
         readOnlyHint: !!metadata.readOnly,
         destructiveHint: !!metadata.destructive,
@@ -213,6 +238,7 @@ const descriptorToToolRegistration = descriptor => {
           : {}),
       },
     },
+    validateInput: strictInputSchema['~standard'].validate,
     modifiesProject,
     longRunning: !!metadata.longRunning,
     timeoutMs: Number.isFinite(metadata.defaultTimeoutMs)

@@ -53,7 +53,13 @@ test('executes commands only over AgentIntegration channels', async () => {
     input: {},
     traceId: 'trace-1',
     traceContext,
-    identity: {"clientId":"client-a","agentId":"agent-a","sessionId":"session-a","taskId":"task-a","ownerKey":"agent-a::session-a"},
+    identity: {
+      clientId: 'client-a',
+      agentId: 'agent-a',
+      sessionId: 'session-a',
+      taskId: 'task-a',
+      ownerKey: 'agent-a::session-a',
+    },
     expectedRevision: 7,
     expectedSemanticRevisions: { project: 3 },
     semanticLeaseOwner: 'client-a',
@@ -67,7 +73,13 @@ test('executes commands only over AgentIntegration channels', async () => {
       input: {},
       traceId: 'trace-1',
       traceContext,
-      identity: {"clientId":"client-a","agentId":"agent-a","sessionId":"session-a","taskId":"task-a","ownerKey":"agent-a::session-a"},
+      identity: {
+        clientId: 'client-a',
+        agentId: 'agent-a',
+        sessionId: 'session-a',
+        taskId: 'task-a',
+        ownerKey: 'agent-a::session-a',
+      },
       expectedRevision: 7,
       expectedSemanticRevisions: { project: 3 },
       semanticLeaseOwner: 'client-a',
@@ -112,8 +124,11 @@ test('maps structured command errors without losing recovery metadata', async ()
       ok: false,
       error: {
         code: 'revision_conflict',
+        category: 'conflict',
         message: 'stale revision',
         retryable: true,
+        field: 'expectedRevision',
+        path: ['expectedRevision'],
         hint: 'read again',
         recovery: 'read latest revision and retry',
         currentRevision: 9,
@@ -124,7 +139,10 @@ test('maps structured command errors without losing recovery metadata', async ()
   );
   await assert.rejects(promise, error => {
     assert.equal(error.code, 'revision_conflict');
+    assert.equal(error.category, 'conflict');
     assert.equal(error.retryable, true);
+    assert.equal(error.field, 'expectedRevision');
+    assert.deepEqual(error.path, ['expectedRevision']);
     assert.equal(error.hint, 'read again');
     assert.equal(error.recovery, 'read latest revision and retry');
     assert.equal(error.currentRevision, 9);

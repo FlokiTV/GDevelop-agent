@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const { normalizeError, makeErrorEnvelope } = require('./McpResponseContract');
 
 const TRACEPARENT_PATTERN = /^[0-9a-f]{2}-([0-9a-f]{32})-([0-9a-f]{16})-([0-9a-f]{2})$/i;
 const MAX_TRACESTATE_LENGTH = 512;
@@ -145,34 +146,8 @@ const makeToolResultMeta = ({
     : {}),
 });
 
-const serializeMcpToolError = (error, fallbackTraceId = null) => {
-  const value = error && typeof error === 'object' ? error : {};
-  const code =
-    typeof value.code === 'string' && value.code
-      ? value.code
-      : 'agent_internal_error';
-  const message =
-    typeof value.message === 'string' && value.message ? value.message : code;
-  return {
-    code,
-    message,
-    retryable: !!value.retryable,
-    ...(typeof value.hint === 'string' && value.hint
-      ? { hint: value.hint }
-      : {}),
-    ...(typeof value.recovery === 'string' && value.recovery
-      ? { recovery: value.recovery }
-      : {}),
-    ...(value.currentRevision !== undefined
-      ? { currentRevision: value.currentRevision }
-      : {}),
-    ...(value.details !== undefined ? { details: value.details } : {}),
-    traceId:
-      typeof value.traceId === 'string' && value.traceId
-        ? value.traceId
-        : fallbackTraceId,
-  };
-};
+const serializeMcpToolError = (error, fallbackTraceId = null) =>
+  normalizeError(error, fallbackTraceId);
 
 const makeToolErrorResult = ({
   error,
@@ -186,7 +161,7 @@ const makeToolErrorResult = ({
   );
   return {
     content: [{ type: 'text', text: JSON.stringify(serializedError) }],
-    structuredContent: { error: serializedError },
+    structuredContent: makeErrorEnvelope(serializedError),
     isError: true,
     _meta: {
       ...makeToolResultMeta({

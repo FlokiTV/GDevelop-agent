@@ -7,6 +7,10 @@ const { PROTOCOL_VERSION } = require('../protocols/mcp/McpServerFactory');
 const { startMcpHttpServer } = require('../protocols/mcp/McpHttpServer');
 const {
   connectLiveGDevelopMcp,
+  getToolEnvelope,
+  requireToolEnvelope,
+  getCanonicalToolData,
+  makeDestructiveConfirmationHandler,
   makeRequestHeaders,
   sanitizeForReplay,
 } = require('./McpClient');
@@ -147,6 +151,8 @@ test('connectLiveGDevelopMcp discovers, pins, calls once and closes without expo
 
     assert.equal(afterCallCount - beforeCallCount, 1);
     assert.equal(result.isError, false);
+    assert.equal(result.envelope.contractVersion, 1);
+    assert.equal(result.envelope.command, 'project.status');
     assert.deepEqual(result.data, {
       projectOpen: true,
       projectName: 'DX-6 Test',
@@ -166,6 +172,60 @@ test('connectLiveGDevelopMcp discovers, pins, calls once and closes without expo
     await host.stop();
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
+});
+
+test('strict envelope helpers reject legacy/ambiguous shapes and return canonical data', () => {
+  const response = {
+    structuredContent: {
+      contractVersion: 1,
+      command: 'project.status',
+      data: { projectOpen: true },
+      meta: {
+        traceId: null,
+        readOnly: true,
+        modifiesProject: false,
+        projectRevision: 4,
+        semanticRevisions: [],
+        durationMs: 1,
+        idempotencyReplayed: false,
+      },
+    },
+  };
+  assert.equal(getToolEnvelope(response).command, 'project.status');
+  assert.deepEqual(getCanonicalToolData(response), { projectOpen: true });
+  assert.throws(
+    () =>
+      requireToolEnvelope({
+        structuredContent: { data: { projectOpen: true } },
+      }),
+    /invalid_gdevelop_mcp_response_envelope/
+  );
+});
+
+test('destructive confirmation helper only accepts boolean confirm forms', async () => {
+  const handler = makeDestructiveConfirmationHandler();
+  assert.deepEqual(
+    await handler({
+      params: {
+        requestedSchema: {
+          type: 'object',
+          properties: { confirm: { type: 'boolean' } },
+        },
+      },
+    }),
+    { action: 'accept', content: { confirm: true } }
+  );
+  assert.deepEqual(
+    await handler({
+      params: {
+        requestedSchema: {
+          type: 'object',
+          properties: { value: { type: 'string' } },
+        },
+      },
+    }),
+    { action: 'decline', content: {} }
+  );
 });
 
 test('request targeting headers and replay sanitization keep transport credentials separate', () => {

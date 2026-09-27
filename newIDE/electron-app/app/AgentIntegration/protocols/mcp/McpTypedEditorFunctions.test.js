@@ -204,6 +204,11 @@ test('official MCP client exposes typed EditorFunctions and validates before ren
       arguments: { scene_name: 42 },
     });
     assert.equal(invalid.isError, true);
+    assert.equal(invalid.structuredContent.contractVersion, 1);
+    assert.equal(invalid.structuredContent.error.code, 'invalid_command_input');
+    assert.equal(invalid.structuredContent.error.category, 'validation');
+    assert.equal(invalid.structuredContent.error.field, 'scene_name');
+    assert.deepEqual(invalid.structuredContent.error.path, ['scene_name']);
     assert.equal(
       calls.length,
       callsBeforeInvalid,

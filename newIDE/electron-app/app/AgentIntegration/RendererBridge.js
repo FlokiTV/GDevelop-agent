@@ -57,9 +57,12 @@ const createRendererBridge = ({
         payload.error.message || 'renderer_request_failed',
         payload.error.details
       );
+      error.category = payload.error.category || null;
       error.retryable = !!payload.error.retryable;
       error.hint = payload.error.hint || null;
       error.recovery = payload.error.recovery || null;
+      error.field = payload.error.field || null;
+      error.path = payload.error.path === undefined ? null : payload.error.path;
       error.currentRevision = payload.error.currentRevision;
       error.traceId = payload.error.traceId || null;
       pending.reject(error);

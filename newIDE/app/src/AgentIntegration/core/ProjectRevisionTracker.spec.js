@@ -1,5 +1,40 @@
 // @flow
-import { ProjectRevisionTracker } from './ProjectRevisionTracker';
+import {
+  getProjectRevisionSourceKey,
+  ProjectRevisionTracker,
+} from './ProjectRevisionTracker';
+
+describe('getProjectRevisionSourceKey', () => {
+  it('prefers the dynamic current project and tolerates destroyed stale wrappers', () => {
+    const staleProject = {
+      getProjectUuid: () => {
+        throw new Error('object already destroyed');
+      },
+    };
+    const currentProject = { getProjectUuid: () => 'current-project' };
+
+    expect(
+      getProjectRevisionSourceKey({
+        project: staleProject,
+        getCurrentProject: () => currentProject,
+      })
+    ).toBe('current-project');
+    expect(
+      getProjectRevisionSourceKey({
+        project: staleProject,
+        getCurrentProject: () => null,
+      })
+    ).toBeNull();
+    expect(
+      getProjectRevisionSourceKey({
+        project: staleProject,
+        getCurrentProject: () => {
+          throw new Error('destroyed ref');
+        },
+      })
+    ).toBeNull();
+  });
+});
 
 describe('ProjectRevisionTracker', () => {
   it('accumulates external native change deltas and stays monotonic across save resets', () => {

@@ -96,6 +96,7 @@ test('preserves actionable tool errors without leaking stack or cause', () => {
 
   assert.deepEqual(serializeMcpToolError(error, 'trace-fallback'), {
     code: 'revision_conflict',
+    category: 'conflict',
     message: 'stale revision',
     retryable: true,
     hint: 'Read the project again.',
@@ -117,7 +118,9 @@ test('preserves actionable tool errors without leaking stack or cause', () => {
     timeoutMs: 30000,
   });
   assert.equal(result.isError, true);
+  assert.equal(result.structuredContent.contractVersion, 1);
   assert.equal(result.structuredContent.error.code, 'revision_conflict');
+  assert.equal(result.structuredContent.error.category, 'conflict');
   assert.equal(result.structuredContent.error.recovery, error.recovery);
   assert.equal(result._meta['gdevelop/errorCode'], 'revision_conflict');
   assert.equal(result._meta['gdevelop/retryable'], true);

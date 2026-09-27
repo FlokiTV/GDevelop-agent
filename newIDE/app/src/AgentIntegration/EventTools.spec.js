@@ -91,11 +91,13 @@ describe('AgentIntegration EventTools', () => {
     expect(page.events[0].path).toEqual([200]);
     expect(page.events[49].path).toEqual([249]);
     expect(page.pagination).toEqual({
+      mode: 'offset',
       offset: 200,
       limit: 50,
       total: 350,
       returned: 50,
       hasMore: true,
+      truncated: true,
       nextOffset: 250,
     });
   });

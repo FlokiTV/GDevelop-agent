@@ -3,6 +3,7 @@ import {
   serializeToJSObject,
   unserializeFromJSObject,
 } from '../Utils/Serializer';
+import { makeOffsetPagination } from './core/Pagination';
 
 const gd: libGDevelop = global.gd;
 
@@ -1304,14 +1305,12 @@ export const createEventTools = ({
       eventsCount: target.rootEvents.getEventsCount(),
       eventsRevision: canonicalState.eventsRevision,
       events: canonicalState.events.slice(offset, end),
-      pagination: {
+      pagination: makeOffsetPagination({
         offset,
         limit,
         total,
         returned: Math.max(0, end - offset),
-        hasMore: end < total,
-        nextOffset: end < total ? end : null,
-      },
+      }),
     };
   };
 

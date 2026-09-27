@@ -1,5 +1,6 @@
 // @flow
 import { AgentError } from '../core/AgentError';
+import { makeOffsetPagination } from '../core/Pagination';
 import { shouldHideExtension } from '../../Version';
 import { serializeToJSObject } from '../../Utils/Serializer';
 
@@ -51,14 +52,19 @@ const normalizePagination = (input: any = {}) => {
 const paginate = (items: Array<any>, input: any = {}) => {
   const { limit, offset } = normalizePagination(input);
   const selected = items.slice(offset, offset + limit);
-  const nextOffset =
-    offset + selected.length < items.length ? offset + selected.length : null;
+  const pagination = makeOffsetPagination({
+    offset,
+    limit,
+    total: items.length,
+    returned: selected.length,
+  });
   return {
     items: selected,
     total: items.length,
     offset,
     limit,
-    nextOffset,
+    nextOffset: pagination.nextOffset,
+    pagination,
   };
 };
 

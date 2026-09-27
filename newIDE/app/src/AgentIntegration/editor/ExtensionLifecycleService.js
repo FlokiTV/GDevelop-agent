@@ -1,5 +1,6 @@
 // @flow
 import { AgentError } from '../core/AgentError';
+import { makeOffsetPagination } from '../core/Pagination';
 import {
   getExtension,
   getExtensionsRegistry,
@@ -56,13 +57,19 @@ const paginate = (items: Array<any>, input: any = {}) => {
     ? Math.max(0, Math.round(rawOffset))
     : 0;
   const selected = items.slice(offset, offset + limit);
+  const pagination = makeOffsetPagination({
+    offset,
+    limit,
+    total: items.length,
+    returned: selected.length,
+  });
   return {
     items: selected,
     total: items.length,
     offset,
     limit,
-    nextOffset:
-      offset + selected.length < items.length ? offset + selected.length : null,
+    nextOffset: pagination.nextOffset,
+    pagination,
   };
 };
 

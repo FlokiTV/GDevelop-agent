@@ -72,13 +72,93 @@ test('wraps command data output schemas in the shared AgentIntegration envelope'
     properties: { ok: { type: 'boolean' } },
   };
   const envelope = withCommandResultEnvelope(dataSchema);
-  assert.deepEqual(envelope.required, ['command', 'data', 'meta']);
+  assert.deepEqual(envelope.required, [
+    'contractVersion',
+    'command',
+    'data',
+    'meta',
+  ]);
+  assert.deepEqual(envelope.properties.contractVersion, {
+    type: 'integer',
+    const: 1,
+  });
   assert.equal(envelope.properties.data, dataSchema);
   assert.deepEqual(envelope.properties.meta.required, [
+    'traceId',
     'readOnly',
     'modifiesProject',
+    'projectRevision',
+    'semanticRevisions',
+    'durationMs',
+    'idempotencyReplayed',
   ]);
-  assert.equal(withCommandResultEnvelope(null), null);
+  assert.deepEqual(withCommandResultEnvelope(null).properties.data, {});
+});
+
+test('publishes strict input JSON Schema while deferring validation to the canonical handler', async () => {
+  const registration = descriptorToToolRegistration(descriptor('typed.test'));
+  const standard = registration.config.inputSchema['~standard'];
+  const published = await standard.jsonSchema.input();
+  assert.equal(published.properties.value.type, 'string');
+
+  const sdkResult = await standard.validate({ value: 42 });
+  assert.deepEqual(sdkResult, { value: { value: 42 } });
+
+  const handlerResult = await registration.validateInput({ value: 42 });
+  assert.ok(Array.isArray(handlerResult.issues));
+  assert.equal(handlerResult.issues.length > 0, true);
+});
+
+test('preserves published argument bounds and a generic output envelope when no narrow output schema exists', async () => {
+  const bounded = descriptor('bounded.tool');
+  bounded.inputSchema = {
+    type: 'object',
+    additionalProperties: false,
+    required: ['name', 'count', 'items'],
+    properties: {
+      name: { type: 'string', minLength: 2, maxLength: 10 },
+      count: { type: 'integer', minimum: 1, maximum: 5 },
+      items: {
+        type: 'array',
+        minItems: 1,
+        maxItems: 3,
+        items: { type: 'string', maxLength: 8 },
+      },
+    },
+  };
+  delete bounded.outputSchema;
+
+  const registration = descriptorToToolRegistration(bounded);
+  const publishedInput = await registration.config.inputSchema[
+    '~standard'
+  ].jsonSchema.input();
+  assert.deepEqual(publishedInput.properties.name, {
+    type: 'string',
+    minLength: 2,
+    maxLength: 10,
+  });
+  assert.deepEqual(publishedInput.properties.count, {
+    type: 'integer',
+    minimum: 1,
+    maximum: 5,
+  });
+  assert.deepEqual(publishedInput.properties.items, {
+    type: 'array',
+    minItems: 1,
+    maxItems: 3,
+    items: { type: 'string', maxLength: 8 },
+  });
+
+  const publishedOutput = await registration.config.outputSchema[
+    '~standard'
+  ].jsonSchema.output();
+  assert.deepEqual(publishedOutput.required, [
+    'contractVersion',
+    'command',
+    'data',
+    'meta',
+  ]);
+  assert.deepEqual(publishedOutput.properties.data, {});
 });
 
 test('adds mutation controls only to project-mutating MCP schemas', () => {

@@ -62,20 +62,93 @@ const makeRequestHeaders = ({
   ...(projectPath ? { 'X-GDevelop-Project-Path': projectPath } : {}),
 });
 
-const getToolData = response =>
-  response && response.structuredContent
+const getToolEnvelope = response => {
+  const envelope = response && response.structuredContent;
+  if (
+    !envelope ||
+    typeof envelope !== 'object' ||
+    envelope.contractVersion !== 1
+  ) {
+    return null;
+  }
+  if (
+    typeof envelope.command === 'string' &&
+    envelope.command &&
+    Object.prototype.hasOwnProperty.call(envelope, 'data') &&
+    envelope.meta &&
+    typeof envelope.meta === 'object'
+  ) {
+    return envelope;
+  }
+  if (
+    envelope.error &&
+    typeof envelope.error === 'object' &&
+    typeof envelope.error.code === 'string'
+  ) {
+    return envelope;
+  }
+  return null;
+};
+
+const requireToolEnvelope = response => {
+  const envelope = getToolEnvelope(response);
+  if (!envelope) {
+    const error = new Error('invalid_gdevelop_mcp_response_envelope');
+    error.code = 'invalid_gdevelop_mcp_response_envelope';
+    throw error;
+  }
+  return envelope;
+};
+
+const getCanonicalToolData = response => {
+  const envelope = requireToolEnvelope(response);
+  return Object.prototype.hasOwnProperty.call(envelope, 'data')
+    ? envelope.data
+    : null;
+};
+
+const getToolData = response => {
+  const envelope = getToolEnvelope(response);
+  if (envelope && Object.prototype.hasOwnProperty.call(envelope, 'data')) {
+    return envelope.data;
+  }
+  return response && response.structuredContent
     ? response.structuredContent.data != null
       ? response.structuredContent.data
       : response.structuredContent
     : null;
+};
 
-const getToolMeta = response =>
-  response &&
-  response.structuredContent &&
-  response.structuredContent.meta &&
-  typeof response.structuredContent.meta === 'object'
+const getToolMeta = response => {
+  const envelope = getToolEnvelope(response);
+  if (envelope && envelope.meta && typeof envelope.meta === 'object') {
+    return envelope.meta;
+  }
+  return response &&
+    response.structuredContent &&
+    response.structuredContent.meta &&
+    typeof response.structuredContent.meta === 'object'
     ? response.structuredContent.meta
     : null;
+};
+
+const getToolError = response => {
+  const envelope = getToolEnvelope(response);
+  return envelope && envelope.error && typeof envelope.error === 'object'
+    ? envelope.error
+    : null;
+};
+
+const makeDestructiveConfirmationHandler = () => async request => {
+  const params = request && request.params;
+  const schema = params && params.requestedSchema;
+  const confirmSchema =
+    schema && schema.properties && schema.properties.confirm;
+  if (!confirmSchema || confirmSchema.type !== 'boolean') {
+    return { action: 'decline', content: {} };
+  }
+  return { action: 'accept', content: { confirm: true } };
+};
 
 const connectLiveGDevelopMcp = async ({
   discoveryPath,
@@ -86,14 +159,26 @@ const connectLiveGDevelopMcp = async ({
   sessionId,
   taskId,
   clientVersion = '1.0.0',
+  confirmDestructiveOperations = false,
   env = process.env,
 } = {}) => {
   const resolvedDiscoveryPath = discoveryPath || getDefaultDiscoveryPath(env);
   const runtime = loadRuntimeConfig(resolvedDiscoveryPath);
   const client = new Client(
     { name: clientId, version: clientVersion },
-    { versionNegotiation: { mode: { pin: runtime.protocolVersion } } }
+    {
+      ...(confirmDestructiveOperations
+        ? { capabilities: { elicitation: { form: {} } } }
+        : {}),
+      versionNegotiation: { mode: { pin: runtime.protocolVersion } },
+    }
   );
+  if (confirmDestructiveOperations) {
+    client.setRequestHandler(
+      'elicitation/create',
+      makeDestructiveConfirmationHandler()
+    );
+  }
   const transport = new StreamableHTTPClientTransport(
     new URL(runtime.endpoint),
     {
@@ -186,6 +271,8 @@ const connectLiveGDevelopMcp = async ({
       return {
         name,
         isError: !!response.isError,
+        envelope: getToolEnvelope(response),
+        error: getToolError(response),
         data: getToolData(response),
         meta: getToolMeta(response),
         structuredContent: response.structuredContent || null,
@@ -204,8 +291,13 @@ module.exports = {
   DEFAULT_CLIENT_ID,
   connectLiveGDevelopMcp,
   getDefaultDiscoveryPath,
+  getToolEnvelope,
+  requireToolEnvelope,
+  getCanonicalToolData,
   getToolData,
   getToolMeta,
+  getToolError,
+  makeDestructiveConfirmationHandler,
   loadRuntimeConfig,
   makeRequestHeaders,
   sanitizeForReplay,

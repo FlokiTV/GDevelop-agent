@@ -115,6 +115,45 @@ describe('AgentHost', () => {
     expect(execute).toHaveBeenCalledTimes(1);
   });
 
+  it('does not turn a completed lifecycle mutation into failure when post-command metadata would touch a destroyed project', async () => {
+    let destroyed = false;
+    const getTransactionStatus = jest.fn(() => {
+      if (destroyed) throw new Error('transaction_status_project_destroyed');
+      return { active: false };
+    });
+    const host = new AgentHost({
+      environment: {
+        project: {},
+        getTransactionStatus,
+        getTargetIdentity: () => {
+          if (destroyed) throw new Error('project_object_destroyed');
+          return { project: { open: true } };
+        },
+      },
+      descriptors: [
+        makeDescriptor('project.close', {
+          metadata: makeCommandMetadata({
+            readOnly: false,
+            destructive: true,
+            idempotent: true,
+            requiresProject: true,
+            modifiesProject: true,
+          }),
+          execute: () => {
+            destroyed = true;
+            return { closed: true };
+          },
+        }),
+      ],
+    });
+
+    await expect(host.execute('project.close', {})).resolves.toMatchObject({
+      data: { closed: true },
+      meta: { targetIdentity: null },
+    });
+    expect(getTransactionStatus).toHaveBeenCalledTimes(1);
+  });
+
   it('rejects stale mutating commands and returns the current project revision', async () => {
     let changesCount = 0;
     const projectRevisionTracker = new ProjectRevisionTracker({
@@ -317,9 +356,17 @@ describe('AgentHost', () => {
     await expect(host.execute('scene.create', {})).rejects.toMatchObject({
       code: 'semantic_scope_locked',
     });
-    await expect(
-      host.execute('scene.create', {}, { semanticLeaseOwner: 'client-a' })
-    ).resolves.toMatchObject({ data: { created: true } });
+    const leasedMutation = await host.execute(
+      'scene.create',
+      {},
+      { semanticLeaseOwner: 'client-a' }
+    );
+    expect(leasedMutation).toMatchObject({ data: { created: true } });
+    expect(leasedMutation.meta).toMatchObject({
+      semanticLeaseOwner: 'client-a',
+      leaseId: lease.leaseId,
+      leaseIds: [lease.leaseId],
+    });
     semanticConcurrency.releaseLease({
       scope: 'scenes',
       owner: 'client-a',
@@ -437,6 +484,7 @@ describe('AgentHost', () => {
 
     expect(serialized).toEqual({
       code: 'revision_conflict',
+      category: 'conflict',
       message: 'The project changed.',
       retryable: true,
       hint: 'Read the project again.',
@@ -445,6 +493,31 @@ describe('AgentHost', () => {
       traceId: 'trace-3',
     });
     expect(serialized).not.toHaveProperty('cause');
+  });
+
+  it('promotes field/path diagnostics into serialized AgentError', () => {
+    expect(
+      serializeAgentError(
+        new AgentError({
+          code: 'invalid_scene_order',
+          details: {
+            field: 'position',
+            path: ['project', 'scenes', 2],
+            minimum: 0,
+          },
+        })
+      )
+    ).toMatchObject({
+      code: 'invalid_scene_order',
+      category: 'validation',
+      field: 'position',
+      path: ['project', 'scenes', 2],
+      details: {
+        field: 'position',
+        path: ['project', 'scenes', 2],
+        minimum: 0,
+      },
+    });
   });
 });
 
@@ -544,9 +617,15 @@ describe('DX-19 multi-agent guards', () => {
     });
     expect(execute).not.toHaveBeenCalled();
 
-    await expect(
-      host.execute('scene.create', {}, { identity: identityA })
-    ).resolves.toMatchObject({ data: { created: true } });
+    const ownerMutation = await host.execute(
+      'scene.create',
+      {},
+      {
+        identity: identityA,
+      }
+    );
+    expect(ownerMutation).toMatchObject({ data: { created: true } });
+    expect(ownerMutation.meta.transactionId).toBe('tx-a');
   });
 
   it('binds lease acquire/renew/release to request identity', async () => {

@@ -1,20 +1,25 @@
 // @flow
 import { getIDEVersionWithHash } from '../../Version';
 import { AgentError } from '../core/AgentError';
+import { makeBoundedPagination } from '../core/Pagination';
 
 export const GDEVELOP_DOCS_ROOT = 'https://wiki.gdevelop.io/gdevelop5/';
 export const GDEVELOP_DOCSEARCH_APP_ID = 'RC2XAJAUNE';
 export const GDEVELOP_DOCSEARCH_INDEX = 'gdevelop';
 // Public search-only key embedded by the official documentation itself.
-export const GDEVELOP_DOCSEARCH_API_KEY =
-  '99faf69cae196db15d6916f2ed0116b9';
+export const GDEVELOP_DOCSEARCH_API_KEY = '99faf69cae196db15d6916f2ed0116b9';
 
 const DEFAULT_TIMEOUT_MS = 12000;
 const MAX_TIMEOUT_MS = 30000;
 const DEFAULT_MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 const MAX_READ_CHARS = 50000;
 
-const clampInteger = (value: any, fallback: number, min: number, max: number) => {
+const clampInteger = (
+  value: any,
+  fallback: number,
+  min: number,
+  max: number
+) => {
   const number = Number.isFinite(value) ? Math.floor(value) : fallback;
   return Math.min(max, Math.max(min, number));
 };
@@ -178,7 +183,8 @@ const resolveDocsUrl = (value: string): string => {
   ) {
     throw new AgentError({
       code: 'documentation_url_not_allowed',
-      message: 'docs.read only accepts URLs under the official GDevelop 5 documentation root.',
+      message:
+        'docs.read only accepts URLs under the official GDevelop 5 documentation root.',
       details: { url: resolved.toString() },
     });
   }
@@ -186,12 +192,11 @@ const resolveDocsUrl = (value: string): string => {
 };
 
 export const createDocumentationService = ({
-  fetchImpl =
-    typeof window !== 'undefined' && window.fetch
-      ? window.fetch.bind(window)
-      : typeof fetch !== 'undefined'
-      ? fetch
-      : null,
+  fetchImpl = typeof window !== 'undefined' && window.fetch
+    ? window.fetch.bind(window)
+    : typeof fetch !== 'undefined'
+    ? fetch
+    : null,
   now = () => Date.now(),
   defaultTimeoutMs = DEFAULT_TIMEOUT_MS,
   maxResponseBytes = DEFAULT_MAX_RESPONSE_BYTES,
@@ -256,18 +261,27 @@ export const createDocumentationService = ({
       });
     }
     const hits = Array.isArray(payload.hits) ? payload.hits : [];
+    const total = Number.isFinite(payload.nbHits)
+      ? payload.nbHits
+      : hits.length;
+    const results = hits.slice(0, limit).map(hit => ({
+      title: deepestHierarchyTitle(hit.hierarchy) || 'GDevelop documentation',
+      url: typeof hit.url === 'string' ? hit.url : null,
+      sectionType: typeof hit.type === 'string' ? hit.type : null,
+      excerpt:
+        typeof hit.content === 'string' && hit.content.trim()
+          ? normalizeWhitespace(hit.content).slice(0, 1200)
+          : null,
+    }));
     return {
       query,
-      total: Number.isFinite(payload.nbHits) ? payload.nbHits : hits.length,
-      results: hits.slice(0, limit).map(hit => ({
-        title: deepestHierarchyTitle(hit.hierarchy) || 'GDevelop documentation',
-        url: typeof hit.url === 'string' ? hit.url : null,
-        sectionType: typeof hit.type === 'string' ? hit.type : null,
-        excerpt:
-          typeof hit.content === 'string' && hit.content.trim()
-            ? normalizeWhitespace(hit.content).slice(0, 1200)
-            : null,
-      })),
+      total,
+      results,
+      pagination: makeBoundedPagination({
+        limit,
+        total,
+        returned: results.length,
+      }),
       source: makeSource(),
       cache: { policy: 'remote-index', ttlMs: 0 },
     };
@@ -276,7 +290,8 @@ export const createDocumentationService = ({
   const read = async (request: any, signal?: any) => {
     const requestedUrl =
       request && typeof request.url === 'string' ? request.url.trim() : '';
-    if (!requestedUrl) throw new AgentError({ code: 'missing_documentation_url' });
+    if (!requestedUrl)
+      throw new AgentError({ code: 'missing_documentation_url' });
     const url = resolveDocsUrl(requestedUrl);
     const timeoutMs = clampInteger(
       request.timeoutMs,
@@ -284,7 +299,12 @@ export const createDocumentationService = ({
       1000,
       MAX_TIMEOUT_MS
     );
-    const maxChars = clampInteger(request.maxChars, 12000, 1000, MAX_READ_CHARS);
+    const maxChars = clampInteger(
+      request.maxChars,
+      12000,
+      1000,
+      MAX_READ_CHARS
+    );
     const { text: html } = await fetchTextBounded({
       fetchImpl,
       url,

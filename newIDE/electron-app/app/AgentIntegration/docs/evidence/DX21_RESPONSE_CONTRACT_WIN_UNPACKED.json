@@ -1,0 +1,434 @@
+{
+  "kind": "dx21-response-contract-acceptance",
+  "label": "win-unpacked-final4",
+  "generatedAt": "2026-09-27T14:06:08.382Z",
+  "protocolVersion": "2026-07-28",
+  "cleanRoom": {
+    "repositoryImplementationOrTestsReadDuringScenario": false,
+    "repositoryReadGuard": true,
+    "clientParsing": "result.envelope only",
+    "fallbackHeuristicsUsed": false
+  },
+  "discovery": {
+    "toolCount": 255,
+    "toolsWithCanonicalOutputSchema": 255,
+    "argumentBoundsPublished": true,
+    "guideUri": "gdevelop://guides/response-contract"
+  },
+  "successEnvelope": {
+    "contractVersion": 1,
+    "requiredMetaFields": [
+      "traceId",
+      "readOnly",
+      "modifiesProject",
+      "projectRevision",
+      "semanticRevisions",
+      "durationMs",
+      "idempotencyReplayed"
+    ],
+    "unrelatedToolsConsumed": [
+      "project.status",
+      "agent.capabilities",
+      "editor.types.objects.list",
+      "editor.functions.list",
+      "editor.functions.describe",
+      "editor.functions.call",
+      "project.scenes.create",
+      "validation.run"
+    ]
+  },
+  "errorEnvelope": {
+    "code": "invalid_command_input",
+    "category": "validation",
+    "field": "name",
+    "path": ["name"],
+    "retryable": false
+  },
+  "listDescribeCall": {
+    "listDataKey": "functions",
+    "describeDataKey": "function",
+    "callDataKey": "results",
+    "canonicalOuterPath": "structuredContent.data"
+  },
+  "pagination": {
+    "offsetModeObserved": true,
+    "boundedModeUnitCovered": true
+  },
+  "concurrencyMeta": {
+    "projectRevision": 2,
+    "semanticRevisions": [
+      {
+        "scope": "project",
+        "revision": 2
+      }
+    ],
+    "transactionIdOnMutation": true,
+    "leaseIdOnMutation": true,
+    "semanticLeaseOwnerOnMutation": true,
+    "controlCommandIdentifiersMirrored": true
+  },
+  "validationErrors": 0,
+  "replay": [
+    {
+      "name": "project.status",
+      "args": {},
+      "isError": false,
+      "contractVersion": 1,
+      "command": "project.status",
+      "error": null,
+      "meta": {
+        "readOnly": true,
+        "modifiesProject": false,
+        "projectRevision": null,
+        "semanticRevisions": [],
+        "transactionId": null,
+        "semanticLeaseOwner": null,
+        "leaseId": null,
+        "leaseIds": []
+      }
+    },
+    {
+      "name": "agent.capabilities",
+      "args": {},
+      "isError": false,
+      "contractVersion": 1,
+      "command": "agent.capabilities",
+      "error": null,
+      "meta": {
+        "readOnly": true,
+        "modifiesProject": false,
+        "projectRevision": null,
+        "semanticRevisions": [],
+        "transactionId": null,
+        "semanticLeaseOwner": null,
+        "leaseId": null,
+        "leaseIds": []
+      }
+    },
+    {
+      "name": "project.create",
+      "args": {
+        "name": 42
+      },
+      "isError": true,
+      "contractVersion": 1,
+      "command": null,
+      "error": {
+        "code": "invalid_command_input",
+        "category": "validation",
+        "field": "name",
+        "path": ["name"],
+        "retryable": false
+      },
+      "meta": null
+    },
+    {
+      "name": "project.status",
+      "args": {},
+      "isError": false,
+      "contractVersion": 1,
+      "command": "project.status",
+      "error": null,
+      "meta": {
+        "readOnly": true,
+        "modifiesProject": false,
+        "projectRevision": null,
+        "semanticRevisions": [],
+        "transactionId": null,
+        "semanticLeaseOwner": null,
+        "leaseId": null,
+        "leaseIds": []
+      }
+    },
+    {
+      "name": "project.create",
+      "args": {
+        "name": "DX21 Response Contract Acceptance"
+      },
+      "isError": false,
+      "contractVersion": 1,
+      "command": "project.create",
+      "error": null,
+      "meta": {
+        "readOnly": false,
+        "modifiesProject": true,
+        "projectRevision": null,
+        "semanticRevisions": [
+          {
+            "scope": "project",
+            "revision": 1
+          }
+        ],
+        "transactionId": null,
+        "semanticLeaseOwner": null,
+        "leaseId": null,
+        "leaseIds": []
+      }
+    },
+    {
+      "name": "project.status",
+      "args": {},
+      "isError": false,
+      "contractVersion": 1,
+      "command": "project.status",
+      "error": null,
+      "meta": {
+        "readOnly": true,
+        "modifiesProject": false,
+        "projectRevision": 0,
+        "semanticRevisions": [],
+        "transactionId": null,
+        "semanticLeaseOwner": null,
+        "leaseId": null,
+        "leaseIds": []
+      }
+    },
+    {
+      "name": "editor.types.objects.list",
+      "args": {
+        "limit": 1,
+        "offset": 0
+      },
+      "isError": false,
+      "contractVersion": 1,
+      "command": "editor.types.objects.list",
+      "error": null,
+      "meta": {
+        "readOnly": true,
+        "modifiesProject": false,
+        "projectRevision": 0,
+        "semanticRevisions": [],
+        "transactionId": null,
+        "semanticLeaseOwner": null,
+        "leaseId": null,
+        "leaseIds": []
+      }
+    },
+    {
+      "name": "editor.functions.list",
+      "args": {
+        "query": "inspect_variables",
+        "executableOnly": true
+      },
+      "isError": false,
+      "contractVersion": 1,
+      "command": "editor.functions.list",
+      "error": null,
+      "meta": {
+        "readOnly": true,
+        "modifiesProject": false,
+        "projectRevision": 0,
+        "semanticRevisions": [],
+        "transactionId": null,
+        "semanticLeaseOwner": null,
+        "leaseId": null,
+        "leaseIds": []
+      }
+    },
+    {
+      "name": "editor.functions.describe",
+      "args": {
+        "name": "inspect_variables"
+      },
+      "isError": false,
+      "contractVersion": 1,
+      "command": "editor.functions.describe",
+      "error": null,
+      "meta": {
+        "readOnly": true,
+        "modifiesProject": false,
+        "projectRevision": 0,
+        "semanticRevisions": [],
+        "transactionId": null,
+        "semanticLeaseOwner": null,
+        "leaseId": null,
+        "leaseIds": []
+      }
+    },
+    {
+      "name": "editor.functions.call",
+      "args": {
+        "name": "inspect_variables",
+        "arguments": {
+          "variable_scope": "global"
+        },
+        "expectedRevision": 0
+      },
+      "isError": false,
+      "contractVersion": 1,
+      "command": "editor.functions.call",
+      "error": null,
+      "meta": {
+        "readOnly": false,
+        "modifiesProject": true,
+        "projectRevision": 1,
+        "semanticRevisions": [
+          {
+            "scope": "project",
+            "revision": 1
+          }
+        ],
+        "transactionId": null,
+        "semanticLeaseOwner": null,
+        "leaseId": null,
+        "leaseIds": []
+      }
+    },
+    {
+      "name": "agent.concurrency.lease.acquire",
+      "args": {
+        "scope": "project",
+        "ttlMs": 30000
+      },
+      "isError": false,
+      "contractVersion": 1,
+      "command": "agent.concurrency.lease.acquire",
+      "error": null,
+      "meta": {
+        "readOnly": false,
+        "modifiesProject": false,
+        "projectRevision": 1,
+        "semanticRevisions": [],
+        "transactionId": null,
+        "semanticLeaseOwner": null,
+        "leaseId": "lease-1",
+        "leaseIds": ["lease-1"]
+      }
+    },
+    {
+      "name": "safety.transactions.begin",
+      "args": {
+        "label": "DX21 response contract metadata"
+      },
+      "isError": false,
+      "contractVersion": 1,
+      "command": "safety.transactions.begin",
+      "error": null,
+      "meta": {
+        "readOnly": false,
+        "modifiesProject": false,
+        "projectRevision": 1,
+        "semanticRevisions": [],
+        "transactionId": "checkpoint-1790517959396-1",
+        "semanticLeaseOwner": null,
+        "leaseId": null,
+        "leaseIds": []
+      }
+    },
+    {
+      "name": "project.scenes.create",
+      "args": {
+        "name": "DX21 Metadata Scene",
+        "expectedRevision": 1,
+        "semanticLeaseOwner": "dx21-response-contract-agent::dx21-win-unpacked-final4"
+      },
+      "isError": false,
+      "contractVersion": 1,
+      "command": "project.scenes.create",
+      "error": null,
+      "meta": {
+        "readOnly": false,
+        "modifiesProject": true,
+        "projectRevision": 2,
+        "semanticRevisions": [
+          {
+            "scope": "project",
+            "revision": 2
+          }
+        ],
+        "transactionId": "checkpoint-1790517959396-1",
+        "semanticLeaseOwner": "dx21-response-contract-agent::dx21-win-unpacked-final4",
+        "leaseId": "lease-1",
+        "leaseIds": ["lease-1"]
+      }
+    },
+    {
+      "name": "safety.transactions.commit",
+      "args": {
+        "transactionId": "checkpoint-1790517959396-1"
+      },
+      "isError": false,
+      "contractVersion": 1,
+      "command": "safety.transactions.commit",
+      "error": null,
+      "meta": {
+        "readOnly": false,
+        "modifiesProject": false,
+        "projectRevision": 2,
+        "semanticRevisions": [],
+        "transactionId": "checkpoint-1790517959396-1",
+        "semanticLeaseOwner": null,
+        "leaseId": null,
+        "leaseIds": []
+      }
+    },
+    {
+      "name": "agent.concurrency.lease.release",
+      "args": {
+        "scope": "project",
+        "leaseId": "lease-1"
+      },
+      "isError": false,
+      "contractVersion": 1,
+      "command": "agent.concurrency.lease.release",
+      "error": null,
+      "meta": {
+        "readOnly": false,
+        "modifiesProject": false,
+        "projectRevision": 2,
+        "semanticRevisions": [],
+        "transactionId": null,
+        "semanticLeaseOwner": null,
+        "leaseId": "lease-1",
+        "leaseIds": ["lease-1"]
+      }
+    },
+    {
+      "name": "validation.run",
+      "args": {
+        "includeNativeReport": true,
+        "includeAssets": false,
+        "includeRuntimeLogs": false
+      },
+      "isError": false,
+      "contractVersion": 1,
+      "command": "validation.run",
+      "error": null,
+      "meta": {
+        "readOnly": true,
+        "modifiesProject": false,
+        "projectRevision": 2,
+        "semanticRevisions": [],
+        "transactionId": null,
+        "semanticLeaseOwner": null,
+        "leaseId": null,
+        "leaseIds": []
+      }
+    },
+    {
+      "name": "project.close",
+      "args": {
+        "discardUnsavedChanges": true
+      },
+      "isError": false,
+      "contractVersion": 1,
+      "command": "project.close",
+      "error": null,
+      "meta": {
+        "readOnly": false,
+        "modifiesProject": true,
+        "projectRevision": 3,
+        "semanticRevisions": [
+          {
+            "scope": "project",
+            "revision": 3
+          }
+        ],
+        "transactionId": null,
+        "semanticLeaseOwner": null,
+        "leaseId": null,
+        "leaseIds": []
+      }
+    }
+  ]
+}

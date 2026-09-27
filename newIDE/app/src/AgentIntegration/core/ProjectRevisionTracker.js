@@ -13,6 +13,27 @@ export type ProjectRevisionChange = {|
   semanticScopes?: Array<string>,
 |};
 
+export const getProjectRevisionSourceKey = ({
+  project,
+  getCurrentProject,
+}: {
+  project: any,
+  getCurrentProject?: () => any,
+}): ?string => {
+  try {
+    const currentProject =
+      typeof getCurrentProject === 'function' ? getCurrentProject() : project;
+    return currentProject && typeof currentProject.getProjectUuid === 'function'
+      ? currentProject.getProjectUuid()
+      : null;
+  } catch (error) {
+    // During project close/reload, React can briefly retain a JS wrapper whose
+    // native project was already destroyed. Treat this as no active source
+    // instead of failing an already-applied lifecycle operation.
+    return null;
+  }
+};
+
 const readChangesCount = (getChangesCount: () => number): number => {
   const value = Number(getChangesCount());
   return Number.isFinite(value) && value >= 0 ? Math.floor(value) : 0;

@@ -14,6 +14,10 @@ const {
 const { requireDestructiveConfirmation } = require('./McpHumanInput');
 const { preflightEventMutationInput } = require('./McpEventMutationValidation');
 const {
+  makeSuccessEnvelope,
+  makeInputValidationError,
+} = require('./McpResponseContract');
+const {
   getTraceContextFromRequest,
   makeToolResultMeta,
   makeToolErrorResult,
@@ -344,13 +348,23 @@ const mergeCommandDescriptors = (rendererDescriptors, desktopDescriptors) => {
   return descriptors;
 };
 
-const toMcpToolResult = result => {
+const toMcpToolResult = (result, { input, semanticLeaseOwner } = {}) => {
   const imageBuffer =
     result && result.data && Buffer.isBuffer(result.data.imageBuffer)
       ? result.data.imageBuffer
       : null;
   if (imageBuffer) {
     const { imageBuffer: ignoredImageBuffer, ...imageData } = result.data;
+    const envelope = makeSuccessEnvelope(
+      {
+        ...result,
+        data: {
+          ...imageData,
+          byteLength: imageBuffer.length,
+        },
+      },
+      { input, semanticLeaseOwner }
+    );
     return {
       content: [
         {
@@ -359,24 +373,22 @@ const toMcpToolResult = result => {
           mimeType: imageData.mimeType || 'image/png',
         },
       ],
-      structuredContent: {
-        ...result,
-        data: {
-          ...imageData,
-          byteLength: imageBuffer.length,
-        },
-      },
+      structuredContent: envelope,
     };
   }
 
+  const envelope = makeSuccessEnvelope(result, {
+    input,
+    semanticLeaseOwner,
+  });
   return {
     content: [
       {
         type: 'text',
-        text: JSON.stringify(result),
+        text: JSON.stringify(envelope),
       },
     ],
-    structuredContent: result,
+    structuredContent: envelope,
   };
 };
 
@@ -453,6 +465,25 @@ const createMcpServerFactory = ({
         try {
           const normalizedInput =
             input && typeof input === 'object' ? input : {};
+          const validationResult =
+            typeof registration.validateInput === 'function'
+              ? await registration.validateInput(normalizedInput)
+              : { value: normalizedInput };
+          if (
+            validationResult &&
+            Array.isArray(validationResult.issues) &&
+            validationResult.issues.length
+          ) {
+            throw makeInputValidationError(
+              registration.name,
+              validationResult.issues
+            );
+          }
+          const validatedInput =
+            validationResult &&
+            Object.prototype.hasOwnProperty.call(validationResult, 'value')
+              ? validationResult.value
+              : normalizedInput;
           const {
             expectedRevision,
             expectedSemanticRevisions,
@@ -465,7 +496,7 @@ const createMcpServerFactory = ({
             expectedSceneSelector,
             expectedPreviewTarget,
             ...commandInput
-          } = normalizedInput;
+          } = validatedInput;
 
           let capturePreviewWindowId = null;
           if (
@@ -709,7 +740,10 @@ const createMcpServerFactory = ({
               ),
             });
           }
-          const toolResult = toMcpToolResult(result);
+          const toolResult = toMcpToolResult(result, {
+            input: commandInput,
+            semanticLeaseOwner,
+          });
           toolResult._meta = {
             ...makeToolResultMeta({
               traceContext,

@@ -10,6 +10,7 @@ const crypto = optionalRequire('crypto');
 
 type Options = {|
   project: ?gdProject,
+  getCurrentProject?: ?() => ?gdProject,
   fileIdentifier: ?string,
   hasUnsavedChanges: boolean,
   projectRevisionTracker?: ?any,
@@ -235,6 +236,7 @@ const getRequestOwner = (requestContext: any): ?string => {
 
 export const createProjectLifecycleService = ({
   project,
+  getCurrentProject,
   fileIdentifier,
   hasUnsavedChanges,
   projectRevisionTracker,
@@ -249,20 +251,45 @@ export const createProjectLifecycleService = ({
   saveProjectAsWithStorageProvider,
   pathModule,
 }: Options) => {
+  const resolveProject = (): ?gdProject => {
+    try {
+      return typeof getCurrentProject === 'function'
+        ? getCurrentProject()
+        : project;
+    } catch (error) {
+      return null;
+    }
+  };
+
+  const readProjectId = (currentProject: ?gdProject): ?string => {
+    if (
+      !currentProject ||
+      typeof currentProject.getProjectUuid !== 'function'
+    ) {
+      return null;
+    }
+    try {
+      return currentProject.getProjectUuid() || null;
+    } catch (error) {
+      return null;
+    }
+  };
+
   const requireProject = (): gdProject => {
-    if (!project) throw new AgentError({ code: 'no_project_open' });
-    return project;
+    const currentProject = resolveProject();
+    if (!currentProject) throw new AgentError({ code: 'no_project_open' });
+    return currentProject;
   };
 
   const getProjectId = (): string => {
     const currentProject = requireProject();
-    const projectId = currentProject.getProjectUuid();
+    const projectId = readProjectId(currentProject);
     if (!projectId) throw new AgentError({ code: 'project_uuid_missing' });
     return projectId;
   };
 
   const getCurrentFileIdentifier = (): ?string => {
-    const currentProject = project;
+    const currentProject = resolveProject();
     if (
       currentProject &&
       typeof currentProject.getProjectFile === 'function' &&
@@ -557,11 +584,14 @@ export const createProjectLifecycleService = ({
     return disk;
   };
 
-  if (project && project.getProjectUuid()) ensurePersistenceState();
+  const initialProject = resolveProject();
+  if (readProjectId(initialProject)) ensurePersistenceState();
 
   return {
     create: async ({ name, templateSlug }: any) => {
-      if (project) throw new AgentError({ code: 'project_already_open' });
+      if (resolveProject()) {
+        throw new AgentError({ code: 'project_already_open' });
+      }
       if (!name || typeof name !== 'string') {
         throw new AgentError({ code: 'missing_project_name' });
       }
@@ -603,7 +633,9 @@ export const createProjectLifecycleService = ({
     },
 
     close: async ({ discardUnsavedChanges = false }: any = {}) => {
-      if (!project) return { closed: false, reason: 'no_project_open' };
+      if (!resolveProject()) {
+        return { closed: false, reason: 'no_project_open' };
+      }
       if (hasUnsavedChanges && !discardUnsavedChanges) {
         throw new AgentError({
           code: 'unsaved_changes_require_explicit_discard',

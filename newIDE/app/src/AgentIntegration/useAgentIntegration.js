@@ -39,7 +39,10 @@ import AuthenticatedUserContext from '../Profile/AuthenticatedUserContext';
 import { enumerateObjectTypes } from '../ObjectsList/EnumerateObjects';
 import { type FileMetadata } from '../ProjectsStorage';
 import { createRendererIntegration } from './RendererIntegrationFactory';
-import { ProjectRevisionTracker } from './core/ProjectRevisionTracker';
+import {
+  getProjectRevisionSourceKey,
+  ProjectRevisionTracker,
+} from './core/ProjectRevisionTracker';
 import {
   createRendererIntegrationHostBinding,
   registerRendererIntegration,
@@ -283,7 +286,7 @@ export default function useAgentIntegration({
   }
   const projectRevisionTracker = projectRevisionTrackerRef.current;
   projectRevisionTracker.setSource({
-    projectKey: project ? project.getProjectUuid() : null,
+    projectKey: getProjectRevisionSourceKey({ project, getCurrentProject }),
     getChangesCount,
   });
 

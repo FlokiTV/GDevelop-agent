@@ -1,11 +1,7 @@
 // @flow
 import { createDocumentationService } from './DocumentationService';
 
-const makeResponse = ({
-  status = 200,
-  body = '',
-  headers = {},
-}: any = {}) => ({
+const makeResponse = ({ status = 200, body = '', headers = {} }: any = {}) => ({
   ok: status >= 200 && status < 300,
   status,
   headers: { get: name => headers[name.toLowerCase()] || null },
@@ -20,7 +16,8 @@ describe('DocumentationService', () => {
           nbHits: 2,
           hits: [
             {
-              url: 'https://wiki.gdevelop.io/gdevelop5/behaviors/platformer/#jump',
+              url:
+                'https://wiki.gdevelop.io/gdevelop5/behaviors/platformer/#jump',
               type: 'lvl2',
               hierarchy: {
                 lvl0: 'Platformer',
@@ -38,6 +35,15 @@ describe('DocumentationService', () => {
     const result = await service.search({ query: 'platformer', limit: 1 });
 
     expect(result.total).toBe(2);
+    expect(result.pagination).toEqual({
+      mode: 'bounded',
+      limit: 1,
+      total: 2,
+      returned: 1,
+      hasMore: true,
+      truncated: true,
+      nextCursor: null,
+    });
     expect(result.results).toEqual([
       expect.objectContaining({
         title: 'Jumping',
@@ -55,7 +61,8 @@ describe('DocumentationService', () => {
   it('reads and truncates only pages under the official GDevelop 5 docs root', async () => {
     const fetchImpl = jest.fn(async () =>
       makeResponse({
-        body: '<html><main><h1>Platformer</h1><p>Jump and run.</p></main></html>',
+        body:
+          '<html><main><h1>Platformer</h1><p>Jump and run.</p></main></html>',
       })
     );
     const service = createDocumentationService({ fetchImpl });
@@ -88,7 +95,9 @@ describe('DocumentationService', () => {
   it('propagates cancellation and timeout as explicit AgentErrors', async () => {
     const fetchImpl = (url, options) =>
       new Promise((resolve, reject) => {
-        options.signal.addEventListener('abort', () => reject(new Error('aborted')));
+        options.signal.addEventListener('abort', () =>
+          reject(new Error('aborted'))
+        );
       });
     const service = createDocumentationService({
       fetchImpl,
@@ -100,8 +109,13 @@ describe('DocumentationService', () => {
     ).rejects.toMatchObject({ code: 'documentation_search_timeout' });
 
     const controller = new AbortController();
-    const pending = service.search({ query: 'x', timeoutMs: 30000 }, controller.signal);
+    const pending = service.search(
+      { query: 'x', timeoutMs: 30000 },
+      controller.signal
+    );
     controller.abort();
-    await expect(pending).rejects.toMatchObject({ code: 'operation_cancelled' });
+    await expect(pending).rejects.toMatchObject({
+      code: 'operation_cancelled',
+    });
   });
 });

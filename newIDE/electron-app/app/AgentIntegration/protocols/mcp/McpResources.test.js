@@ -32,6 +32,7 @@ const connectClient = async ({ url, token, windowId }) => {
 test('resource catalog is deterministic and serializes command envelopes as JSON', () => {
   assert.deepEqual(RESOURCE_DEFINITIONS.map(resource => resource.uri), [
     'gdevelop://guides/native-event-authoring',
+    'gdevelop://guides/response-contract',
     'gdevelop://project/status',
     'gdevelop://editor/visual',
     'gdevelop://project/resources',
@@ -51,7 +52,12 @@ test('resource catalog is deterministic and serializes command envelopes as JSON
   assert.match(guide.contents[0].text, /events\.read/);
   assert.match(guide.contents[0].text, /events\.nodes\.describe/);
 
-  const result = toResourceContents(RESOURCE_DEFINITIONS[1], {
+  const responseGuide = toResourceContents(RESOURCE_DEFINITIONS[1], null);
+  assert.equal(responseGuide.contents[0].mimeType, 'text/markdown');
+  assert.match(responseGuide.contents[0].text, /structuredContent\.data/);
+  assert.match(responseGuide.contents[0].text, /contractVersion/);
+
+  const result = toResourceContents(RESOURCE_DEFINITIONS[2], {
     command: 'project.status',
     data: { projectOpen: true },
     meta: { projectRevision: 4 },
@@ -153,7 +159,7 @@ test('official MCP client lists and reads fresh targeted GDevelop resources', as
     listed.resources
       .filter(
         resource =>
-          resource.uri !== 'gdevelop://guides/native-event-authoring' &&
+          !resource.uri.startsWith('gdevelop://guides/') &&
           resource.uri !== 'gdevelop://mcp/debug' &&
           resource.uri !== 'gdevelop://mcp/operations'
       )
@@ -162,6 +168,14 @@ test('official MCP client lists and reads fresh targeted GDevelop resources', as
         assert.equal(resource._meta['gdevelop/cacheScope'], 'request');
         assert.equal(resource._meta['gdevelop/live'], true);
       });
+
+    const responseContract = await client.readResource({
+      uri: 'gdevelop://guides/response-contract',
+    });
+    assert.equal(responseContract.contents[0].mimeType, 'text/markdown');
+    assert.match(responseContract.contents[0].text, /contractVersion/);
+    assert.match(responseContract.contents[0].text, /structuredContent\.data/);
+    assert.match(responseContract.contents[0].text, /category/);
 
     const guide = await client.readResource({
       uri: 'gdevelop://guides/native-event-authoring',

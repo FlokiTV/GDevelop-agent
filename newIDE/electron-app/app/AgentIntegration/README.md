@@ -117,7 +117,7 @@ X-GDevelop-Client-Id: <optional stable local client id>
 
 If neither editor target is supplied, `WindowRegistry` prefers the focused registered editor and otherwise accepts the only unambiguous registered editor. Use `desktop.windows.list` when multiple editor/preview windows are open.
 
-`target.status` is the authoritative semantic identity read for the selected editor window. It separates the active project (`projectId`/UUID, name and normalized path), editor-tab targets (session-stable `editor-tab:<id>` plus scene/external-events selectors), the last-opened scene, and live preview targets. Scene selectors use `scene:<name>`; External Events use `external-events:<name>` and include the associated scene where GDevelop exposes one. If multiple panes expose different active scene-bearing targets, `activeScene` is intentionally null and `activeSceneAmbiguous=true` with explicit candidates instead of guessing.
+`target.status` is the authoritative semantic identity read for the selected editor window. It separates the active project (`projectId`/UUID, name and normalized path), editor-tab targets (session-stable `editor-tab:<id>` plus scene/external-events selectors), the last-opened scene, and live preview targets. Scene selectors use `scene:<persistentUuid>` and External Events use `external-events:<persistentUuid>`; display names are returned separately and rename preserves the selector. External Events also include the associated scene where GDevelop exposes one. If multiple panes expose different active scene-bearing targets, `activeScene` is intentionally null and `activeSceneAmbiguous=true` with explicit candidates instead of guessing.
 
 Target-aware MCP tools expose optional `expectedProjectId`, `expectedProjectPath`, `expectedEditorSelector`, `expectedSceneId`, `expectedSceneSelector` and `expectedPreviewTarget` preconditions. A mismatch fails before dispatch with structured `target_mismatch` details and a fresh `target.status` recovery hint. Explicit scene mutations compare the expected scene against the command's `sceneName`/`scene_name`; preview launch without an explicit scene compares against the editor-active scene. This lets an agent pin intent without forcing every scene mutation to follow the currently visible tab.
 
@@ -270,6 +270,8 @@ See [`docs/GAME_CREATION_COVERAGE_ROADMAP.md`](./docs/GAME_CREATION_COVERAGE_ROA
 For the post-roadmap developer-experience gaps exposed by real autonomous authoring — especially canonical `eventsJson` versus normalized handles, event-node schema introspection, instruction/expression discovery, visual Event Sheet styling and external-client connection ergonomics — see [`docs/MCP_INTROSPECTION_AGENT_DX.md`](./docs/MCP_INTROSPECTION_AGENT_DX.md).
 
 For persistent scene/External Events identity and refactor-safe project structure lifecycle (`project.scenes.*`, External Events usages/duplicate/reorder/dry-run delete), see [`docs/MCP_PROJECT_STRUCTURE_LIFECYCLE.md`](./docs/MCP_PROJECT_STRUCTURE_LIFECYCLE.md).
+
+For the canonical versioned `tools/call` success/error envelope, stable metadata, pagination semantics and external-client parsing contract, see [`docs/MCP_RESPONSE_CONTRACT.md`](./docs/MCP_RESPONSE_CONTRACT.md) or the live resource `gdevelop://guides/response-contract`.
 
 ## 3D workflows
 

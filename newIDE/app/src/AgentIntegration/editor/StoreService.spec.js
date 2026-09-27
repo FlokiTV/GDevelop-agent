@@ -78,12 +78,21 @@ const makeService = (overrides: any = {}) => {
       { name: 'Jane', website: 'https://example.com/jane' },
     ]),
     listLicenses: jest.fn(async () => [
-      { name: 'CC0', website: 'https://creativecommons.org/publicdomain/zero/1.0/' },
+      {
+        name: 'CC0',
+        website: 'https://creativecommons.org/publicdomain/zero/1.0/',
+      },
     ]),
     now: () => 1000,
     ...overrides,
   });
-  return { service, editorFunctionService, assetTools, listPublicAssets, listResources };
+  return {
+    service,
+    editorFunctionService,
+    assetTools,
+    listPublicAssets,
+    listResources,
+  };
 };
 
 describe('StoreService', () => {
@@ -99,6 +108,15 @@ describe('StoreService', () => {
       license: 'CC0',
     });
     expect(second.results[0].assetId).toBe('platformer-player');
+    expect(first.pagination).toEqual({
+      mode: 'bounded',
+      limit: 10,
+      total: 1,
+      returned: 1,
+      hasMore: false,
+      truncated: false,
+      nextCursor: null,
+    });
     expect(listPublicAssets).toHaveBeenCalledTimes(1);
     expect(first.source.provider).toBe('gdevelop-public-asset-store');
   });
@@ -106,7 +124,9 @@ describe('StoreService', () => {
   it('inspects full asset provenance, authors, license and extension dependencies', async () => {
     const { service } = makeService();
 
-    const result = await service.inspectObject({ assetId: 'platformer-player' });
+    const result = await service.inspectObject({
+      assetId: 'platformer-player',
+    });
 
     expect(result.asset.authors).toEqual([
       { name: 'Jane', website: 'https://example.com/jane' },
@@ -149,7 +169,19 @@ describe('StoreService', () => {
   it('searches, inspects and imports Resource Store entries through AssetTools', async () => {
     const { service, assetTools, listResources } = makeService();
 
-    const search = await service.searchResources({ query: 'coin', kind: 'audio' });
+    const search = await service.searchResources({
+      query: 'coin',
+      kind: 'audio',
+    });
+    expect(search.pagination).toEqual({
+      mode: 'bounded',
+      limit: 10,
+      total: 1,
+      returned: 1,
+      hasMore: false,
+      truncated: false,
+      nextCursor: null,
+    });
     expect(search.results[0]).toMatchObject({
       name: 'Coin pickup',
       kind: 'audio',
