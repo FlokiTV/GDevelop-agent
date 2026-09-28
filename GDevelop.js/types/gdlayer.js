@@ -3,6 +3,8 @@ declare class gdLayer {
   constructor(): void;
   setName(name: string): void;
   getName(): string;
+  resetPersistentUuid(): gdLayer;
+  getPersistentUuid(): string;
   setRenderingType(renderingType: string): void;
   getRenderingType(): string;
   setCameraType(cameraType: string): void;

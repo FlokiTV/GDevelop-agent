@@ -669,6 +669,14 @@
         semanticStateAuthority:
           'game-specific-disabled-and-legacy-state-is-not-inferred',
       },
+      renderStack: {
+        authority: 'runtime-preview',
+        layerName: visibility.layerName,
+        layerOrder: visibility.layerOrder,
+        zOrder: getObjectZOrder(instance),
+        runtimeOrder: entry.order,
+        ordering: 'layer-order-then-z-order-then-runtime-container-order',
+      },
       _sort: {
         layerOrder: visibility.layerOrder,
         zOrder: getObjectZOrder(instance),

@@ -314,11 +314,68 @@ const canvasRectFromMetrics = viewport => {
   );
 };
 
+const compareRenderStacks = (a, b) => {
+  const aStack = a && a.renderStack;
+  const bStack = b && b.renderStack;
+  if (!aStack || !bStack) {
+    return {
+      determinable: false,
+      relation: 'indeterminate',
+      reason: 'render-stack-unavailable',
+    };
+  }
+  const fields = [
+    ['layerOrder', aStack.layerOrder, bStack.layerOrder],
+    ['zOrder', aStack.zOrder, bStack.zOrder],
+    ['runtimeOrder', aStack.runtimeOrder, bStack.runtimeOrder],
+  ];
+  for (const [reason, aValue, bValue] of fields) {
+    if (!Number.isFinite(Number(aValue)) || !Number.isFinite(Number(bValue))) {
+      return {
+        determinable: false,
+        relation: 'indeterminate',
+        reason: `${reason}-unavailable`,
+      };
+    }
+    if (Number(aValue) === Number(bValue)) continue;
+    return {
+      determinable: true,
+      relation: Number(aValue) > Number(bValue) ? 'above' : 'below',
+      reason,
+    };
+  }
+  return {
+    determinable: true,
+    relation: 'same-stack-position',
+    reason: 'equal',
+  };
+};
+
+const buildRenderRelations = targets => {
+  const relations = [];
+  for (let i = 0; i < targets.length; i++) {
+    for (let j = i + 1; j < targets.length; j++) {
+      const a = targets[i];
+      const b = targets[j];
+      relations.push({
+        aTargetId: a.targetId,
+        bTargetId: b.targetId,
+        aSelectorId: a.selectorId,
+        bSelectorId: b.selectorId,
+        authority: 'runtime-preview',
+        result: compareRenderStacks(a, b),
+      });
+    }
+  }
+  return relations;
+};
+
 const targetSummary = target => ({
   targetId: target.targetId,
   selectorId: target.selectorId,
   kind: target.kind,
   identity: target.identity || null,
+  renderStack: target.renderStack || null,
   bounds: target.bounds ? target.bounds.viewport : null,
   visible:
     target.visibility && typeof target.visibility.visible === 'boolean'
@@ -356,8 +413,14 @@ const createPreviewLayoutService = ({
   windowCaptureService,
 }) => {
   const capabilities = () => ({
-    version: 1,
+    version: 2,
     coordinateSpace: 'viewport-css-px',
+    renderStack: {
+      supported: true,
+      authority: 'runtime-preview',
+      ordering: 'layer-order-then-z-order-then-runtime-container-order',
+      relationOutput: 'renderRelations + overlap violation details.renderStack',
+    },
     selectors: {
       object: {
         supported: true,
@@ -523,6 +586,7 @@ const createPreviewLayoutService = ({
         },
         visibility: geometry.state || null,
         classification: geometry.classification || null,
+        renderStack: geometry.renderStack || null,
         clipping: {
           viewport: classifyClipping(viewportBounds, viewportRect),
           canvas: classifyClipping(viewportBounds, canvasRect || viewportRect),
@@ -573,6 +637,7 @@ const createPreviewLayoutService = ({
           hitBoxes: { scene: [], viewport: [] },
           visibility: { visible: true },
           classification: { presentationSurface: 'declared-region' },
+          renderStack: null,
           clipping: {
             viewport: {
               status: 'unknown',
@@ -688,6 +753,7 @@ const createPreviewLayoutService = ({
           : null,
       snapshotComplete: !(snapshot && Number(snapshot.truncatedInstances) > 0),
       targets: resolved,
+      renderRelations: buildRenderRelations(resolved),
       unresolved,
       diagnostics,
     };
@@ -885,6 +951,14 @@ const createPreviewLayoutService = ({
                 message: 'Runtime targets overlap.',
                 targets: [a, b],
                 intersectionRect: overlap,
+                details: {
+                  renderStack: {
+                    authority: 'runtime-preview',
+                    a: a.renderStack || null,
+                    b: b.renderStack || null,
+                    relation: compareRenderStacks(a, b),
+                  },
+                },
               })
             );
           }
@@ -1117,6 +1191,7 @@ const createPreviewLayoutService = ({
       scene: layout.scene,
       snapshotComplete: layout.snapshotComplete,
       targets: layout.targets,
+      renderRelations: layout.renderRelations,
       assertions: results,
       violations,
       diagnostics: layout.diagnostics,

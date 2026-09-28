@@ -21,6 +21,9 @@ const makeRuntimeTarget = ({
   right,
   bottom,
   visible = true,
+  layerOrder = 0,
+  zOrder = instanceIndex,
+  runtimeOrder = instanceIndex,
 }) => ({
   identity: {
     objectName,
@@ -28,7 +31,7 @@ const makeRuntimeTarget = ({
     instanceIndex,
     type,
     layer,
-    zOrder: instanceIndex,
+    zOrder,
   },
   size: { width: right - left, height: bottom - top },
   scene: {
@@ -62,6 +65,14 @@ const makeRuntimeTarget = ({
     ],
     center: { x: (left + right) / 2, y: (top + bottom) / 2 },
     insideViewport: left >= 0 && top >= 0 && right <= 1280 && bottom <= 720,
+  },
+  renderStack: {
+    authority: 'runtime-preview',
+    layerName: layer,
+    layerOrder,
+    zOrder,
+    runtimeOrder,
+    ordering: 'layer-order-then-z-order-then-runtime-container-order',
   },
   state: {
     hidden: !visible,
@@ -107,7 +118,7 @@ const makeHarness = ({ objects, viewportMetrics = viewport }) => {
       y: object.top,
       z: 0,
       angle: 0,
-      zOrder: object.instanceIndex || 0,
+      zOrder: object.zOrder == null ? object.instanceIndex || 0 : object.zOrder,
       layer: object.layer || 'UI',
       hidden: object.visible === false,
       livingOnScene: true,
@@ -229,6 +240,8 @@ test('discovers object, layer and named-region layout with clipping and visibili
 
   const capabilities = service.capabilities();
   assert.equal(capabilities.selectors.layer.supported, true);
+  assert.equal(capabilities.renderStack.supported, true);
+  assert.equal(capabilities.renderStack.authority, 'runtime-preview');
   assert.equal(capabilities.capture.command, 'preview.capture.region');
   assert.equal(
     capabilities.visualQaIntegration.replacesPerceptualReview,
@@ -360,6 +373,16 @@ test('reports deterministic clipping, overlap, safe-area and text-fit violations
     'overlap',
   ]);
   assert.ok(overlap.intersection.width > 0);
+  assert.equal(overlap.details.renderStack.authority, 'runtime-preview');
+  assert.equal(overlap.details.renderStack.relation.determinable, true);
+  assert.equal(overlap.details.renderStack.relation.relation, 'below');
+  const buttonOverlapRelation = result.renderRelations.find(
+    relation =>
+      relation.aTargetId === 'button' && relation.bTargetId === 'overlap'
+  );
+  assert.ok(buttonOverlapRelation);
+  assert.equal(buttonOverlapRelation.result.relation, 'below');
+  assert.equal(overlap.targets[0].renderStack.authority, 'runtime-preview');
   assert.ok(
     result.violations.some(v => v.code === 'preview_layout_safe_area_intrusion')
   );

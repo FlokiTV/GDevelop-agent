@@ -1013,6 +1013,8 @@ export class Layer extends EmscriptenObject {
   constructor();
   setName(name: string): void;
   getName(): string;
+  resetPersistentUuid(): Layer;
+  getPersistentUuid(): string;
   setRenderingType(renderingType: string): void;
   getRenderingType(): string;
   setCameraType(cameraType: string): void;

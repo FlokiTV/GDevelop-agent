@@ -1205,6 +1205,8 @@ interface Layer {
     void Layer();
     void SetName([Const] DOMString name);
     [Const, Ref] DOMString GetName();
+    [Ref] Layer ResetPersistentUuid();
+    [Const, Ref] DOMString GetPersistentUuid();
     void SetRenderingType([Const] DOMString renderingType);
     [Const, Ref] DOMString GetRenderingType();
     void SetCameraType([Const] DOMString cameraType);

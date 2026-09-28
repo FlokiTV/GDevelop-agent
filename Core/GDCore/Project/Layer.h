@@ -103,6 +103,9 @@ class GD_CORE_API Layer {
    */
   const gd::String& GetName() const { return name; }
 
+  Layer& ResetPersistentUuid();
+  const gd::String& GetPersistentUuid() const { return persistentUuid; }
+
   const gd::String& GetRenderingType() const { return renderingType; }
 
   void SetRenderingType(const gd::String& renderingType_) {
@@ -281,6 +284,7 @@ class GD_CORE_API Layer {
 
  private:
   gd::String name;           ///< The name of the layer
+  gd::String persistentUuid; ///< Stable layer identity persisted across renames/reorders.
   gd::String renderingType;  ///< The rendering type: "" (empty), "2d", "3d" or
                              ///< "2d+3d".
   gd::String defaultCameraBehavior;

@@ -8,13 +8,15 @@
 #include "GDCore/CommonTools.h"
 #include "GDCore/Project/Effect.h"
 #include "GDCore/Serialization/SerializerElement.h"
+#include "GDCore/Tools/UUID/UUID.h"
 
 namespace gd {
 
 Camera Layer::badCamera;
 
 Layer::Layer()
-    : renderingType(""),
+    : persistentUuid(UUID::MakeUuid4()),
+      renderingType(""),
       defaultCameraBehavior("top-left-anchored-if-never-moved"),
       isVisible(true),
       isLocked(false),
@@ -31,6 +33,11 @@ Layer::Layer()
 /**
  * Change cameras count, automatically adding/removing them.
  */
+Layer& Layer::ResetPersistentUuid() {
+  persistentUuid = UUID::MakeUuid4();
+  return *this;
+}
+
 void Layer::SetCameraCount(std::size_t n) {
   while (cameras.size() < n) cameras.push_back(Camera());
 
@@ -40,6 +47,7 @@ void Layer::SetCameraCount(std::size_t n) {
 
 void Layer::SerializeTo(SerializerElement& element) const {
   element.SetAttribute("name", GetName());
+  element.SetStringAttribute("persistentUuid", persistentUuid);
   element.SetAttribute("renderingType", GetRenderingType());
   element.SetAttribute("cameraType", GetCameraType());
   if (GetDefaultCameraBehavior() != "top-left-anchored-if-never-moved") {
@@ -84,6 +92,8 @@ void Layer::SerializeTo(SerializerElement& element) const {
  * \brief Unserialize the layer.
  */
 void Layer::UnserializeFrom(const SerializerElement& element) {
+  persistentUuid = element.GetStringAttribute("persistentUuid");
+  if (persistentUuid.empty()) ResetPersistentUuid();
   SetName(element.GetStringAttribute("name", "", "Name"));
   SetRenderingType(element.GetStringAttribute("renderingType", ""));
   SetCameraType(element.GetStringAttribute("cameraType", "perspective"));

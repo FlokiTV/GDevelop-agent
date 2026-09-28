@@ -445,6 +445,17 @@ test('inspects scaled runtime hitboxes and excludes hidden stale controls from h
   assert.equal(inspected.result.target.size.width, 40);
   assert.equal(inspected.result.target.viewport.bounds.width, 80);
   assert.equal(inspected.result.target.viewport.bounds.height, 80);
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(inspected.result.target.renderStack)),
+    {
+      authority: 'runtime-preview',
+      layerName: '',
+      layerOrder: 0,
+      zOrder: 1,
+      runtimeOrder: 1,
+      ordering: 'layer-order-then-z-order-then-runtime-container-order',
+    }
+  );
   assert.equal(
     inspected.result.hitTest.owner.identity.objectName,
     'VisibleButton'

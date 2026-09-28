@@ -23,6 +23,7 @@ import { createPublicationService } from './editor/PublicationService';
 import { createExportService } from './editor/ExportService';
 import { createProjectLifecycleService } from './editor/ProjectLifecycleService';
 import { createSceneLifecycleService } from './editor/SceneLifecycleService';
+import { createLayerOrderService } from './editor/LayerOrderService';
 import { createTargetIdentityService } from './editor/TargetIdentityService';
 import { createValidationService } from './editor/ValidationService';
 import { createPreviewService } from './runtime/PreviewService';
@@ -318,6 +319,14 @@ export const createRendererIntegration = ({
     clearGameplayTestFramePreview,
     documentObject,
   });
+  const layerOrderService = project
+    ? createLayerOrderService({
+        project,
+        triggerUnsavedChanges,
+        forceUpdate,
+        onInstancesModifiedOutsideEditor: safeOnInstancesModifiedOutsideEditor,
+      })
+    : null;
   const objectPropertyService = project
     ? createObjectPropertyService({
         project,
@@ -447,6 +456,7 @@ export const createRendererIntegration = ({
       eventTools,
       externalProjectItemsService,
       sceneLifecycleService,
+      layerOrderService,
       extensionAuthoringService,
       extensionLifecycleService,
       objectStructureService,
