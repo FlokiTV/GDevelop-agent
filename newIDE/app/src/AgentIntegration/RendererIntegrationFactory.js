@@ -12,6 +12,7 @@ import { createEditorVisualService } from './editor/EditorVisualService';
 import { createExtensionAuthoringService } from './editor/ExtensionAuthoringService';
 import { createExtensionLifecycleService } from './editor/ExtensionLifecycleService';
 import { createObjectStructureService } from './editor/ObjectStructureService';
+import { createObjectPropertyService } from './editor/ObjectPropertyService';
 import { createMetadataDiscoveryService } from './editor/MetadataDiscoveryService';
 import { createDocumentationService } from './editor/DocumentationService';
 import { createStoreService } from './editor/StoreService';
@@ -317,6 +318,16 @@ export const createRendererIntegration = ({
     clearGameplayTestFramePreview,
     documentObject,
   });
+  const objectPropertyService = project
+    ? createObjectPropertyService({
+        project,
+        metadataDiscoveryService,
+        editorFunctionService,
+        triggerUnsavedChanges,
+        forceUpdate,
+        onInstancesModifiedOutsideEditor: safeOnInstancesModifiedOutsideEditor,
+      })
+    : null;
   const runtimeDiagnosticsService = createRuntimeDiagnosticsService({
     project,
     eventTools,
@@ -439,6 +450,7 @@ export const createRendererIntegration = ({
       extensionAuthoringService,
       extensionLifecycleService,
       objectStructureService,
+      objectPropertyService,
       metadataDiscoveryService,
       documentationService,
       storeService,

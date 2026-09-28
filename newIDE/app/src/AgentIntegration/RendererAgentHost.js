@@ -10,6 +10,7 @@ import { createExternalProjectItemsCommandDescriptors } from './editor/ExternalP
 import { createExtensionAuthoringCommandDescriptors } from './editor/ExtensionAuthoringCommands';
 import { createExtensionLifecycleCommandDescriptors } from './editor/ExtensionLifecycleCommands';
 import { createObjectStructureCommandDescriptors } from './editor/ObjectStructureCommands';
+import { createObjectPropertyCommandDescriptors } from './editor/ObjectPropertyCommands';
 import { createMetadataDiscoveryCommandDescriptors } from './editor/MetadataDiscoveryCommands';
 import { createDocumentationCommandDescriptors } from './editor/DocumentationCommands';
 import { createStoreCommandDescriptors } from './editor/StoreCommands';
@@ -40,6 +41,7 @@ type Options = {|
   extensionAuthoringService: any,
   extensionLifecycleService: any,
   objectStructureService: any,
+  objectPropertyService: any,
   metadataDiscoveryService: any,
   documentationService: any,
   storeService: any,
@@ -70,6 +72,7 @@ export const createRendererAgentHost = ({
   extensionAuthoringService,
   extensionLifecycleService,
   objectStructureService,
+  objectPropertyService,
   metadataDiscoveryService,
   documentationService,
   storeService,
@@ -109,6 +112,7 @@ export const createRendererAgentHost = ({
         extensionLifecycleService,
       }),
       ...createObjectStructureCommandDescriptors({ objectStructureService }),
+      ...createObjectPropertyCommandDescriptors({ objectPropertyService }),
       ...createMetadataDiscoveryCommandDescriptors({
         metadataDiscoveryService,
       }),

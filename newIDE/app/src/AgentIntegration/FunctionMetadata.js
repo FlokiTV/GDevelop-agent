@@ -242,6 +242,16 @@ const extensionPropertyChangeSchema = {
   },
 };
 
+const objectOrBehaviorPropertyChangeSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['property_name', 'new_value'],
+  properties: {
+    property_name: { type: 'string', minLength: 1 },
+    new_value: { type: 'string' },
+  },
+};
+
 const extensionDependencyChangeSchema = {
   type: 'object',
   additionalProperties: false,
@@ -362,6 +372,42 @@ const argumentOverrides: {
       schema: { type: 'integer', minimum: 0 },
       description:
         'Legacy single-operation final zero-based declaration index.',
+    },
+  },
+  change_object_property: {
+    changed_properties: {
+      type: 'array',
+      schema: {
+        type: 'array',
+        minItems: 1,
+        items: objectOrBehaviorPropertyChangeSchema,
+      },
+      description:
+        'Legacy serialized object-definition property patches. Discover canonical names/types first with objects.properties.describe; prefer objects.properties.set for typed mutation.',
+    },
+  },
+  change_object_properties_effects: {
+    changed_properties: {
+      type: 'array',
+      schema: {
+        type: 'array',
+        minItems: 1,
+        items: objectOrBehaviorPropertyChangeSchema,
+      },
+      description:
+        'Legacy serialized object-definition property patches. Discover canonical names/types first with objects.properties.describe; prefer objects.properties.set for typed mutation.',
+    },
+  },
+  change_behavior_property: {
+    changed_properties: {
+      type: 'array',
+      schema: {
+        type: 'array',
+        minItems: 1,
+        items: objectOrBehaviorPropertyChangeSchema,
+      },
+      description:
+        'Legacy serialized attached-behavior property patches. Discover canonical names/types first with objects.properties.describe targetKind=behavior; prefer objects.properties.set for typed mutation.',
     },
   },
   create_extension: {

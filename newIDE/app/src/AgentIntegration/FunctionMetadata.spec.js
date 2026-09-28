@@ -277,6 +277,29 @@ describe('AgentIntegration FunctionMetadata', () => {
     });
   });
 
+  it('publishes nested changed_properties schemas for object and behavior mutation', () => {
+    [
+      'change_object_property',
+      'change_object_properties_effects',
+      'change_behavior_property',
+    ].forEach(functionName => {
+      const metadata = getFunctionMetadata(functionName);
+      expect(metadata).not.toBeNull();
+      expect(metadata.inputSchema.properties.changed_properties).toMatchObject({
+        type: 'array',
+        minItems: 1,
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['property_name', 'new_value'],
+          properties: {
+            property_name: { type: 'string', minLength: 1 },
+            new_value: { type: 'string' },
+          },
+        },
+      });
+    });
+  });
   it('searches functions by capability and can filter to embedded-executable tools', () => {
     const instanceMatches = listFunctionMetadata({
       query: 'existing_instance_ids',

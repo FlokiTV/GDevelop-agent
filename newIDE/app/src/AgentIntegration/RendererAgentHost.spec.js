@@ -148,6 +148,8 @@ const EXPECTED_PUBLIC_COMMANDS = [
   'external-layouts.list',
   'external-layouts.rename',
   'external-layouts.update',
+  'objects.properties.describe',
+  'objects.properties.set',
   'objects.structure.apply',
   'objects.structure.capabilities',
   'objects.structure.inspect',
@@ -238,6 +240,7 @@ describe('RendererAgentHost public command inventory', () => {
       extensionAuthoringService: {},
       extensionLifecycleService: {},
       objectStructureService: {},
+      objectPropertyService: {},
       metadataDiscoveryService: {},
       buildService: {},
       publicationService: {},
@@ -253,6 +256,94 @@ describe('RendererAgentHost public command inventory', () => {
     const commandNames = host.listCommands().map(command => command.name);
     expect(commandNames).toEqual(EXPECTED_PUBLIC_COMMANDS);
     expect(new Set(commandNames).size).toBe(commandNames.length);
+  });
+
+  it('wraps objects.properties.set with project revision and active transaction metadata', async () => {
+    let revision = 0;
+    const projectRevisionTracker = {
+      synchronize: jest.fn(() => revision),
+      markMutation: jest.fn(() => {
+        revision += 1;
+        return revision;
+      }),
+    };
+    const identity = {
+      clientId: 'dx24-client',
+      agentId: 'GDevelop-Properties-A1',
+      sessionId: 'dx24-session',
+      taskId: 'dx24-task',
+      ownerKey: 'GDevelop-Properties-A1::dx24-session',
+    };
+    const set = jest.fn(async input => ({
+      updated: true,
+      applied: input.changes,
+    }));
+    const host = createRendererAgentHost({
+      environment: {
+        project: {},
+        projectRevisionTracker,
+        getTransactionStatus: () => ({
+          active: true,
+          transactionId: 'tx-dx24-properties',
+          owner: identity,
+          purpose: 'typed property mutation',
+          startedAt: 1,
+        }),
+      },
+      assetTools: {},
+      diagnosticsTools: {},
+      editorFunctionService: { run: jest.fn() },
+      editorVisualService: {},
+      eventTools: {},
+      externalProjectItemsService: {},
+      sceneLifecycleService: {},
+      extensionAuthoringService: {},
+      extensionLifecycleService: {},
+      objectStructureService: {},
+      objectPropertyService: { describe: jest.fn(), set },
+      metadataDiscoveryService: {},
+      buildService: {},
+      publicationService: {},
+      exportService: {},
+      previewService: {},
+      projectLifecycleService: {},
+      runtimeTelemetry: {},
+      runtimeDiagnosticsService: {},
+      safetyService: {},
+      validationService: {},
+    });
+
+    const result = await host.execute(
+      'objects.properties.set',
+      {
+        targetKind: 'object-definition',
+        sceneName: 'Game',
+        objectName: 'Label',
+        changes: [{ path: 'configuration.text', value: 'After' }],
+      },
+      {
+        expectedRevision: 0,
+        identity,
+        traceId: 'dx24-properties-transaction',
+      }
+    );
+
+    expect(set).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({
+      command: 'objects.properties.set',
+      data: {
+        updated: true,
+        applied: [{ path: 'configuration.text', value: 'After' }],
+      },
+      meta: {
+        traceId: 'dx24-properties-transaction',
+        readOnly: false,
+        modifiesProject: true,
+        projectRevision: 1,
+        transactionId: 'tx-dx24-properties',
+      },
+    });
+    expect(projectRevisionTracker.markMutation).toHaveBeenCalledTimes(1);
   });
 
   it('preserves idempotent mutation replay when the renderer host is recreated', async () => {
@@ -283,6 +374,7 @@ describe('RendererAgentHost public command inventory', () => {
         extensionAuthoringService: {},
         extensionLifecycleService: {},
         objectStructureService: {},
+        objectPropertyService: {},
         metadataDiscoveryService: {},
         documentationService: {},
         storeService: {},
