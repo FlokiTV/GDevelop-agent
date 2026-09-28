@@ -36,6 +36,13 @@ const TEXT_RESOURCE_WRITE_PROPERTIES = {
   content: { type: 'string' },
 };
 
+const VISUAL_RESOURCE_WRITE_PROPERTIES = {
+  resourceName: { type: 'string', minLength: 1 },
+  relativePath: { type: 'string', minLength: 1 },
+  kind: { type: 'string', enum: ['image', 'font'] },
+  contentBase64: { type: 'string', minLength: 4 },
+};
+
 const assertResourceName = (value: any) => {
   if (!value || typeof value !== 'string') {
     throw new AgentError({ code: 'missing_resource_name' });
@@ -51,6 +58,12 @@ const assertFilePath = (value: any) => {
 const assertTextContent = (value: any) => {
   if (typeof value !== 'string') {
     throw new AgentError({ code: 'missing_resource_text_content' });
+  }
+};
+
+const assertVisualContent = (value: any) => {
+  if (!value || typeof value !== 'string') {
+    throw new AgentError({ code: 'missing_visual_resource_content' });
   }
 };
 
@@ -153,6 +166,116 @@ export const createResourceCommandDescriptors = ({
     },
     metadata: makeCommandMetadata({ requiresProject: true }),
     execute: ({ input }) => assetTools.inspectResourcePackaging(input),
+  },
+  {
+    name: 'resources.visual.inspect',
+    description:
+      'Inspect one registered image/font resource with project-relative path, MIME, byte size, SHA-256, image/font metadata, usage paths, structural constraints and packaging/runtime resolution.',
+    inputSchema: RESOURCE_NAME_SCHEMA,
+    metadata: makeCommandMetadata({ requiresProject: true }),
+    validateInput: input => assertResourceName(input.resourceName),
+    execute: ({ input }) => assetTools.inspectVisualResource(input),
+  },
+  {
+    name: 'resources.visual.import',
+    description:
+      'Create a project-local raster/SVG/font file from base64 bytes and register it atomically without requiring callers to know the project filesystem layout.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['resourceName', 'contentBase64'],
+      properties: VISUAL_RESOURCE_WRITE_PROPERTIES,
+    },
+    metadata: makeCommandMetadata({
+      readOnly: false,
+      idempotent: false,
+      requiresProject: true,
+      modifiesProject: true,
+    }),
+    validateInput: input => {
+      assertResourceName(input.resourceName);
+      assertVisualContent(input.contentBase64);
+    },
+    execute: ({ input }) => assetTools.importVisualResource(input),
+  },
+  {
+    name: 'resources.visual.replace',
+    description:
+      'Atomically replace the bytes backing a registered image/font resource while preserving its resource identity and every existing project reference.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['resourceName', 'contentBase64'],
+      properties: VISUAL_RESOURCE_WRITE_PROPERTIES,
+    },
+    metadata: makeCommandMetadata({
+      readOnly: false,
+      destructive: true,
+      idempotent: true,
+      requiresProject: true,
+      modifiesProject: true,
+    }),
+    validateInput: input => {
+      assertResourceName(input.resourceName);
+      assertVisualContent(input.contentBase64);
+    },
+    execute: ({ input }) => assetTools.replaceVisualResource(input),
+  },
+  {
+    name: 'resources.visual.relocate',
+    description:
+      'Safely rename a visual resource and/or move its project-local backing file while preserving all resource references. Dry-run is available for review.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['resourceName'],
+      properties: {
+        resourceName: { type: 'string', minLength: 1 },
+        newResourceName: { type: 'string', minLength: 1 },
+        newRelativePath: { type: 'string', minLength: 1 },
+        dryRun: { type: 'boolean', default: true },
+      },
+    },
+    metadata: makeCommandMetadata({
+      readOnly: false,
+      destructive: true,
+      idempotent: false,
+      requiresProject: true,
+      modifiesProject: true,
+    }),
+    modifiesProjectWhen: input => input.dryRun === false,
+    validateInput: input => {
+      assertResourceName(input.resourceName);
+      if (!input.newResourceName && !input.newRelativePath) {
+        throw new AgentError({ code: 'missing_visual_resource_relocation' });
+      }
+    },
+    execute: ({ input }) => assetTools.relocateVisualResource(input),
+  },
+  {
+    name: 'resources.visual.delete',
+    description:
+      'Dry-run or delete an unused visual resource. In-use resources are blocked with a structured usage summary and are never silently removed.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['resourceName'],
+      properties: {
+        resourceName: { type: 'string', minLength: 1 },
+        deleteFile: { type: 'boolean', default: false },
+        dryRun: { type: 'boolean', default: true },
+      },
+    },
+    metadata: makeCommandMetadata({
+      readOnly: false,
+      destructive: true,
+      idempotent: false,
+      requiresProject: true,
+      modifiesProject: true,
+    }),
+    modifiesProjectWhen: input => input.dryRun === false,
+    validateInput: input => assertResourceName(input.resourceName),
+    execute: ({ input }) => assetTools.deleteVisualResource(input),
   },
   {
     name: 'resources.import-local',
