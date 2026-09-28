@@ -17,6 +17,13 @@ const {
   makeSuccessEnvelope,
   makeInputValidationError,
 } = require('./McpResponseContract');
+const { ASYNC_JOB_DESCRIPTORS } = require('./McpAsyncJobs');
+const { createAsyncJobExecutionContext } = require('./McpAsyncJobExecution');
+
+const ASYNC_JOB_REGISTRATIONS = descriptorsToToolRegistrations(
+  ASYNC_JOB_DESCRIPTORS
+);
+
 const {
   getTraceContextFromRequest,
   makeToolResultMeta,
@@ -397,6 +404,7 @@ const createMcpServerFactory = ({
   desktopCommandRegistry = null,
   metrics,
   operationRegistry = null,
+  asyncJobRegistry = null,
 }) => async ctx => {
   const targeting = getTargetingFromRequest(ctx && ctx.requestInfo);
   const connectionIdentity = getIdentityFromRequest(ctx && ctx.requestInfo);
@@ -421,10 +429,13 @@ const createMcpServerFactory = ({
   const desktopDescriptors = desktopCommandRegistry
     ? desktopCommandRegistry.listDescriptors()
     : [];
-  const descriptors = mergeCommandDescriptors(
+  const baseDescriptors = mergeCommandDescriptors(
     rendererDescriptors,
     desktopDescriptors
   );
+  if (asyncJobRegistry) {
+    mergeCommandDescriptors(baseDescriptors, ASYNC_JOB_DESCRIPTORS);
+  }
 
   const server = new McpServer(SERVER_INFO, {
     instructions:
@@ -444,7 +455,13 @@ const createMcpServerFactory = ({
     registerOperationsResource({ server, operationRegistry });
   }
 
-  descriptorsToToolRegistrations(descriptors).forEach(registration => {
+  const registrations = descriptorsToToolRegistrations(baseDescriptors);
+  if (asyncJobRegistry) {
+    registrations.push(...ASYNC_JOB_REGISTRATIONS);
+    registrations.sort((left, right) => left.name.localeCompare(right.name));
+  }
+
+  registrations.forEach(registration => {
     server.registerTool(
       registration.name,
       registration.config,
@@ -581,7 +598,55 @@ const createMcpServerFactory = ({
           }
 
           let result;
-          if (
+          if (asyncJobRegistry && registration.name.startsWith('agent.jobs.')) {
+            const jobRequestContext = { identity: connectionIdentity };
+            let data;
+            if (registration.name === 'agent.jobs.capabilities') {
+              data = asyncJobRegistry.capabilities();
+            } else if (registration.name === 'agent.jobs.start') {
+              const asyncExecution = createAsyncJobExecutionContext({
+                registrations,
+                desktopCommandRegistry,
+                rendererBridge,
+                targetIdentitySupported,
+                assertTargetPreconditions,
+                getTargetIdentity,
+              });
+              data = asyncJobRegistry.start({
+                input: commandInput,
+                requestContext: jobRequestContext,
+                targeting,
+                traceId: traceContext.traceId,
+                executeStep: asyncExecution.executeStep,
+                createResources: asyncExecution.createResources,
+                cleanup: asyncExecution.cleanup,
+              });
+            } else if (registration.name === 'agent.jobs.status') {
+              data = asyncJobRegistry.status(commandInput, jobRequestContext);
+            } else if (registration.name === 'agent.jobs.result') {
+              data = asyncJobRegistry.result(commandInput, jobRequestContext);
+            } else if (registration.name === 'agent.jobs.cancel') {
+              data = asyncJobRegistry.cancel(commandInput, jobRequestContext);
+            } else {
+              const error = new Error('async_job_command_not_found');
+              error.code = 'async_job_command_not_found';
+              throw error;
+            }
+            result = {
+              command: registration.name,
+              data,
+              meta: {
+                traceId: traceContext.traceId,
+                readOnly: !!(
+                  registration.config &&
+                  registration.config.annotations &&
+                  registration.config.annotations.readOnlyHint
+                ),
+                modifiesProject: false,
+                identity: connectionIdentity,
+              },
+            };
+          } else if (
             desktopCommandRegistry &&
             desktopCommandRegistry.has(registration.name)
           ) {

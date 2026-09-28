@@ -151,7 +151,15 @@ test('formats MCP errors for logs and demotes expected cancellation', () => {
   ]);
 });
 
-const connectClient = async ({ url, token, windowId }) => {
+const connectClient = async ({
+  url,
+  token,
+  windowId,
+  clientId,
+  agentId,
+  sessionId,
+  taskId,
+}) => {
   const client = new Client(
     { name: 'gdevelop-mcp-test', version: '1.0.0' },
     { versionNegotiation: { mode: { pin: PROTOCOL_VERSION } } }
@@ -161,6 +169,10 @@ const connectClient = async ({ url, token, windowId }) => {
       headers: {
         Authorization: `Bearer ${token}`,
         ...(windowId ? { 'X-GDevelop-Window-Id': String(windowId) } : {}),
+        ...(clientId ? { 'X-GDevelop-Client-Id': clientId } : {}),
+        ...(agentId ? { 'X-GDevelop-Agent-Id': agentId } : {}),
+        ...(sessionId ? { 'X-GDevelop-Session-Id': sessionId } : {}),
+        ...(taskId ? { 'X-GDevelop-Task-Id': taskId } : {}),
       },
     },
   });
@@ -190,6 +202,11 @@ test('official MCP client initializes, lists registry tools and calls them direc
 
     const tools = await client.listTools();
     assert.deepEqual(tools.tools.map(tool => tool.name), [
+      'agent.jobs.cancel',
+      'agent.jobs.capabilities',
+      'agent.jobs.result',
+      'agent.jobs.start',
+      'agent.jobs.status',
       'project.save',
       'project.status',
     ]);

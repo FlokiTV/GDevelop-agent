@@ -11,6 +11,7 @@ const {
 } = require('./McpServerFactory');
 const { createMcpMetrics } = require('./McpObservability');
 const { createLongRunningOperationRegistry } = require('./McpLongRunning');
+const { createAsyncJobRegistry } = require('./McpAsyncJobs');
 
 const DEFAULT_HOST = '127.0.0.1';
 const DEFAULT_PORT = 38473;
@@ -206,12 +207,14 @@ const startMcpHttpServer = async ({
 }) => {
   const metrics = createMcpMetrics();
   const operationRegistry = createLongRunningOperationRegistry();
+  const asyncJobRegistry = createAsyncJobRegistry();
   const handler = createMcpHandler(
     createMcpServerFactory({
       rendererBridge,
       desktopCommandRegistry,
       metrics,
       operationRegistry,
+      asyncJobRegistry,
     }),
     {
       legacy: 'stateless',
@@ -359,6 +362,7 @@ const startMcpHttpServer = async ({
   const stop = async () => {
     if (stopped) return;
     stopped = true;
+    await asyncJobRegistry.dispose();
     await handler.close();
     await closeHttpServer(server);
   };
@@ -374,6 +378,7 @@ const startMcpHttpServer = async ({
     handler,
     metrics,
     operationRegistry,
+    asyncJobRegistry,
   };
 };
 

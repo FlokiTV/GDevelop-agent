@@ -113,7 +113,14 @@ test('connectLiveGDevelopMcp discovers, pins, calls once and closes without expo
     );
 
     const tools = await session.listTools();
-    assert.deepEqual(tools.map(tool => tool.name), ['project.status']);
+    assert.deepEqual(tools.map(tool => tool.name), [
+      'agent.jobs.cancel',
+      'agent.jobs.capabilities',
+      'agent.jobs.result',
+      'agent.jobs.start',
+      'agent.jobs.status',
+      'project.status',
+    ]);
 
     const prompts = await session.listPrompts();
     assert.ok(

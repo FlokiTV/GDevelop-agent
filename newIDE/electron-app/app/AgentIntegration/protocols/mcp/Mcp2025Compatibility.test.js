@@ -67,7 +67,14 @@ test('official MCP 2025 client uses the same stateless HTTP boundary for read-on
     assert.equal(client.getNegotiatedProtocolVersion(), '2025-11-25');
 
     const tools = await client.listTools();
-    assert.deepEqual(tools.tools.map(tool => tool.name), ['project.status']);
+    assert.deepEqual(tools.tools.map(tool => tool.name), [
+      'agent.jobs.cancel',
+      'agent.jobs.capabilities',
+      'agent.jobs.result',
+      'agent.jobs.start',
+      'agent.jobs.status',
+      'project.status',
+    ]);
 
     const result = await client.callTool({
       name: 'project.status',
