@@ -24,6 +24,7 @@ import { createExportService } from './editor/ExportService';
 import { createProjectLifecycleService } from './editor/ProjectLifecycleService';
 import { createSceneLifecycleService } from './editor/SceneLifecycleService';
 import { createLayerOrderService } from './editor/LayerOrderService';
+import { createSceneInstanceService } from './editor/SceneInstanceService';
 import { createTargetIdentityService } from './editor/TargetIdentityService';
 import { createValidationService } from './editor/ValidationService';
 import { createPreviewService } from './runtime/PreviewService';
@@ -337,6 +338,17 @@ export const createRendererIntegration = ({
         onInstancesModifiedOutsideEditor: safeOnInstancesModifiedOutsideEditor,
       })
     : null;
+  const sceneInstanceService =
+    project && layerOrderService && objectPropertyService
+      ? createSceneInstanceService({
+          project,
+          layerOrderService,
+          objectPropertyService,
+          triggerUnsavedChanges,
+          forceUpdate,
+          onInstancesModifiedOutsideEditor: safeOnInstancesModifiedOutsideEditor,
+        })
+      : null;
   const runtimeDiagnosticsService = createRuntimeDiagnosticsService({
     project,
     eventTools,
@@ -457,6 +469,7 @@ export const createRendererIntegration = ({
       externalProjectItemsService,
       sceneLifecycleService,
       layerOrderService,
+      sceneInstanceService,
       extensionAuthoringService,
       extensionLifecycleService,
       objectStructureService,

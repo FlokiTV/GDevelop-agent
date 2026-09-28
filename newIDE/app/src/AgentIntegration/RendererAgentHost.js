@@ -18,6 +18,7 @@ import { createExportCommandDescriptors } from './editor/ExportCommands';
 import { createProjectLifecycleCommandDescriptors } from './editor/ProjectLifecycleCommands';
 import { createSceneLifecycleCommandDescriptors } from './editor/SceneLifecycleCommands';
 import { createLayerOrderCommandDescriptors } from './editor/LayerOrderCommands';
+import { createSceneInstanceCommandDescriptors } from './editor/SceneInstanceCommands';
 import { createTargetIdentityCommandDescriptors } from './editor/TargetIdentityCommands';
 import { createResourceCommandDescriptors } from './editor/ResourceCommands';
 import { createRemoteResourceCommandDescriptors } from './editor/RemoteResourceCommands';
@@ -40,6 +41,7 @@ type Options = {|
   externalProjectItemsService: any,
   sceneLifecycleService: any,
   layerOrderService: any,
+  sceneInstanceService?: any,
   extensionAuthoringService: any,
   extensionLifecycleService: any,
   objectStructureService: any,
@@ -72,6 +74,7 @@ export const createRendererAgentHost = ({
   externalProjectItemsService,
   sceneLifecycleService,
   layerOrderService,
+  sceneInstanceService,
   extensionAuthoringService,
   extensionLifecycleService,
   objectStructureService,
@@ -106,6 +109,7 @@ export const createRendererAgentHost = ({
       }),
       ...createSceneLifecycleCommandDescriptors({ sceneLifecycleService }),
       ...createLayerOrderCommandDescriptors({ layerOrderService }),
+      ...createSceneInstanceCommandDescriptors({ sceneInstanceService }),
       ...createExternalProjectItemsCommandDescriptors({
         externalProjectItemsService,
       }),

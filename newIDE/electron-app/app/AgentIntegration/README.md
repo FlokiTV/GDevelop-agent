@@ -156,6 +156,14 @@ After declaration mutations, generated metadata is refreshed by the native Edito
 
 Top-level declaration ordering is explicit and deterministic: specify exactly one of `move_before_variable`, `move_after_variable`, or `move_to_index` (a final zero-based index). Rename and reorder may be combined with each other in one operation; the reorder addresses the post-rename name. Keep create/update/delete in separate `add-or-edit-variable` calls: those legacy mutations continue through the native EditorFunction, while rename/reorder is handled by the isolated AgentIntegration path. These operations do not delete/recreate the declaration, so public-first / `__internal`-last ordering can be achieved without value/type loss. Duplicate names, missing targets, invalid paths and ambiguous positioning return stable structured `operationErrors`. Group variables remain create/update/delete-only until a concrete group refactor target can be made equally safe.
 
+### Scene instance identity and placement
+
+Scene-instance authoring is identity-addressed, not brush/point-addressed. Use `scene.instances.list/get` to obtain the persistent `InitialInstance` UUID and the canonical `instance:<uuid>` selector. Ordinary property, position, angle, layer and Z-order edits preserve that identity. `scene.instances.create` is the explicit creation operation; `scene.instances.update`, `scene.instances.transform`, `scene.instances.move-layer` and `scene.instances.set-render-order` never create a replacement when their target is absent or ambiguous.
+
+`scene.instances.transform` uses absolute scene coordinates for x/y/z and rotation. The native `InitialInstance` model has no authoritative generic multiplicative `scaleX/scaleY/scaleZ` contract, so the tool does not invent one; width/height/depth requests use native custom-size overrides. Layer and Z-order remain owned by the DX-26 tools, while non-placement typed properties delegate to DX-24 `objects.properties.describe/set`.
+
+Deletes require the current per-instance `instanceRevision` in addition to the normal DX-19 project revision/ownership safeguards. Likely duplicates can be inspected with `scene.instances.diagnose-duplicates`; diagnostics never delete automatically. Bulk update/delete require an explicit selection, default to dry-run, return a deterministic `selectionRevision`, and only apply when that revision is supplied unchanged. Duplicate cleanup therefore needs no raw project JSON editing: diagnose, review the dry-run summary, then apply the guarded bulk delete.
+
 ## Current command families
 
 The registry currently exposes command families for:
