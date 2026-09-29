@@ -474,6 +474,22 @@ describe('AgentIntegration MetadataDiscoveryService', () => {
       properties: expect.any(Array),
       sharedProperties: expect.any(Array),
       requiredBehaviorTypes: expect.any(Array),
+      requiredBehaviors: expect.any(Array),
+      requiredCapabilityTypes: expect.any(Array),
+      parameters: {
+        properties: expect.any(Array),
+        sharedProperties: expect.any(Array),
+      },
+      compatibilityRules: expect.objectContaining({
+        requiredBehaviorTypes: expect.any(Array),
+        requiredCapabilityTypes: expect.any(Array),
+        authoritativeCheck: expect.stringMatching(/ObjectTools/),
+      }),
+      operationDiscovery: expect.objectContaining({
+        command: 'events.instructions.search',
+        describeCommand: 'events.instructions.describe',
+        authoringCommand: 'events.patch',
+      }),
     });
 
     const effects = service.listEffectTypes({

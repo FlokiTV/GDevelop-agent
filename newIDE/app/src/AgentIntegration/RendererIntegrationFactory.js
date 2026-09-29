@@ -13,6 +13,7 @@ import { createExtensionAuthoringService } from './editor/ExtensionAuthoringServ
 import { createExtensionLifecycleService } from './editor/ExtensionLifecycleService';
 import { createObjectStructureService } from './editor/ObjectStructureService';
 import { createObjectPropertyService } from './editor/ObjectPropertyService';
+import { createBehaviorLifecycleService } from './editor/BehaviorLifecycleService';
 import { createMetadataDiscoveryService } from './editor/MetadataDiscoveryService';
 import { createDocumentationService } from './editor/DocumentationService';
 import { createStoreService } from './editor/StoreService';
@@ -338,6 +339,17 @@ export const createRendererIntegration = ({
         onInstancesModifiedOutsideEditor: safeOnInstancesModifiedOutsideEditor,
       })
     : null;
+  const behaviorLifecycleService =
+    project && metadataDiscoveryService && objectPropertyService
+      ? createBehaviorLifecycleService({
+          project,
+          metadataDiscoveryService,
+          objectPropertyService,
+          triggerUnsavedChanges,
+          forceUpdate,
+          onObjectsModifiedOutsideEditor,
+        })
+      : null;
   const sceneInstanceService =
     project && layerOrderService && objectPropertyService
       ? createSceneInstanceService({
@@ -474,6 +486,7 @@ export const createRendererIntegration = ({
       extensionLifecycleService,
       objectStructureService,
       objectPropertyService,
+      behaviorLifecycleService,
       metadataDiscoveryService,
       documentationService,
       storeService,

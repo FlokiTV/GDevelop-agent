@@ -11,6 +11,7 @@ import { createExtensionAuthoringCommandDescriptors } from './editor/ExtensionAu
 import { createExtensionLifecycleCommandDescriptors } from './editor/ExtensionLifecycleCommands';
 import { createObjectStructureCommandDescriptors } from './editor/ObjectStructureCommands';
 import { createObjectPropertyCommandDescriptors } from './editor/ObjectPropertyCommands';
+import { createBehaviorLifecycleCommandDescriptors } from './editor/BehaviorLifecycleCommands';
 import { createMetadataDiscoveryCommandDescriptors } from './editor/MetadataDiscoveryCommands';
 import { createDocumentationCommandDescriptors } from './editor/DocumentationCommands';
 import { createStoreCommandDescriptors } from './editor/StoreCommands';
@@ -46,6 +47,7 @@ type Options = {|
   extensionLifecycleService: any,
   objectStructureService: any,
   objectPropertyService: any,
+  behaviorLifecycleService: any,
   metadataDiscoveryService: any,
   documentationService: any,
   storeService: any,
@@ -79,6 +81,7 @@ export const createRendererAgentHost = ({
   extensionLifecycleService,
   objectStructureService,
   objectPropertyService,
+  behaviorLifecycleService,
   metadataDiscoveryService,
   documentationService,
   storeService,
@@ -121,6 +124,9 @@ export const createRendererAgentHost = ({
       }),
       ...createObjectStructureCommandDescriptors({ objectStructureService }),
       ...createObjectPropertyCommandDescriptors({ objectPropertyService }),
+      ...createBehaviorLifecycleCommandDescriptors({
+        behaviorLifecycleService,
+      }),
       ...createMetadataDiscoveryCommandDescriptors({
         metadataDiscoveryService,
       }),

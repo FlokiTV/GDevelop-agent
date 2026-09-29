@@ -1109,12 +1109,34 @@ const makeBehaviorTypeRecord = (
   metadata: gdBehaviorMetadata,
   detailed: boolean
 ): any => {
-  const properties = detailed
-    ? serializePropertyMap(metadata.getProperties())
-    : null;
-  const sharedProperties = detailed
-    ? serializePropertyMap(metadata.getSharedProperties())
-    : null;
+  const allProperties = serializePropertyMap(metadata.getProperties());
+  const allSharedProperties = serializePropertyMap(
+    metadata.getSharedProperties()
+  );
+  const properties = detailed ? allProperties : null;
+  const sharedProperties = detailed ? allSharedProperties : null;
+  const requiredBehaviors = metadata
+    .getRequiredBehaviorTypes()
+    .toJSArray()
+    .map(requiredType => {
+      const requiredMetadata = gd.MetadataProvider.getBehaviorMetadata(
+        gd.JsPlatform.get(),
+        requiredType
+      );
+      const metadataAvailable = !gd.MetadataProvider.isBadBehaviorMetadata(
+        requiredMetadata
+      );
+      return {
+        type: requiredType,
+        metadataAvailable,
+        capability: metadataAvailable ? requiredMetadata.isHidden() : null,
+        fullName: metadataAvailable
+          ? requiredMetadata.getFullName() || requiredType
+          : null,
+      };
+    });
+  const capability = metadata.isHidden();
+
   return {
     kind: 'behavior',
     type,
@@ -1129,6 +1151,10 @@ const makeBehaviorTypeRecord = (
     private: metadata.isPrivate(),
     objectType: metadata.getObjectType() || null,
     requiredBehaviorTypes: metadata.getRequiredBehaviorTypes().toJSArray(),
+    requiredBehaviors,
+    requiredCapabilityTypes: requiredBehaviors
+      .filter(required => required.capability === true)
+      .map(required => required.type),
     relevantForChildObjects: metadata.isRelevantForChildObjects(),
     activatedByDefaultInEditor: metadata.isActivatedByDefaultInEditor(),
     extension: getExtensionSummary(extension),
@@ -1140,6 +1166,42 @@ const makeBehaviorTypeRecord = (
       .getSharedProperties()
       .keys()
       .size(),
+    parameters: detailed
+      ? {
+          properties: allProperties,
+          sharedProperties: allSharedProperties,
+        }
+      : {
+          propertyNames: allProperties.map(property => property.name),
+          sharedPropertyNames: allSharedProperties.map(
+            property => property.name
+          ),
+        },
+    compatibilityRules: {
+      objectType: metadata.getObjectType() || null,
+      requiredBehaviorTypes: requiredBehaviors.map(required => required.type),
+      requiredCapabilityTypes: requiredBehaviors
+        .filter(required => required.capability === true)
+        .map(required => required.type),
+      relevantForChildObjects: metadata.isRelevantForChildObjects(),
+      authoritativeCheck:
+        'gd.ObjectTools.isBehaviorCompatibleWithObject(connectedPlatform, objectType, behaviorType)',
+    },
+    capabilityInterface: capability
+      ? {
+          kind: 'hidden-behavior-capability',
+          behaviorType: type,
+          lifecycle:
+            'Capabilities are represented by hidden behaviors. Object-type default behaviors determine which capability interfaces are natively provided.',
+        }
+      : null,
+    operationDiscovery: {
+      command: 'events.instructions.search',
+      arguments: { behaviorType: type },
+      kinds: ['action', 'condition', 'expression'],
+      describeCommand: 'events.instructions.describe',
+      authoringCommand: 'events.patch',
+    },
     ...(detailed ? { properties, sharedProperties } : {}),
     instructionCounts: {
       actions: metadata

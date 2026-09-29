@@ -315,6 +315,53 @@ describe('AgentIntegration ObjectPropertyService', () => {
     );
   });
 
+  it('rejects a legacy success/no-op when a behavior property change was not applied', async () => {
+    editorFunctionService.run.mockResolvedValueOnce({
+      results: [
+        {
+          status: 'finished',
+          success: true,
+          output: {
+            success: true,
+            nothingChanged: true,
+            message:
+              'Nothing changed. Issues:\nCould not set "property2" on behavior "TypedBehavior": invalid value or type.',
+          },
+        },
+      ],
+      didModifyProject: true,
+    });
+
+    await expect(
+      service.set({
+        targetKind: 'behavior',
+        sceneName: 'Game',
+        objectName: 'Label',
+        behaviorName: 'TypedBehavior',
+        changes: [
+          {
+            path: 'behaviors.TypedBehavior.properties.property2',
+            value: false,
+          },
+        ],
+      })
+    ).rejects.toMatchObject({
+      code: 'property_mutation_failed',
+      field: 'changes[0].value',
+      path: 'behaviors.TypedBehavior.properties.property2',
+      details: expect.objectContaining({
+        reason: 'editor-function-nothing-changed',
+        requestedChanges: [
+          expect.objectContaining({
+            path: 'behaviors.TypedBehavior.properties.property2',
+            before: true,
+            requested: false,
+          }),
+        ],
+      }),
+    });
+  });
+
   it('rejects unknown paths and incompatible typed values before EditorFunction dispatch', async () => {
     await expect(
       service.set({

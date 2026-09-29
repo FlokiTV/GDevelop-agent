@@ -1144,6 +1144,44 @@ export const createObjectPropertyService = ({
         },
       });
     }
+    const noChangeResult = Array.isArray(execution.results)
+      ? execution.results.find(
+          result =>
+            result &&
+            result.status === 'finished' &&
+            result.success === true &&
+            result.output &&
+            result.output.nothingChanged === true
+        )
+      : null;
+    const requestedBehaviorChanges = isBehavior
+      ? validatedChanges.filter(
+          change => change.property.currentValue !== change.value
+        )
+      : [];
+    if (noChangeResult && requestedBehaviorChanges.length > 0) {
+      const firstRejectedChange = requestedBehaviorChanges[0];
+      throw new AgentError({
+        code: 'property_mutation_failed',
+        message:
+          'The canonical behavior EditorFunction did not apply the requested property mutation.',
+        field: `${firstRejectedChange.field}.value`,
+        path: firstRejectedChange.property.path,
+        details: {
+          field: `${firstRejectedChange.field}.value`,
+          path: firstRejectedChange.property.path,
+          functionName,
+          target,
+          reason: 'editor-function-nothing-changed',
+          output: noChangeResult.output,
+          requestedChanges: requestedBehaviorChanges.map(change => ({
+            path: change.property.path,
+            before: change.property.currentValue,
+            requested: change.value,
+          })),
+        },
+      });
+    }
     return {
       backend: {
         kind: 'editor-function',
