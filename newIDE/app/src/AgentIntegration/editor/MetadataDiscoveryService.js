@@ -379,7 +379,20 @@ export const serializeParameterMetadata = (
       resource: valueType.isResource(),
     },
   };
-  return allowedValues.length ? { ...serialized, allowedValues } : serialized;
+  const withReferenceSemantics = valueType.isObject()
+    ? {
+        ...serialized,
+        referenceSemantics: {
+          entityKinds: ['object', 'object-group'],
+          resolution: 'scene-object-or-group-then-global-object-or-group',
+          groupDiscoveryCommand: 'objects.groups.list',
+          groupUsageCommand: 'objects.groups.usages',
+        },
+      }
+    : serialized;
+  return allowedValues.length
+    ? { ...withReferenceSemantics, allowedValues }
+    : withReferenceSemantics;
 };
 
 const serializeParameters = (metadata: any): Array<any> =>

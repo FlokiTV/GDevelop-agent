@@ -459,6 +459,30 @@ describe('AgentIntegration MetadataDiscoveryService', () => {
     });
   });
 
+  it('marks object parameters as object-or-group references with MCP discovery paths', () => {
+    const actions = service.searchInstructions({
+      kind: 'action',
+      deprecated: 'include',
+      includeHidden: true,
+      limit: 100,
+    });
+    const candidate = actions.items.find(item =>
+      (item.parameters || []).some(
+        parameter => parameter.valueType && parameter.valueType.object
+      )
+    );
+    expect(candidate).toBeTruthy();
+    const parameter = candidate.parameters.find(
+      item => item.valueType && item.valueType.object
+    );
+    expect(parameter.referenceSemantics).toEqual({
+      entityKinds: ['object', 'object-group'],
+      resolution: 'scene-object-or-group-then-global-object-or-group',
+      groupDiscoveryCommand: 'objects.groups.list',
+      groupUsageCommand: 'objects.groups.usages',
+    });
+  });
+
   it('lists and describes behavior and effect schemas', () => {
     const behaviors = service.listBehaviorTypes({
       deprecated: 'include',
