@@ -1296,6 +1296,83 @@ const getObjectDefaultProperties = (project: gdProject, type: string): any => {
   }
 };
 
+const getObjectAuthoringMetadata = (
+  project: gdProject,
+  type: string,
+  summary: any,
+  probed: any
+): any => {
+  const compatibleBehaviors = collectTypes(project, 'behavior')
+    .filter(record =>
+      gd.ObjectTools.isBehaviorCompatibleWithObject(
+        project.getCurrentPlatform(),
+        type,
+        record.type
+      )
+    )
+    .map(record => ({
+      type: record.type,
+      name: record.name,
+      fullName: record.fullName,
+      hidden: !!record.hidden,
+      capability: !!record.hidden,
+      defaultBehavior: (summary.defaultBehaviors || []).includes(record.type),
+      extension: record.extension,
+      requiredBehaviorTypes: record.requiredBehaviorTypes || [],
+      requiredCapabilityTypes: record.requiredCapabilityTypes || [],
+      discovery: {
+        describeCommand: 'editor.types.behaviors.describe',
+        arguments: { type: record.type },
+        availabilityCommand: 'objects.behaviors.available',
+      },
+    }));
+  const capabilities = compatibleBehaviors
+    .filter(record => record.capability)
+    .map(record => ({
+      behaviorType: record.type,
+      name: record.name,
+      fullName: record.fullName,
+      providedByDefault: record.defaultBehavior,
+      extension: record.extension,
+    }));
+  const defaultProperties = Array.isArray(probed.properties)
+    ? probed.properties.map(property => ({
+        name: property.name,
+        type: property.type,
+        defaultValue: property.defaultValue,
+        label: property.label,
+        description: property.description,
+        choices: property.choices,
+        hidden: property.hidden,
+      }))
+    : [];
+
+  return {
+    creationSchema: {
+      strategy: 'connected-build-native-object-constructor',
+      requiredFields: ['objectName', 'objectType', 'objectScope'],
+      requiredInitialProperties: [],
+      defaultProperties,
+      defaultBehaviorTypes: summary.defaultBehaviors || [],
+      initialPropertyMutation: {
+        command: 'objects.definitions.create',
+        propertyDiscoveryCommand: 'objects.properties.describe',
+        propertyMutationCommand: 'objects.properties.set',
+        note:
+          'Object types are constructible with their connected-build defaults. Optional initialProperties must use exact writable paths discovered from objects.properties.describe.',
+      },
+    },
+    supportedBehaviors: compatibleBehaviors,
+    supportedCapabilities: capabilities,
+    authoringDiscovery: {
+      createCommand: 'objects.definitions.create',
+      definitionsCommand: 'objects.definitions.list',
+      propertiesCommand: 'objects.properties.describe',
+      behaviorsCommand: 'objects.behaviors.available',
+    },
+  };
+};
+
 const collectTypes = (
   project: gdProject,
   kind: 'object' | 'behavior' | 'effect'
@@ -1736,9 +1813,11 @@ export const createMetadataDiscoveryService = ({
 
     let item;
     if (kind === 'object') {
+      const probed = getObjectDefaultProperties(project, type);
       item = {
         ...summary,
-        ...getObjectDefaultProperties(project, type),
+        ...probed,
+        ...getObjectAuthoringMetadata(project, type, summary, probed),
       };
     } else if (kind === 'behavior') {
       const metadata = extensionAndMetadata.getMetadata();

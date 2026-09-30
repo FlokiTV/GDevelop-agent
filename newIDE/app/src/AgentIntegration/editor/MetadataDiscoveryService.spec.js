@@ -349,6 +349,20 @@ describe('AgentIntegration MetadataDiscoveryService', () => {
       type: 'Sprite',
       propertySchemaAvailable: true,
       properties: expect.any(Array),
+      creationSchema: expect.objectContaining({
+        strategy: 'connected-build-native-object-constructor',
+        requiredFields: ['objectName', 'objectType', 'objectScope'],
+        requiredInitialProperties: [],
+        defaultProperties: expect.any(Array),
+        defaultBehaviorTypes: expect.any(Array),
+      }),
+      supportedBehaviors: expect.any(Array),
+      supportedCapabilities: expect.any(Array),
+      authoringDiscovery: expect.objectContaining({
+        createCommand: 'objects.definitions.create',
+        propertiesCommand: 'objects.properties.describe',
+        behaviorsCommand: 'objects.behaviors.available',
+      }),
       instructionCounts: expect.objectContaining({
         actions: expect.any(Number),
         conditions: expect.any(Number),
