@@ -12,6 +12,7 @@ import { createExtensionLifecycleCommandDescriptors } from './editor/ExtensionLi
 import { createObjectStructureCommandDescriptors } from './editor/ObjectStructureCommands';
 import { createObjectPropertyCommandDescriptors } from './editor/ObjectPropertyCommands';
 import { createBehaviorLifecycleCommandDescriptors } from './editor/BehaviorLifecycleCommands';
+import { createSpriteAnimationCommandDescriptors } from './editor/SpriteAnimationCommands';
 import { createMetadataDiscoveryCommandDescriptors } from './editor/MetadataDiscoveryCommands';
 import { createDocumentationCommandDescriptors } from './editor/DocumentationCommands';
 import { createStoreCommandDescriptors } from './editor/StoreCommands';
@@ -48,6 +49,7 @@ type Options = {|
   objectStructureService: any,
   objectPropertyService: any,
   behaviorLifecycleService: any,
+  spriteAnimationService: any,
   metadataDiscoveryService: any,
   documentationService: any,
   storeService: any,
@@ -82,6 +84,7 @@ export const createRendererAgentHost = ({
   objectStructureService,
   objectPropertyService,
   behaviorLifecycleService,
+  spriteAnimationService,
   metadataDiscoveryService,
   documentationService,
   storeService,
@@ -126,6 +129,9 @@ export const createRendererAgentHost = ({
       ...createObjectPropertyCommandDescriptors({ objectPropertyService }),
       ...createBehaviorLifecycleCommandDescriptors({
         behaviorLifecycleService,
+      }),
+      ...createSpriteAnimationCommandDescriptors({
+        spriteAnimationService,
       }),
       ...createMetadataDiscoveryCommandDescriptors({
         metadataDiscoveryService,

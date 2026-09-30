@@ -14,6 +14,7 @@ import { createExtensionLifecycleService } from './editor/ExtensionLifecycleServ
 import { createObjectStructureService } from './editor/ObjectStructureService';
 import { createObjectPropertyService } from './editor/ObjectPropertyService';
 import { createBehaviorLifecycleService } from './editor/BehaviorLifecycleService';
+import { createSpriteAnimationService } from './editor/SpriteAnimationService';
 import { createMetadataDiscoveryService } from './editor/MetadataDiscoveryService';
 import { createDocumentationService } from './editor/DocumentationService';
 import { createStoreService } from './editor/StoreService';
@@ -350,6 +351,16 @@ export const createRendererIntegration = ({
           onObjectsModifiedOutsideEditor,
         })
       : null;
+  const spriteAnimationService =
+    project && assetTools
+      ? createSpriteAnimationService({
+          project,
+          assetTools,
+          triggerUnsavedChanges,
+          forceUpdate,
+          onObjectsModifiedOutsideEditor,
+        })
+      : null;
   const sceneInstanceService =
     project && layerOrderService && objectPropertyService
       ? createSceneInstanceService({
@@ -487,6 +498,7 @@ export const createRendererIntegration = ({
       objectStructureService,
       objectPropertyService,
       behaviorLifecycleService,
+      spriteAnimationService,
       metadataDiscoveryService,
       documentationService,
       storeService,
