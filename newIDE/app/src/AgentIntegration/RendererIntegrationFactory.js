@@ -31,6 +31,7 @@ import { createLayerOrderService } from './editor/LayerOrderService';
 import { createSceneInstanceService } from './editor/SceneInstanceService';
 import { createTargetIdentityService } from './editor/TargetIdentityService';
 import { createValidationService } from './editor/ValidationService';
+import { createReferenceGraphService } from './editor/ReferenceGraphService';
 import { createPreviewService } from './runtime/PreviewService';
 import { createRuntimeDiagnosticsService } from './runtime/RuntimeDiagnosticsService';
 import { createSafetyService } from './safety/SafetyService';
@@ -404,6 +405,26 @@ export const createRendererIntegration = ({
           onInstancesModifiedOutsideEditor: safeOnInstancesModifiedOutsideEditor,
         })
       : null;
+  const referenceGraphService =
+    project &&
+    eventTools &&
+    metadataDiscoveryService &&
+    objectDefinitionService &&
+    objectGroupService &&
+    sceneInstanceService &&
+    assetTools
+      ? createReferenceGraphService({
+          project,
+          eventTools,
+          metadataDiscoveryService,
+          objectDefinitionService,
+          objectGroupService,
+          sceneInstanceService,
+          assetTools,
+          sceneLifecycleService,
+          externalProjectItemsService,
+        })
+      : null;
   const runtimeDiagnosticsService = createRuntimeDiagnosticsService({
     project,
     eventTools,
@@ -549,6 +570,7 @@ export const createRendererIntegration = ({
       runtimeDiagnosticsService,
       safetyService,
       validationService,
+      referenceGraphService,
     }),
   };
 };
