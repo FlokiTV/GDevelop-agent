@@ -310,6 +310,34 @@ namespace gdjs {
           that.sendRuntimeGameDump();
         } else if (data.command === 'getStatus') {
           that.sendRuntimeGameStatus();
+        } else if (data.command === 'timeControl.status') {
+          that.sendRuntimeTimeControlStatus();
+        } else if (data.command === 'timeControl.pause') {
+          runtimeGame.pause(true);
+          that.sendRuntimeTimeControlStatus({
+            ok: true,
+            operation: 'pause',
+            framesAdvanced: 0,
+            elapsedSimulatedTimeMs: 0,
+          });
+        } else if (data.command === 'timeControl.resume') {
+          runtimeGame.pause(false);
+          that.sendRuntimeTimeControlStatus({
+            ok: true,
+            operation: 'resume',
+            framesAdvanced: 0,
+            elapsedSimulatedTimeMs: 0,
+          });
+        } else if (data.command === 'timeControl.setTimeScale') {
+          that.setRuntimeTimeScale(data.timeScale);
+        } else if (data.command === 'timeControl.stepFrames') {
+          that.stepRuntimeFrames(data.frames, data.frameDurationMs);
+        } else if (data.command === 'timeControl.advanceTime') {
+          that.advanceRuntimeTime(
+            data.milliseconds,
+            data.frameDurationMs,
+            data.maxFrames
+          );
         } else if (data.command === 'set') {
           that.set(data.path, data.newValue);
         } else if (data.command === 'call') {
@@ -750,16 +778,283 @@ namespace gdjs {
       return true;
     }
 
-    sendRuntimeGameStatus(): void {
+    _getRuntimeTimeControlPayload(extra: any = {}): any {
       const currentScene = this._runtimegame.getSceneStack().getCurrentScene();
+      const timeManager = currentScene ? currentScene.getTimeManager() : null;
+      const isPaused = this._runtimegame.isPaused();
+      const isInGameEdition = this._runtimegame.isInGameEdition();
+      return {
+        ok: extra.ok !== false,
+        runtimeState: isPaused ? 'paused' : 'running',
+        isPaused,
+        isInGameEdition,
+        sceneName: currentScene ? currentScene.getName() : null,
+        timeScale: timeManager ? timeManager.getTimeScale() : null,
+        sceneTimeFromStartMs: timeManager
+          ? timeManager.getTimeFromStart()
+          : null,
+        lastFrameSimulatedElapsedMs: timeManager
+          ? timeManager.getElapsedTime()
+          : null,
+        deterministicStepping: {
+          supported: !!currentScene && !isInGameEdition,
+          ready: !!currentScene && !isInGameEdition && isPaused,
+          requiresPaused: true,
+          timeDomain: 'simulated-game-time',
+          wallClockWaitUsed: false,
+        },
+        ...extra,
+      };
+    }
+
+    sendRuntimeTimeControlStatus(extra: any = {}): void {
+      this._sendMessage(
+        circularSafeStringify({
+          command: 'timeControl.status',
+          payload: this._getRuntimeTimeControlPayload(extra),
+        })
+      );
+    }
+
+    setRuntimeTimeScale(timeScaleValue: any): void {
+      const currentScene = this._runtimegame.getSceneStack().getCurrentScene();
+      const timeScale = Number(timeScaleValue);
+      if (!currentScene) {
+        this.sendRuntimeTimeControlStatus({
+          ok: false,
+          error: { code: 'runtime_time_control_scene_unavailable' },
+        });
+        return;
+      }
+      if (!Number.isFinite(timeScale) || timeScale < 0 || timeScale > 100) {
+        this.sendRuntimeTimeControlStatus({
+          ok: false,
+          error: {
+            code: 'invalid_runtime_time_scale',
+            details: { value: timeScaleValue, minimum: 0, maximum: 100 },
+          },
+        });
+        return;
+      }
+      currentScene.getTimeManager().setTimeScale(timeScale);
+      this.sendRuntimeTimeControlStatus({
+        ok: true,
+        operation: 'set-time-scale',
+        framesAdvanced: 0,
+        elapsedSimulatedTimeMs: 0,
+        wallClockElapsedMs: 0,
+      });
+    }
+
+    _stepRuntimeFrame(frameDurationMs: number): {
+      stepped: boolean;
+      simulatedElapsedMs: number;
+    } {
+      const sceneBefore = this._runtimegame.getSceneStack().getCurrentScene();
+      if (!sceneBefore) return { stepped: false, simulatedElapsedMs: 0 };
+      const stepped = this._runtimegame.getSceneStack().step(frameDurationMs);
+      this._runtimegame.getInputManager().onFrameEnded();
+      const simulatedElapsedMs = sceneBefore.getTimeManager().getElapsedTime();
+      return {
+        stepped,
+        simulatedElapsedMs:
+          Number.isFinite(simulatedElapsedMs) && simulatedElapsedMs > 0
+            ? simulatedElapsedMs
+            : 0,
+      };
+    }
+
+    stepRuntimeFrames(framesValue: any, frameDurationValue: any): void {
+      const frames = Number(framesValue);
+      const frameDurationMs =
+        frameDurationValue === undefined
+          ? 1000 / 60
+          : Number(frameDurationValue);
+      if (
+        !Number.isInteger(frames) ||
+        frames < 1 ||
+        frames > 10000 ||
+        !Number.isFinite(frameDurationMs) ||
+        frameDurationMs <= 0 ||
+        frameDurationMs > 1000
+      ) {
+        this.sendRuntimeTimeControlStatus({
+          ok: false,
+          error: {
+            code: 'invalid_runtime_time_step',
+            details: {
+              frames: framesValue,
+              frameDurationMs: frameDurationValue,
+            },
+          },
+        });
+        return;
+      }
+      if (!this._runtimegame.isPaused()) {
+        this.sendRuntimeTimeControlStatus({
+          ok: false,
+          error: { code: 'runtime_time_control_requires_paused' },
+        });
+        return;
+      }
+      if (this._runtimegame.isInGameEdition()) {
+        this.sendRuntimeTimeControlStatus({
+          ok: false,
+          error: { code: 'runtime_time_control_unsupported_in_game_edition' },
+        });
+        return;
+      }
+
+      let framesAdvanced = 0;
+      let elapsedSimulatedTimeMs = 0;
+      const wallClockStartedAt = Date.now();
+      for (let index = 0; index < frames; index++) {
+        const result = this._stepRuntimeFrame(frameDurationMs);
+        if (!result.stepped) break;
+        framesAdvanced++;
+        elapsedSimulatedTimeMs += result.simulatedElapsedMs;
+      }
+      this.sendRuntimeTimeControlStatus({
+        ok: framesAdvanced === frames,
+        operation: 'step-frames',
+        requestedFrames: frames,
+        requestedFrameDurationMs: frameDurationMs,
+        framesAdvanced,
+        elapsedSimulatedTimeMs,
+        wallClockElapsedMs: Date.now() - wallClockStartedAt,
+        wallClockWaitUsed: false,
+        ...(framesAdvanced === frames
+          ? {}
+          : {
+              error: {
+                code: 'runtime_time_control_step_incomplete',
+                details: { requestedFrames: frames, framesAdvanced },
+              },
+            }),
+      });
+    }
+
+    advanceRuntimeTime(
+      millisecondsValue: any,
+      frameDurationValue: any,
+      maxFramesValue: any
+    ): void {
+      const milliseconds = Number(millisecondsValue);
+      const frameDurationMs =
+        frameDurationValue === undefined
+          ? 1000 / 60
+          : Number(frameDurationValue);
+      const maxFrames =
+        maxFramesValue === undefined ? 10000 : Number(maxFramesValue);
+      if (
+        !Number.isFinite(milliseconds) ||
+        milliseconds <= 0 ||
+        milliseconds > 600000 ||
+        !Number.isFinite(frameDurationMs) ||
+        frameDurationMs <= 0 ||
+        frameDurationMs > 1000 ||
+        !Number.isInteger(maxFrames) ||
+        maxFrames < 1 ||
+        maxFrames > 100000
+      ) {
+        this.sendRuntimeTimeControlStatus({
+          ok: false,
+          error: {
+            code: 'invalid_runtime_time_advance',
+            details: {
+              milliseconds: millisecondsValue,
+              frameDurationMs: frameDurationValue,
+              maxFrames: maxFramesValue,
+            },
+          },
+        });
+        return;
+      }
+      if (!this._runtimegame.isPaused()) {
+        this.sendRuntimeTimeControlStatus({
+          ok: false,
+          error: { code: 'runtime_time_control_requires_paused' },
+        });
+        return;
+      }
+      if (this._runtimegame.isInGameEdition()) {
+        this.sendRuntimeTimeControlStatus({
+          ok: false,
+          error: { code: 'runtime_time_control_unsupported_in_game_edition' },
+        });
+        return;
+      }
+
+      let framesAdvanced = 0;
+      let elapsedSimulatedTimeMs = 0;
+      const wallClockStartedAt = Date.now();
+      while (
+        elapsedSimulatedTimeMs + 1e-7 < milliseconds &&
+        framesAdvanced < maxFrames
+      ) {
+        const currentScene = this._runtimegame
+          .getSceneStack()
+          .getCurrentScene();
+        if (!currentScene) break;
+        const timeScale = currentScene.getTimeManager().getTimeScale();
+        if (!Number.isFinite(timeScale) || timeScale <= 0) {
+          this.sendRuntimeTimeControlStatus({
+            ok: false,
+            operation: 'advance-time',
+            requestedSimulatedTimeMs: milliseconds,
+            framesAdvanced,
+            elapsedSimulatedTimeMs,
+            wallClockElapsedMs: Date.now() - wallClockStartedAt,
+            wallClockWaitUsed: false,
+            error: {
+              code: 'runtime_time_control_time_scale_not_advancing',
+              details: { timeScale },
+            },
+          });
+          return;
+        }
+        const remainingMs = milliseconds - elapsedSimulatedTimeMs;
+        const rawStepMs = Math.min(
+          frameDurationMs,
+          Math.max(0.0001, remainingMs / timeScale)
+        );
+        const result = this._stepRuntimeFrame(rawStepMs);
+        if (!result.stepped) break;
+        framesAdvanced++;
+        elapsedSimulatedTimeMs += result.simulatedElapsedMs;
+      }
+      const completed = elapsedSimulatedTimeMs + 1e-5 >= milliseconds;
+      this.sendRuntimeTimeControlStatus({
+        ok: completed,
+        operation: 'advance-time',
+        requestedSimulatedTimeMs: milliseconds,
+        requestedFrameDurationMs: frameDurationMs,
+        maxFrames,
+        framesAdvanced,
+        elapsedSimulatedTimeMs,
+        wallClockElapsedMs: Date.now() - wallClockStartedAt,
+        wallClockWaitUsed: false,
+        ...(completed
+          ? {}
+          : {
+              error: {
+                code: 'runtime_time_control_advance_incomplete',
+                details: {
+                  requestedSimulatedTimeMs: milliseconds,
+                  elapsedSimulatedTimeMs,
+                  framesAdvanced,
+                  maxFrames,
+                },
+              },
+            }),
+      });
+    }
+
+    sendRuntimeGameStatus(): void {
       this._sendMessage(
         circularSafeStringify({
           command: 'status',
-          payload: {
-            isPaused: this._runtimegame.isPaused(),
-            isInGameEdition: this._runtimegame.isInGameEdition(),
-            sceneName: currentScene ? currentScene.getName() : null,
-          },
+          payload: this._getRuntimeTimeControlPayload(),
         })
       );
     }

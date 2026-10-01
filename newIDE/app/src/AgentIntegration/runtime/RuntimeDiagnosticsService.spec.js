@@ -212,9 +212,20 @@ describe('RuntimeDiagnosticsService', () => {
     const { service } = makeService();
     const capabilities = service.getCapabilities();
     expect(capabilities.debugger.pauseContinue.supported).toBe(true);
+    expect(capabilities.debugger.timeControl).toMatchObject({
+      supported: true,
+      statusCommand: 'runtime.time.status',
+      stepCommand: 'runtime.time.step',
+      advanceCommand: 'runtime.time.advance',
+      waitUntilCommand: 'runtime.time.wait-until',
+      timeDomain: 'simulated-game-time',
+      wallClockPollingRequired: false,
+    });
     expect(capabilities.debugger.step).toEqual({
-      supported: false,
-      reasonCode: 'debugger_step_not_exposed',
+      supported: true,
+      command: 'runtime.time.step',
+      requiresPaused: true,
+      source: 'RuntimeGame.SceneStack.step',
     });
     expect(capabilities.debugger.eventBreakpoints.supported).toBe(false);
     expect(capabilities.debugger.conditionEvaluationTrace.supported).toBe(

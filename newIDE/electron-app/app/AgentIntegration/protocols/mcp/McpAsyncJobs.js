@@ -54,6 +54,13 @@ const ASYNC_JOB_STEP_COMMANDS = Object.freeze([
   'runtime.logs',
   'runtime.assert',
   'runtime.wait-for',
+  'runtime.time.status',
+  'runtime.time.pause',
+  'runtime.time.resume',
+  'runtime.time.set-scale',
+  'runtime.time.step',
+  'runtime.time.advance',
+  'runtime.time.wait-until',
 ]);
 
 const ASYNC_JOB_STEP_COMMAND_SET = new Set(ASYNC_JOB_STEP_COMMANDS);

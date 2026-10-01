@@ -39,6 +39,7 @@ const RUNTIME_SELECTOR_SCHEMA = {
       enum: [
         'global-variable',
         'scene-variable',
+        'scene-time',
         'object-count',
         'object-instance',
         'object-property',
@@ -46,6 +47,12 @@ const RUNTIME_SELECTOR_SCHEMA = {
       ],
     },
     path: { type: 'string', minLength: 1, maxLength: 1000 },
+    metric: {
+      type: 'string',
+      enum: ['time-from-start-ms', 'elapsed-time-ms', 'time-scale'],
+      description:
+        'Metric for kind=scene-time. Values come from the runtime scene TimeManager.',
+    },
     objectName: { type: 'string', minLength: 1, maxLength: 500 },
     instanceIndex: { type: 'integer', minimum: 0, maximum: 999 },
     instanceId: {
@@ -150,6 +157,34 @@ const PROFILE_PROPERTIES = {
   },
 };
 
+const TIME_CONTROL_COMMON_PROPERTIES = {
+  ...DEBUGGER_TARGET_PROPERTIES,
+};
+
+const TIME_OBSERVATION_PROPERTIES = {
+  snapshot: {
+    type: 'boolean',
+    default: false,
+    description:
+      'Capture runtime.snapshot immediately after deterministic advancement, before any resume or wall-clock wait.',
+  },
+  assertion: RUNTIME_CONDITION_SCHEMA,
+  maxInstances: RUNTIME_SNAPSHOT_PROPERTIES.maxInstances,
+  objectNames: RUNTIME_SNAPSHOT_PROPERTIES.objectNames,
+};
+
+const TIME_STEP_PROPERTIES = {
+  frames: { type: 'integer', minimum: 1, maximum: 10000, default: 1 },
+  frameDurationMs: {
+    type: 'number',
+    exclusiveMinimum: 0,
+    maximum: 1000,
+    default: 16.6666666667,
+    description:
+      'Raw frame delta before the current scene TimeManager timeScale is applied.',
+  },
+};
+
 export const createRuntimeCommandDescriptors = ({
   runtimeTelemetry,
   runtimeDiagnosticsService,
@@ -248,6 +283,162 @@ export const createRuntimeCommandDescriptors = ({
       defaultTimeoutMs: 2 * 60 * 1000,
     }),
     execute: ({ input }) => requireTelemetry(runtimeTelemetry).waitFor(input),
+  },
+  {
+    name: 'runtime.time.status',
+    description:
+      'Return authoritative pause/running state, current scene time scale and simulated scene time for one preview debugger target, plus deterministic stepping readiness and integration discovery.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: TIME_CONTROL_COMMON_PROPERTIES,
+    },
+    metadata: makeCommandMetadata({ cacheScope: 'request', ttlMs: 0 }),
+    execute: ({ input }) =>
+      requireTelemetry(runtimeTelemetry).getTimeControlStatus(input),
+  },
+  {
+    name: 'runtime.time.pause',
+    description:
+      'Pause one preview runtime and acknowledge the resulting authoritative paused state. This is non-persistent and never edits project/Event Sheet data.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: TIME_CONTROL_COMMON_PROPERTIES,
+    },
+    metadata: makeCommandMetadata({
+      readOnly: false,
+      idempotent: true,
+      modifiesProject: false,
+    }),
+    execute: ({ input }) =>
+      requireTelemetry(runtimeTelemetry).pauseRuntime(input),
+  },
+  {
+    name: 'runtime.time.resume',
+    description:
+      'Resume one paused preview runtime and acknowledge the resulting authoritative running state. This is non-persistent.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: TIME_CONTROL_COMMON_PROPERTIES,
+    },
+    metadata: makeCommandMetadata({
+      readOnly: false,
+      idempotent: true,
+      modifiesProject: false,
+    }),
+    execute: ({ input }) =>
+      requireTelemetry(runtimeTelemetry).resumeRuntime(input),
+  },
+  {
+    name: 'runtime.time.set-scale',
+    description:
+      'Set the current runtime scene time scale for QA/debugging only. Values are runtime-only and reset with preview lifecycle; 0 freezes simulated scene time while the debugger runtime remains paused/running independently.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['timeScale'],
+      properties: {
+        ...TIME_CONTROL_COMMON_PROPERTIES,
+        timeScale: { type: 'number', minimum: 0, maximum: 100 },
+      },
+    },
+    metadata: makeCommandMetadata({
+      readOnly: false,
+      idempotent: false,
+      modifiesProject: false,
+    }),
+    execute: ({ input }) =>
+      requireTelemetry(runtimeTelemetry).setRuntimeTimeScale(input),
+  },
+  {
+    name: 'runtime.time.step',
+    description:
+      'Advance exactly one or N deterministic frames while the runtime is paused. Uses the same SceneStack.step/InputManager frame-ending path as the official gameplay-test harness and can capture a snapshot/assertion immediately after the final step without sleeps.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        ...TIME_CONTROL_COMMON_PROPERTIES,
+        ...TIME_STEP_PROPERTIES,
+        ...TIME_OBSERVATION_PROPERTIES,
+      },
+    },
+    metadata: makeCommandMetadata({
+      readOnly: false,
+      idempotent: false,
+      modifiesProject: false,
+    }),
+    execute: ({ input }) =>
+      requireTelemetry(runtimeTelemetry).stepRuntimeFrames(input),
+  },
+  {
+    name: 'runtime.time.advance',
+    description:
+      'Advance a bounded amount of simulated game time while paused. Completion is measured from actual TimeManager elapsed simulation time, not wall-clock sleeping; returns frames advanced and both simulated/wall-clock elapsed values.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['milliseconds'],
+      properties: {
+        ...TIME_CONTROL_COMMON_PROPERTIES,
+        milliseconds: {
+          type: 'number',
+          exclusiveMinimum: 0,
+          maximum: 600000,
+        },
+        frameDurationMs: TIME_STEP_PROPERTIES.frameDurationMs,
+        maxFrames: {
+          type: 'integer',
+          minimum: 1,
+          maximum: 100000,
+          default: 10000,
+        },
+        ...TIME_OBSERVATION_PROPERTIES,
+      },
+    },
+    metadata: makeCommandMetadata({
+      readOnly: false,
+      idempotent: false,
+      modifiesProject: false,
+      longRunning: true,
+      defaultTimeoutMs: 2 * 60 * 1000,
+    }),
+    execute: ({ input }) =>
+      requireTelemetry(runtimeTelemetry).advanceRuntimeTime(input),
+  },
+  {
+    name: 'runtime.time.wait-until',
+    description:
+      'Evaluate a runtime selector/path predicate, deterministically step one frame while paused when it is false, and repeat up to maxFrames. No wall-clock polling sleep is used; the returned snapshot is from the exact checkpoint where the predicate passed or the bound was reached.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['condition'],
+      properties: {
+        ...TIME_CONTROL_COMMON_PROPERTIES,
+        condition: RUNTIME_CONDITION_SCHEMA,
+        frameDurationMs: TIME_STEP_PROPERTIES.frameDurationMs,
+        maxFrames: {
+          type: 'integer',
+          minimum: 1,
+          maximum: 10000,
+          default: 600,
+        },
+        maxInstances: RUNTIME_SNAPSHOT_PROPERTIES.maxInstances,
+        objectNames: RUNTIME_SNAPSHOT_PROPERTIES.objectNames,
+      },
+    },
+    metadata: makeCommandMetadata({
+      readOnly: false,
+      idempotent: false,
+      modifiesProject: false,
+      longRunning: true,
+      defaultTimeoutMs: 2 * 60 * 1000,
+    }),
+    execute: ({ input }) =>
+      requireTelemetry(runtimeTelemetry).waitUntilRuntime(input),
   },
   {
     name: 'runtime.debugger.capabilities',

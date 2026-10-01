@@ -16,11 +16,13 @@ const createDebuggerServer = ({
   onRefresh,
   dropFirstRefresh = false,
   previewDebuggerIds = ['preview-1'],
+  onTimeControl,
 }: {|
   dump?: any,
   onRefresh?: number => any,
   dropFirstRefresh?: boolean,
   previewDebuggerIds?: Array<string>,
+  onTimeControl?: any => any,
 |} = {}) => {
   let callbacks = null;
   let refreshCount = 0;
@@ -46,6 +48,40 @@ const createDebuggerServer = ({
                 isInGameEdition: false,
                 sceneName: 'New scene',
               },
+            },
+          });
+        } else if (
+          typeof message.command === 'string' &&
+          message.command.startsWith('timeControl.')
+        ) {
+          const payload = onTimeControl
+            ? onTimeControl(message)
+            : {
+                ok: true,
+                operation: message.command.replace('timeControl.', ''),
+                runtimeState: 'paused',
+                isPaused: true,
+                sceneName: 'New scene',
+                timeScale: 1,
+                sceneTimeFromStartMs: 100,
+                framesAdvanced:
+                  message.command === 'timeControl.stepFrames'
+                    ? message.frames
+                    : 0,
+                elapsedSimulatedTimeMs:
+                  message.command === 'timeControl.advanceTime'
+                    ? message.milliseconds
+                    : message.command === 'timeControl.stepFrames'
+                    ? message.frames * (message.frameDurationMs || 1000 / 60)
+                    : 0,
+                wallClockElapsedMs: 1,
+                wallClockWaitUsed: false,
+              };
+          callbacks.onHandleParsedMessage({
+            id,
+            parsedMessage: {
+              command: 'timeControl.status',
+              payload,
             },
           });
         } else if (message.command === 'refresh') {
@@ -94,6 +130,213 @@ describe('AgentIntegration RuntimeTelemetry', () => {
       expect.any(Array)
     );
     expect(snapshot.totalInstances).toBeGreaterThan(0);
+  });
+
+  it('controls paused runtime time deterministically without wall-clock waits', async () => {
+    let simulatedTimeMs = 100;
+    let timeScale = 1;
+    let paused = true;
+    const server = createDebuggerServer({
+      onTimeControl: message => {
+        if (message.command === 'timeControl.pause') paused = true;
+        if (message.command === 'timeControl.resume') paused = false;
+        if (message.command === 'timeControl.setTimeScale') {
+          timeScale = message.timeScale;
+        }
+        let framesAdvanced = 0;
+        let elapsedSimulatedTimeMs = 0;
+        if (message.command === 'timeControl.stepFrames') {
+          framesAdvanced = message.frames;
+          elapsedSimulatedTimeMs =
+            message.frames * (message.frameDurationMs || 1000 / 60) * timeScale;
+          simulatedTimeMs += elapsedSimulatedTimeMs;
+        }
+        if (message.command === 'timeControl.advanceTime') {
+          elapsedSimulatedTimeMs = message.milliseconds;
+          framesAdvanced = Math.ceil(
+            message.milliseconds /
+              ((message.frameDurationMs || 1000 / 60) * timeScale)
+          );
+          simulatedTimeMs += elapsedSimulatedTimeMs;
+        }
+        return {
+          ok: true,
+          runtimeState: paused ? 'paused' : 'running',
+          isPaused: paused,
+          isInGameEdition: false,
+          sceneName: 'New scene',
+          timeScale,
+          sceneTimeFromStartMs: simulatedTimeMs,
+          framesAdvanced,
+          elapsedSimulatedTimeMs,
+          wallClockElapsedMs: 1,
+          wallClockWaitUsed: false,
+          deterministicStepping: {
+            supported: true,
+            ready: paused,
+            requiresPaused: true,
+            timeDomain: 'simulated-game-time',
+          },
+        };
+      },
+    });
+    const telemetry = createRuntimeTelemetry(server);
+
+    await expect(telemetry.getTimeControlStatus()).resolves.toMatchObject({
+      runtimeState: 'paused',
+      timeScale: 1,
+      integrations: {
+        input: { send: 'preview.input.send' },
+        asyncJobs: { start: 'agent.jobs.start' },
+      },
+    });
+    await expect(telemetry.pauseRuntime()).resolves.toMatchObject({
+      runtimeState: 'paused',
+      timeDomain: 'simulated-game-time',
+      wallClockWaitUsed: false,
+    });
+    await expect(
+      telemetry.stepRuntimeFrames({ frames: 3, frameDurationMs: 10 })
+    ).resolves.toMatchObject({
+      framesAdvanced: 3,
+      elapsedSimulatedTimeMs: 30,
+      runtimeState: 'paused',
+    });
+    await expect(
+      telemetry.setRuntimeTimeScale({ timeScale: 2 })
+    ).resolves.toMatchObject({ timeScale: 2 });
+    await expect(
+      telemetry.advanceRuntimeTime({ milliseconds: 200, frameDurationMs: 10 })
+    ).resolves.toMatchObject({
+      elapsedSimulatedTimeMs: 200,
+      runtimeState: 'paused',
+    });
+    await expect(telemetry.resumeRuntime()).resolves.toMatchObject({
+      runtimeState: 'running',
+    });
+
+    telemetry.dispose();
+  });
+
+  it('waits on a predicate by stepping simulated time instead of sleeping', async () => {
+    let simulatedTimeMs = 0;
+    const makeDumpAtTime = () => {
+      const dump = cloneDump();
+      const scene = dump._sceneStack._stack[dump._sceneStack._stack.length - 1];
+      scene._timeManager._timeFromStart = simulatedTimeMs;
+      scene._timeManager._elapsedTime = simulatedTimeMs > 0 ? 20 : 0;
+      scene._timeManager._timeScale = 1;
+      dump._paused = true;
+      return dump;
+    };
+    const server = createDebuggerServer({
+      dump: makeDumpAtTime(),
+      onRefresh: () => makeDumpAtTime(),
+      onTimeControl: message => {
+        if (message.command === 'timeControl.stepFrames') {
+          const elapsed =
+            (message.frames || 1) * (message.frameDurationMs || 1000 / 60);
+          simulatedTimeMs += elapsed;
+          return {
+            ok: true,
+            operation: 'step-frames',
+            runtimeState: 'paused',
+            isPaused: true,
+            sceneName: 'New scene',
+            timeScale: 1,
+            sceneTimeFromStartMs: simulatedTimeMs,
+            framesAdvanced: message.frames || 1,
+            elapsedSimulatedTimeMs: elapsed,
+            wallClockElapsedMs: 0,
+            wallClockWaitUsed: false,
+          };
+        }
+        return {
+          ok: true,
+          runtimeState: 'paused',
+          isPaused: true,
+          sceneName: 'New scene',
+          timeScale: 1,
+          sceneTimeFromStartMs: simulatedTimeMs,
+          framesAdvanced: 0,
+          elapsedSimulatedTimeMs: 0,
+          wallClockElapsedMs: 0,
+          wallClockWaitUsed: false,
+        };
+      },
+    });
+    const telemetry = createRuntimeTelemetry(server);
+    const result = await telemetry.waitUntilRuntime({
+      condition: {
+        selector: {
+          kind: 'scene-time',
+          metric: 'time-from-start-ms',
+        },
+        operator: 'gte',
+        value: 60,
+      },
+      frameDurationMs: 20,
+      maxFrames: 10,
+    });
+    expect(result).toMatchObject({
+      passed: true,
+      conditionMet: true,
+      framesAdvanced: 3,
+      elapsedSimulatedTimeMs: 60,
+      wallClockWaitUsed: false,
+      timeDomain: 'simulated-game-time',
+      snapshot: {
+        scene: { timeFromStartMs: 60 },
+      },
+    });
+    telemetry.dispose();
+  });
+
+  it('turns runtime time-control protocol failures into structured errors', async () => {
+    const server = createDebuggerServer({
+      onTimeControl: message => ({
+        ok: false,
+        error: {
+          code:
+            message.command === 'timeControl.stepFrames'
+              ? 'runtime_time_control_requires_paused'
+              : 'runtime_time_control_failed',
+          details: { command: message.command },
+        },
+      }),
+    });
+    const telemetry = createRuntimeTelemetry(server);
+    await expect(
+      telemetry.stepRuntimeFrames({ frames: 1 })
+    ).rejects.toMatchObject({
+      code: 'runtime_time_control_requires_paused',
+      details: { command: 'timeControl.stepFrames' },
+    });
+    telemetry.dispose();
+  });
+
+  it('selects simulated scene time and time scale through typed selectors', () => {
+    const snapshot = summarizeRuntimeDump(debuggerDump, { maxInstances: 10 });
+    expect(
+      selectRuntimeValue(snapshot, {
+        kind: 'scene-time',
+        metric: 'time-from-start-ms',
+      })
+    ).toMatchObject({
+      found: true,
+      value: snapshot.scene.timeFromStartMs,
+      valueType: 'number',
+    });
+    expect(
+      selectRuntimeValue(snapshot, {
+        kind: 'scene-time',
+        metric: 'time-scale',
+      })
+    ).toMatchObject({
+      found: true,
+      value: snapshot.scene.timeScale,
+      valueType: 'number',
+    });
   });
 
   it('limits instance payloads globally', () => {

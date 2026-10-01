@@ -522,6 +522,47 @@ export const selectRuntimeValue = (
     });
   }
 
+  if (kind === 'scene-time') {
+    if (!snapshot.scene) {
+      return makeMissingSelection(
+        'runtime_scene_unavailable',
+        'No runtime scene is available.',
+        selector,
+        allowMissing
+      );
+    }
+    const metric =
+      typeof selector.metric === 'string' && selector.metric
+        ? selector.metric
+        : 'time-from-start-ms';
+    const values = {
+      'time-from-start-ms': snapshot.scene.timeFromStartMs,
+      'elapsed-time-ms': snapshot.scene.elapsedTimeMs,
+      'time-scale': snapshot.scene.timeScale,
+    };
+    if (!Object.prototype.hasOwnProperty.call(values, metric)) {
+      throw makeError(
+        'invalid_runtime_selector',
+        'scene-time selectors require metric time-from-start-ms, elapsed-time-ms or time-scale.'
+      );
+    }
+    const value = values[metric];
+    if (!Number.isFinite(Number(value))) {
+      return makeMissingSelection(
+        'runtime_scene_time_unavailable',
+        `Runtime scene time metric "${metric}" is unavailable.`,
+        selector,
+        allowMissing
+      );
+    }
+    return {
+      found: true,
+      value: Number(value),
+      valueType: 'number',
+      selector,
+    };
+  }
+
   if (kind === 'object-count') {
     const objectName =
       typeof selector.objectName === 'string' ? selector.objectName.trim() : '';
@@ -964,7 +1005,7 @@ export const createRuntimeTelemetry = (
 
   const requestMessage = (
     debuggerId: string,
-    command: string,
+    command: string | any,
     expectedCommand: string,
     timeoutMs: number = DEFAULT_REQUEST_TIMEOUT_MS
   ): Promise<any> => {
@@ -984,13 +1025,16 @@ export const createRuntimeTelemetry = (
         reject(makeError(`runtime_telemetry_timeout:${expectedCommand}`));
       }, timeoutMs);
       waiters.push(waiter);
-      previewDebuggerServer.sendMessage(debuggerId, { command });
+      previewDebuggerServer.sendMessage(
+        debuggerId,
+        typeof command === 'string' ? { command } : command
+      );
     });
   };
 
   const requestMessageWithRetry = async (
     debuggerId: string,
-    command: string,
+    command: string | any,
     expectedCommand: string,
     timeoutMs: number
   ): Promise<any> => {
@@ -1206,6 +1250,218 @@ export const createRuntimeTelemetry = (
     };
   };
 
+  const requireTimeControlResult = (payload: any): any => {
+    if (!payload || typeof payload !== 'object') {
+      throw makeError('invalid_runtime_time_control_response');
+    }
+    if (payload.ok === false) {
+      const errorCode =
+        payload.error && typeof payload.error.code === 'string'
+          ? payload.error.code
+          : 'runtime_time_control_failed';
+      const error: any = makeError(errorCode);
+      if (payload.error && payload.error.details !== undefined) {
+        error.details = payload.error.details;
+      }
+      throw error;
+    }
+    return payload;
+  };
+
+  const getTimeControlStatus = async (request: any = {}): Promise<any> => {
+    const debuggerId = selectDebuggerId(request.debuggerId);
+    const payload = requireTimeControlResult(
+      await requestMessageWithRetry(
+        debuggerId,
+        { command: 'timeControl.status' },
+        'timeControl.status',
+        clampInteger(
+          request.requestTimeoutMs,
+          DEFAULT_REQUEST_TIMEOUT_MS,
+          250,
+          10000
+        )
+      )
+    );
+    return {
+      debuggerId,
+      ...payload,
+      integrations: {
+        lifecycle: {
+          previewStatus: 'preview.status',
+          targetStatus: 'target.status',
+        },
+        assertions: {
+          assert: 'runtime.assert',
+          snapshot: 'runtime.snapshot',
+        },
+        input: {
+          send: 'preview.input.send',
+          sequence: 'preview.input.sequence',
+          ordering:
+            'Dispatch input while paused, then call runtime.time.step so onFrameEnded occurs after the deterministic stepped frame.',
+        },
+        asyncJobs: {
+          capabilities: 'agent.jobs.capabilities',
+          start: 'agent.jobs.start',
+        },
+      },
+    };
+  };
+
+  const runTimeControlCommand = async (
+    request: any,
+    message: any
+  ): Promise<any> => {
+    const debuggerId = selectDebuggerId(request && request.debuggerId);
+    const payload = requireTimeControlResult(
+      await requestMessageWithRetry(
+        debuggerId,
+        message,
+        'timeControl.status',
+        clampInteger(
+          request && request.requestTimeoutMs,
+          DEFAULT_REQUEST_TIMEOUT_MS,
+          250,
+          10000
+        )
+      )
+    );
+    return {
+      debuggerId,
+      ...payload,
+      timeDomain: 'simulated-game-time',
+      wallClockWaitUsed:
+        typeof payload.wallClockWaitUsed === 'boolean'
+          ? payload.wallClockWaitUsed
+          : false,
+    };
+  };
+
+  const pauseRuntime = (request: any = {}): Promise<any> =>
+    runTimeControlCommand(request, { command: 'timeControl.pause' });
+
+  const resumeRuntime = (request: any = {}): Promise<any> =>
+    runTimeControlCommand(request, { command: 'timeControl.resume' });
+
+  const setRuntimeTimeScale = (request: any = {}): Promise<any> =>
+    runTimeControlCommand(request, {
+      command: 'timeControl.setTimeScale',
+      timeScale: request.timeScale,
+    });
+
+  const enrichTimeControlObservation = async (
+    result: any,
+    request: any
+  ): Promise<any> => {
+    const observed = { ...result };
+    if (request && request.snapshot === true) {
+      observed.snapshot = await getSnapshot({
+        debuggerId: result.debuggerId,
+        requestTimeoutMs: request.requestTimeoutMs,
+        maxInstances: request.maxInstances,
+        objectNames: request.objectNames,
+      });
+    }
+    if (request && request.assertion) {
+      observed.assertion = await assertRuntime({
+        debuggerId: result.debuggerId,
+        requestTimeoutMs: request.requestTimeoutMs,
+        maxInstances: request.maxInstances,
+        objectNames: request.objectNames,
+        condition: request.assertion,
+      });
+    }
+    return observed;
+  };
+
+  const stepRuntimeFrames = async (request: any = {}): Promise<any> => {
+    const result = await runTimeControlCommand(request, {
+      command: 'timeControl.stepFrames',
+      frames: request.frames,
+      frameDurationMs: request.frameDurationMs,
+    });
+    return enrichTimeControlObservation(result, request);
+  };
+
+  const advanceRuntimeTime = async (request: any = {}): Promise<any> => {
+    const result = await runTimeControlCommand(request, {
+      command: 'timeControl.advanceTime',
+      milliseconds: request.milliseconds,
+      frameDurationMs: request.frameDurationMs,
+      maxFrames: request.maxFrames,
+    });
+    return enrichTimeControlObservation(result, request);
+  };
+
+  const waitUntilRuntime = async (request: any = {}): Promise<any> => {
+    const debuggerId = selectDebuggerId(request.debuggerId);
+    const maxFrames = clampInteger(request.maxFrames, 600, 1, 10000);
+    const frameDurationMs =
+      Number.isFinite(Number(request.frameDurationMs)) &&
+      Number(request.frameDurationMs) > 0
+        ? Math.min(1000, Number(request.frameDurationMs))
+        : 1000 / 60;
+    const selector =
+      request.condition &&
+      typeof request.condition === 'object' &&
+      request.condition.selector
+        ? request.condition.selector
+        : null;
+    const startedAt = Date.now();
+    let framesAdvanced = 0;
+    let elapsedSimulatedTimeMs = 0;
+    let lastSnapshot = null;
+    let lastResult = null;
+
+    while (framesAdvanced <= maxFrames) {
+      lastSnapshot = await getSnapshot(
+        selector
+          ? makeTargetedSnapshotRequest({ ...request, debuggerId }, selector)
+          : { ...request, debuggerId }
+      );
+      lastResult = evaluateRuntimeCondition(lastSnapshot, request.condition);
+      if (lastResult.passed) {
+        return {
+          ...lastResult,
+          debuggerId,
+          conditionMet: true,
+          framesAdvanced,
+          elapsedSimulatedTimeMs,
+          wallClockElapsedMs: Date.now() - startedAt,
+          wallClockWaitUsed: false,
+          timeDomain: 'simulated-game-time',
+          snapshot: lastSnapshot,
+          timeControlStatus: await getTimeControlStatus({ debuggerId }),
+        };
+      }
+      if (framesAdvanced >= maxFrames) break;
+      const step = await runTimeControlCommand(
+        { ...request, debuggerId },
+        {
+          command: 'timeControl.stepFrames',
+          frames: 1,
+          frameDurationMs,
+        }
+      );
+      framesAdvanced += step.framesAdvanced || 0;
+      elapsedSimulatedTimeMs += step.elapsedSimulatedTimeMs || 0;
+    }
+
+    return {
+      ...(lastResult || { passed: false }),
+      debuggerId,
+      conditionMet: false,
+      framesAdvanced,
+      elapsedSimulatedTimeMs,
+      wallClockElapsedMs: Date.now() - startedAt,
+      wallClockWaitUsed: false,
+      timeDomain: 'simulated-game-time',
+      snapshot: lastSnapshot,
+      timeControlStatus: await getTimeControlStatus({ debuggerId }),
+    };
+  };
+
   const assertRuntime = async (request: any = {}): Promise<any> => {
     const selector =
       request.condition &&
@@ -1293,6 +1549,13 @@ export const createRuntimeTelemetry = (
     getProfilerStatus,
     startProfiler,
     stopProfiler,
+    getTimeControlStatus,
+    pauseRuntime,
+    resumeRuntime,
+    setRuntimeTimeScale,
+    stepRuntimeFrames,
+    advanceRuntimeTime,
+    waitUntilRuntime,
     assertRuntime,
     waitFor,
     dispose,

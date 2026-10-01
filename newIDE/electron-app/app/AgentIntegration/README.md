@@ -214,7 +214,7 @@ The registry currently exposes command families for:
 - checkpoints and transactions: `safety.*`;
 - diagnostics and aggregate validation: `diagnostics.inspect`, `validation.run`;
 - preview lifecycle: `preview.status`, `preview.start`, `preview.hot-reload`, `preview.control`, `preview.close-all`;
-- runtime observation: `runtime.status`, `runtime.snapshot`, targeted `runtime.inspect`, `runtime.logs`, `runtime.assert`, `runtime.wait-for`;
+- runtime observation/time control: `runtime.status`, `runtime.snapshot`, targeted `runtime.inspect`, `runtime.logs`, `runtime.assert`, `runtime.wait-for`, plus `runtime.time.status/pause/resume/set-scale/step/advance/wait-until`;
 - desktop windows/capture: `desktop.windows.list`, `desktop.window.capture`; preview content viewport: `preview.viewport.status`, `preview.viewport.set`;
 - preview structural layout QA: `preview.layout.capabilities`, `preview.layout.inspect`, `preview.layout.assert`, `preview.capture.region`;
 - preview input: `preview.input.*`;
@@ -248,9 +248,19 @@ The registry currently exposes command families for:
 
 ### Targeted runtime inspection
 
-`runtime.inspect` reads one value from the live preview without modifying the project or injecting QA events. Selectors cover `global-variable`, `scene-variable`, `object-count`, `object-instance`, `object-property` and `object-variable`. Object selectors can target an instance by zero-based `instanceIndex` or runtime `instanceId`; variable selectors accept dotted/array paths such as `Config.Locale` or `Inventory[0].Count`. Common object properties include position/layer/visibility plus `text`, `opacity`, animation and flip state when the runtime object exposes those getters.
+`runtime.inspect` reads one value from the live preview without modifying the project or injecting QA events. Selectors cover `global-variable`, `scene-variable`, `scene-time`, `object-count`, `object-instance`, `object-property` and `object-variable`. `scene-time` exposes `time-from-start-ms`, `elapsed-time-ms` and `time-scale` from the runtime scene TimeManager. Object selectors can target an instance by zero-based `instanceIndex` or runtime `instanceId`; variable selectors accept dotted/array paths such as `Config.Locale` or `Inventory[0].Count`. Common object properties include position/layer/visibility plus `text`, `opacity`, animation and flip state when the runtime object exposes those getters.
 
 `runtime.assert` and `runtime.wait-for` accept the same selector in `condition.selector`; the older snapshot `condition.path` form remains supported. Missing scene/object/instance/variable/property state returns typed diagnostics rather than requiring JavaScript instrumentation, and selector-based inspection remains read-only from the project perspective.
+
+### Deterministic runtime time control
+
+`runtime.time.status` reports the authoritative debugger pause/running state, active scene, current scene `timeScale`, scene simulated time and whether deterministic stepping is ready. `runtime.time.pause`/`resume` operate only on the active preview runtime. `runtime.time.set-scale` changes the live scene TimeManager only; it does not edit Event Sheets/project JSON and a newly started preview returns to the project/default time scale.
+
+`runtime.time.step` requires the runtime to be paused and advances exactly one or N frames by calling the same `SceneStack.step(dt)` + input-frame-ending path used by GDevelop's official gameplay-test harness. `runtime.time.advance` advances a bounded amount of **simulated game time**, accounting for the active time scale and returning the actual simulated milliseconds plus frames advanced. Both can request an immediate post-step snapshot and/or `runtime.assert` condition without a sleep between advancement and observation. Results explicitly distinguish `elapsedSimulatedTimeMs` from `wallClockElapsedMs` and report `wallClockWaitUsed: false` for simulation advancement.
+
+`runtime.time.wait-until` replaces ad-hoc polling sleeps for deterministic QA: it evaluates the normal runtime selector/path condition, steps one paused frame when false, and repeats up to `maxFrames`. The final snapshot is the exact simulated checkpoint where the predicate passed or the deterministic bound was reached. For time-based predicates use selector `{kind:"scene-time", metric:"time-from-start-ms"}`.
+
+DX-22 input remains a separate explicit surface: send/sequence input while paused with `preview.input.*`, then call `runtime.time.step`; `InputManager.onFrameEnded()` is executed after the stepped game frame, preserving deterministic input/frame ordering. DX-25 finite jobs include `runtime.time.*` in their eligible step commands, so bounded observation sequences can outlive one MCP transport request without introducing an unmanaged background loop.
 
 ## Native Event Sheet authoring
 
