@@ -161,6 +161,87 @@ const TIME_CONTROL_COMMON_PROPERTIES = {
   ...DEBUGGER_TARGET_PROPERTIES,
 };
 
+const EVENT_TRACE_COMMON_PROPERTIES = {
+  ...DEBUGGER_TARGET_PROPERTIES,
+  sceneName: { type: 'string', minLength: 1, maxLength: 500 },
+  mode: {
+    type: 'string',
+    enum: ['summary', 'detailed'],
+    default: 'summary',
+  },
+  handle: { type: 'string', minLength: 1, maxLength: 1000 },
+  handles: {
+    type: 'array',
+    maxItems: 100,
+    items: { type: 'string', minLength: 1, maxLength: 1000 },
+  },
+  includeSubevents: { type: 'boolean', default: true },
+  sourceNamespaces: {
+    type: 'array',
+    maxItems: 100,
+    uniqueItems: true,
+    description:
+      'Exact generated source namespaces observed in trace records. This allows filtering generated scene/external/function scopes without fabricating source-sheet identity.',
+    items: { type: 'string', minLength: 1, maxLength: 1000 },
+  },
+  objectNames: {
+    type: 'array',
+    maxItems: 100,
+    uniqueItems: true,
+    description:
+      'Object/group names used as authoring parameters. The service additionally resolves typed object parameters when metadata is available.',
+    items: { type: 'string', minLength: 1, maxLength: 500 },
+  },
+  instanceIds: {
+    type: 'array',
+    maxItems: 100,
+    uniqueItems: true,
+    description:
+      'Runtime instance ids. Matching is authoritative only for hooks that expose targetContext instance ids; unavailable context is reported instead of inferred.',
+    items: {
+      anyOf: [
+        { type: 'string', minLength: 1, maxLength: 200 },
+        { type: 'number' },
+      ],
+    },
+  },
+  maxRecords: {
+    type: 'integer',
+    minimum: 1,
+    maximum: 10000,
+    default: 500,
+  },
+  maxFrames: { type: 'integer', minimum: 1, maximum: 10000 },
+  maxSimulatedTimeMs: {
+    type: 'number',
+    minimum: 0.1,
+    maximum: 600000,
+  },
+  instructionKinds: {
+    type: 'array',
+    maxItems: 2,
+    uniqueItems: true,
+    items: { type: 'string', enum: ['condition', 'action'] },
+  },
+  breakpoints: {
+    type: 'array',
+    maxItems: 100,
+    items: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['handle'],
+      properties: {
+        handle: { type: 'string', minLength: 1, maxLength: 1000 },
+        phase: {
+          type: 'string',
+          enum: ['before', 'after', 'branch'],
+          default: 'after',
+        },
+      },
+    },
+  },
+};
+
 const TIME_OBSERVATION_PROPERTIES = {
   snapshot: {
     type: 'boolean',
@@ -518,9 +599,143 @@ export const createRuntimeCommandDescriptors = ({
       ),
   },
   {
+    name: 'runtime.event-trace.configure',
+    description:
+      'Configure ephemeral live Event Sheet tracing for a running preview. Filters may target stable event/instruction handles, instruction kind, scene, generated source namespace, authoring object/group name and runtime instance id where the hook exposes instance context, plus bounded frame/simulated-time/record windows. Breakpoints request a pause when a matching runtime hook is observed; precision is the next frame boundary.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['sceneName'],
+      properties: {
+        ...EVENT_TRACE_COMMON_PROPERTIES,
+        enabled: { type: 'boolean', default: true },
+      },
+    },
+    metadata: makeCommandMetadata({
+      idempotent: false,
+      requiresProject: true,
+      modifiesProject: false,
+    }),
+    execute: ({ input }) =>
+      requireDiagnostics(runtimeDiagnosticsService).configureLiveEventTrace(
+        input
+      ),
+  },
+  {
+    name: 'runtime.event-trace.read',
+    description:
+      'Read bounded live event-trace records and map runtime structural source paths back to current stable Event Sheet handles. Returns event branch paths, condition results, executed actions, safe literal parameter values and structured skipped/disabled diagnostics without re-evaluating dynamic expressions.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['sceneName'],
+      properties: {
+        ...DEBUGGER_TARGET_PROPERTIES,
+        sceneName: { type: 'string', minLength: 1, maxLength: 500 },
+        offset: { type: 'integer', minimum: 0, default: 0 },
+        limit: { type: 'integer', minimum: 1, maximum: 5000, default: 1000 },
+        handle: { type: 'string', minLength: 1, maxLength: 1000 },
+        sourceNamespace: { type: 'string', minLength: 1, maxLength: 1000 },
+        sourceNamespaces: {
+          type: 'array',
+          maxItems: 100,
+          uniqueItems: true,
+          items: { type: 'string', minLength: 1, maxLength: 1000 },
+        },
+        objectName: { type: 'string', minLength: 1, maxLength: 500 },
+        objectNames: {
+          type: 'array',
+          maxItems: 100,
+          uniqueItems: true,
+          items: { type: 'string', minLength: 1, maxLength: 500 },
+        },
+        instanceId: {
+          anyOf: [
+            { type: 'string', minLength: 1, maxLength: 200 },
+            { type: 'number' },
+          ],
+        },
+        instanceIds: {
+          type: 'array',
+          maxItems: 100,
+          uniqueItems: true,
+          items: {
+            anyOf: [
+              { type: 'string', minLength: 1, maxLength: 200 },
+              { type: 'number' },
+            ],
+          },
+        },
+        kinds: {
+          type: 'array',
+          maxItems: 2,
+          uniqueItems: true,
+          items: { type: 'string', enum: ['event', 'instruction'] },
+        },
+      },
+    },
+    metadata: makeCommandMetadata({
+      requiresProject: true,
+      modifiesProject: false,
+      cacheScope: 'request',
+      ttlMs: 0,
+    }),
+    execute: ({ input }) =>
+      requireDiagnostics(runtimeDiagnosticsService).readLiveEventTrace(input),
+  },
+  {
+    name: 'runtime.event-trace.clear',
+    description:
+      'Clear the ephemeral live event-trace buffer for one preview debugger target. This never modifies Event Sheets or project state.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: DEBUGGER_TARGET_PROPERTIES,
+    },
+    metadata: makeCommandMetadata({
+      idempotent: true,
+      requiresProject: true,
+      modifiesProject: false,
+    }),
+    execute: ({ input }) =>
+      requireDiagnostics(runtimeDiagnosticsService).clearLiveEventTrace(input),
+  },
+  {
+    name: 'runtime.event-trace.watch',
+    description:
+      'Run a deterministic frame-boundary watchpoint for one runtime selector while collecting live Event Sheet trace evidence. The preview is auto-paused by default and stepped using DX-35 simulated time until the selected value changes or maxFrames is reached.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['sceneName', 'selector'],
+      properties: {
+        ...EVENT_TRACE_COMMON_PROPERTIES,
+        selector: RUNTIME_SELECTOR_SCHEMA,
+        frameDurationMs: {
+          type: 'number',
+          exclusiveMinimum: 0,
+          maximum: 1000,
+          default: 16.6666666667,
+        },
+        autoPause: { type: 'boolean', default: true },
+        configureTrace: { type: 'boolean', default: true },
+        keepPaused: { type: 'boolean', default: true },
+      },
+    },
+    metadata: makeCommandMetadata({
+      idempotent: false,
+      longRunning: true,
+      requiresProject: true,
+      modifiesProject: false,
+      defaultTimeoutMs: 2 * 60 * 1000,
+    }),
+    execute: ({ input }) =>
+      requireDiagnostics(runtimeDiagnosticsService).watchLiveEventTrace(input),
+  },
+  {
     name: 'runtime.event-trace.capture',
     description:
-      'Capture truthful event execution evidence by correlating native named Group profiler sections with stable authoring event handles. Group-scope evidence does not fabricate condition-level evaluation, breakpoints or step support.',
+      'Capture the legacy profiler-group trace fallback by correlating native named Group profiler sections with stable authoring event handles. Prefer runtime.event-trace.configure/read for condition/action-level live tracing; this command remains useful when low-level live hooks are unavailable.',
     inputSchema: {
       type: 'object',
       additionalProperties: false,

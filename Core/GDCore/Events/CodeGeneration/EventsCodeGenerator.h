@@ -83,6 +83,54 @@ class GD_CORE_API EventsCodeGenerator {
       gd::EventsList& events, EventsCodeGenerationContext& context);
 
   /**
+   * \brief Current source path of the event being generated.
+   *
+   * The path is structural and only used to correlate ephemeral runtime
+   * diagnostics with the canonical EventTools handles of the same revision.
+   */
+  const std::vector<std::size_t>& GetCurrentEventTracePath() const {
+    return currentEventTracePath;
+  }
+
+  /**
+   * \brief Generate optional runtime trace code for the current event.
+   *
+   * Platforms that do not expose runtime tracing keep the default no-op.
+   */
+  virtual gd::String GenerateEventTraceCode(
+      const gd::String& phase,
+      const gd::String& resultExpression = "",
+      const gd::String& reason = "") {
+    return "";
+  }
+
+  /**
+   * \brief Generate optional runtime trace code for one instruction.
+   */
+  virtual gd::String GenerateInstructionTraceCode(
+      const gd::Instruction& instruction,
+      const gd::String& instructionKind,
+      const std::vector<std::size_t>& instructionPath,
+      const gd::String& phase,
+      const gd::String& resultExpression = "") {
+    return "";
+  }
+
+  /**
+   * \brief Generate one condition while associating a structural trace path.
+   *
+   * The base implementation simply delegates. GDJS overrides this to preserve
+   * nested condition paths for runtime diagnostics.
+   */
+  virtual gd::String GenerateConditionCodeAtTracePath(
+      gd::Instruction& condition,
+      gd::String returnBoolean,
+      EventsCodeGenerationContext& context,
+      std::size_t instructionIndex) {
+    return GenerateConditionCode(condition, returnBoolean, context);
+  }
+
+  /**
    * \brief Generate code for executing a condition list
    *
    * The default implementation create the condition calls using C-style ifs and
@@ -879,6 +927,10 @@ class GD_CORE_API EventsCodeGenerator {
                                   ///< list function name.
 
   gd::DiagnosticReport* diagnosticReport;
+
+  // Structural source path used only while generating code. It is never
+  // serialized into the project.
+  std::vector<std::size_t> currentEventTracePath;
 };
 
 }  // namespace gd

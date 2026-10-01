@@ -1462,6 +1462,53 @@ export const createRuntimeTelemetry = (
     };
   };
 
+  const runEventTraceCommand = async (
+    request: any,
+    command: 'eventTrace.configure' | 'eventTrace.read' | 'eventTrace.clear',
+    options: any = {}
+  ): Promise<any> => {
+    const debuggerId = selectDebuggerId(request && request.debuggerId);
+    const payload = await requestMessageWithRetry(
+      debuggerId,
+      { command, options },
+      'eventTrace.result',
+      clampInteger(
+        request && request.requestTimeoutMs,
+        DEFAULT_REQUEST_TIMEOUT_MS,
+        250,
+        10000
+      )
+    );
+    if (!payload || payload.ok === false) {
+      throw makeError(
+        (payload && payload.error && payload.error.code) ||
+          'runtime_event_trace_failed'
+      );
+    }
+    return {
+      debuggerId,
+      ...payload,
+    };
+  };
+
+  const configureEventTrace = (request: any = {}): Promise<any> => {
+    const { debuggerId, requestTimeoutMs, ...options } = request || {};
+    return runEventTraceCommand(
+      { debuggerId, requestTimeoutMs },
+      'eventTrace.configure',
+      options
+    );
+  };
+
+  const readEventTrace = (request: any = {}): Promise<any> =>
+    runEventTraceCommand(request, 'eventTrace.read', {
+      offset: request.offset,
+      limit: request.limit,
+    });
+
+  const clearEventTrace = (request: any = {}): Promise<any> =>
+    runEventTraceCommand(request, 'eventTrace.clear');
+
   const assertRuntime = async (request: any = {}): Promise<any> => {
     const selector =
       request.condition &&
@@ -1556,6 +1603,9 @@ export const createRuntimeTelemetry = (
     stepRuntimeFrames,
     advanceRuntimeTime,
     waitUntilRuntime,
+    configureEventTrace,
+    readEventTrace,
+    clearEventTrace,
     assertRuntime,
     waitFor,
     dispose,

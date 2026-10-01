@@ -1146,7 +1146,11 @@ gd::String EventsCodeGenerator::GenerateEventsListCode(
 
     context.SetFollowedByElseEvent(hasFollowingElseEvent);
 
+    currentEventTracePath.push_back(eId);
     gd::String eventCoreCode = event.GenerateEventCode(*this, context);
+    eventCoreCode = GenerateEventTraceCode("before") + eventCoreCode +
+                    GenerateEventTraceCode("after");
+    currentEventTracePath.pop_back();
 
     if (isElseEvent) {
       hasAnyElseEvent = true;

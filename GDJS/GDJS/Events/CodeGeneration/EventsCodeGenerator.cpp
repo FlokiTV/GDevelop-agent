@@ -36,6 +36,28 @@ using namespace std;
 
 namespace gdjs {
 
+namespace {
+gd::String TracePathToJsArray(const std::vector<std::size_t>& path) {
+  gd::String output = "[";
+  for (std::size_t index = 0; index < path.size(); ++index) {
+    if (index != 0) output += ",";
+    output += gd::String::From(path[index]);
+  }
+  return output + "]";
+}
+
+gd::String InstructionParametersToJsArray(const gd::Instruction& instruction) {
+  gd::String output = "[";
+  const auto& parameters = instruction.GetParameters();
+  for (std::size_t index = 0; index < parameters.size(); ++index) {
+    if (index != 0) output += ",";
+    output += gd::EventsCodeGenerator::ConvertToStringExplicit(
+        parameters[index].GetPlainString());
+  }
+  return output + "]";
+}
+}  // namespace
+
 gd::String EventsCodeGenerator::GenerateEventsListCompleteFunctionCode(
     gdjs::EventsCodeGenerator& codeGenerator,
     gd::String fullyQualifiedFunctionName,
@@ -1223,6 +1245,23 @@ gd::String EventsCodeGenerator::GenerateEventsListCode(
   return functionName + "(" + parametersCode + ");";
 }
 
+gd::String EventsCodeGenerator::GenerateConditionCodeAtTracePath(
+    gd::Instruction& condition,
+    gd::String returnBoolean,
+    gd::EventsCodeGenerationContext& context,
+    std::size_t instructionIndex) {
+  currentInstructionTracePath.push_back(instructionIndex);
+  gd::String output =
+      GenerateInstructionTraceCode(condition, "condition",
+                                   currentInstructionTracePath, "before");
+  output += GenerateConditionCode(condition, returnBoolean, context);
+  output += GenerateInstructionTraceCode(
+      condition, "condition", currentInstructionTracePath, "after",
+      GenerateBooleanFullName(returnBoolean, context));
+  currentInstructionTracePath.pop_back();
+  return output;
+}
+
 gd::String EventsCodeGenerator::GenerateConditionsListCode(
     gd::InstructionsList& conditions,
     gd::EventsCodeGenerationContext& context) {
@@ -1237,8 +1276,8 @@ gd::String EventsCodeGenerator::GenerateConditionsListCode(
                     GenerateBooleanFullName("isConditionTrue", context) +
                     ") {\n";
     }
-    gd::String conditionCode =
-        GenerateConditionCode(conditions[cId], "isConditionTrue", context);
+    gd::String conditionCode = GenerateConditionCodeAtTracePath(
+        conditions[cId], "isConditionTrue", context, cId);
     if (!conditions[cId].GetType().empty()) {
       outputCode +=
           GenerateBooleanFullName("isConditionTrue", context) + " = false;\n";
@@ -1253,6 +1292,70 @@ gd::String EventsCodeGenerator::GenerateConditionsListCode(
   maxConditionsListsSize = std::max(maxConditionsListsSize, conditions.size());
 
   return outputCode;
+}
+
+gd::String EventsCodeGenerator::GenerateActionsListCode(
+    gd::InstructionsList& actions,
+    gd::EventsCodeGenerationContext& context) {
+  gd::String outputCode;
+  for (std::size_t aId = 0; aId < actions.size(); ++aId) {
+    currentInstructionTracePath.push_back(aId);
+    gd::String actionCode = GenerateActionCode(actions[aId], context);
+
+    outputCode += "{";
+    if (actions[aId].GetType().empty()) {
+      outputCode += "/* Skipped action (empty type) */";
+    } else {
+      outputCode += GenerateInstructionTraceCode(
+          actions[aId], "action", currentInstructionTracePath, "before");
+      outputCode += actionCode;
+      outputCode += GenerateInstructionTraceCode(
+          actions[aId], "action", currentInstructionTracePath, "after");
+    }
+    outputCode += "}\n";
+    currentInstructionTracePath.pop_back();
+  }
+  return outputCode;
+}
+
+gd::String EventsCodeGenerator::GenerateEventTraceCode(
+    const gd::String& phase,
+    const gd::String& resultExpression,
+    const gd::String& reason) {
+  gd::String payload =
+      "{kind:\"event\",phase:" + ConvertToStringExplicit(phase) +
+      ",eventPath:" + TracePathToJsArray(GetCurrentEventTracePath()) +
+      ",sourceNamespace:" + ConvertToStringExplicit(GetCodeNamespace());
+  if (!resultExpression.empty())
+    payload += ",result:!!(" + resultExpression + ")";
+  if (!reason.empty())
+    payload += ",reason:" + ConvertToStringExplicit(reason);
+  payload += "}";
+  return "runtimeScene.getGame().recordEventTrace(runtimeScene," + payload +
+         ");\n";
+}
+
+gd::String EventsCodeGenerator::GenerateInstructionTraceCode(
+    const gd::Instruction& instruction,
+    const gd::String& instructionKind,
+    const std::vector<std::size_t>& instructionPath,
+    const gd::String& phase,
+    const gd::String& resultExpression) {
+  gd::String payload =
+      "{kind:\"instruction\",instructionKind:" +
+      ConvertToStringExplicit(instructionKind) +
+      ",phase:" + ConvertToStringExplicit(phase) +
+      ",eventPath:" + TracePathToJsArray(GetCurrentEventTracePath()) +
+      ",instructionPath:" + TracePathToJsArray(instructionPath) +
+      ",instructionType:" + ConvertToStringExplicit(instruction.GetType()) +
+      ",parameters:" + InstructionParametersToJsArray(instruction) +
+      ",inverted:" + gd::String(instruction.IsInverted() ? "true" : "false") +
+      ",sourceNamespace:" + ConvertToStringExplicit(GetCodeNamespace());
+  if (!resultExpression.empty())
+    payload += ",result:!!(" + resultExpression + ")";
+  payload += "}";
+  return "runtimeScene.getGame().recordEventTrace(runtimeScene," + payload +
+         ");\n";
 }
 
 gd::String EventsCodeGenerator::GenerateParameterCodes(

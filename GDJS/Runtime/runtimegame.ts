@@ -241,6 +241,35 @@ namespace gdjs {
     _paused: boolean = false;
 
     /**
+     * Ephemeral runtime event trace state. This is debugger-only state: it is
+     * never serialized into the project and is discarded with the RuntimeGame.
+     */
+    private _eventTraceState: any = {
+      enabled: false,
+      mode: 'summary',
+      maxRecords: 500,
+      maxFrames: null,
+      maxSimulatedTimeMs: null,
+      sceneName: null,
+      sourceNamespaces: null,
+      objectNames: null,
+      instanceIds: null,
+      eventPaths: null,
+      instructionPaths: null,
+      instructionKinds: null,
+      breakpoints: [],
+      records: [],
+      filteredRecordCounts: {},
+      sequence: 0,
+      droppedRecords: 0,
+      frameIndex: 0,
+      firstSceneTimeMs: null,
+      lastSceneTimeMs: null,
+      stopReason: null,
+      lastBreakpointHit: null,
+    };
+
+    /**
      * True during the first frame the game is back from being hidden.
      * This has nothing to do with `_paused`.
      */
@@ -913,6 +942,386 @@ namespace gdjs {
       if (this._debuggerClient) {
         this._debuggerClient.sendRuntimeGameStatus();
       }
+    }
+
+    private _normalizeEventTracePath(value: any): number[] | null {
+      if (!Array.isArray(value)) return null;
+      const path = value.map(Number);
+      return path.every((index) => Number.isInteger(index) && index >= 0)
+        ? path
+        : null;
+    }
+
+    private _eventTracePathMatches(expected: any, actual: any): boolean {
+      const expectedPath = this._normalizeEventTracePath(expected);
+      const actualPath = this._normalizeEventTracePath(actual);
+      if (
+        !expectedPath ||
+        !actualPath ||
+        expectedPath.length !== actualPath.length
+      )
+        return false;
+      return expectedPath.every((value, index) => value === actualPath[index]);
+    }
+
+    configureEventTrace(options: any = {}): any {
+      const maxRecords = Number(options.maxRecords);
+      const maxFrames = Number(options.maxFrames);
+      const maxSimulatedTimeMs = Number(options.maxSimulatedTimeMs);
+      const mode = options.mode === 'detailed' ? 'detailed' : 'summary';
+      this._eventTraceState = {
+        enabled: options.enabled !== false,
+        mode,
+        maxRecords: Number.isFinite(maxRecords)
+          ? Math.max(1, Math.min(10000, Math.round(maxRecords)))
+          : 500,
+        maxFrames:
+          Number.isFinite(maxFrames) && maxFrames > 0
+            ? Math.min(10000, Math.round(maxFrames))
+            : null,
+        maxSimulatedTimeMs:
+          Number.isFinite(maxSimulatedTimeMs) && maxSimulatedTimeMs > 0
+            ? Math.min(10 * 60 * 1000, maxSimulatedTimeMs)
+            : null,
+        sceneName:
+          typeof options.sceneName === 'string' && options.sceneName
+            ? options.sceneName
+            : null,
+        sourceNamespaces: Array.isArray(options.sourceNamespaces)
+          ? options.sourceNamespaces
+              .filter((value) => typeof value === 'string' && value.length > 0)
+              .slice(0, 100)
+          : null,
+        objectNames: Array.isArray(options.objectNames)
+          ? options.objectNames
+              .filter((value) => typeof value === 'string' && value.length > 0)
+              .slice(0, 100)
+          : null,
+        instanceIds: Array.isArray(options.instanceIds)
+          ? options.instanceIds
+              .filter(
+                (value) =>
+                  (typeof value === 'string' && value.length > 0) ||
+                  (typeof value === 'number' && Number.isFinite(value))
+              )
+              .map(String)
+              .slice(0, 100)
+          : null,
+        eventPaths: Array.isArray(options.eventPaths)
+          ? options.eventPaths
+              .map((path) => this._normalizeEventTracePath(path))
+              .filter(Boolean)
+          : null,
+        instructionPaths: Array.isArray(options.instructionPaths)
+          ? options.instructionPaths
+              .map((entry) => ({
+                eventPath: this._normalizeEventTracePath(
+                  entry && entry.eventPath
+                ),
+                instructionKind:
+                  entry && typeof entry.instructionKind === 'string'
+                    ? entry.instructionKind
+                    : null,
+                instructionPath: this._normalizeEventTracePath(
+                  entry && entry.instructionPath
+                ),
+              }))
+              .filter(
+                (entry) =>
+                  entry.eventPath &&
+                  entry.instructionKind &&
+                  entry.instructionPath
+              )
+          : null,
+        instructionKinds: Array.isArray(options.instructionKinds)
+          ? options.instructionKinds.filter(
+              (kind) => kind === 'condition' || kind === 'action'
+            )
+          : null,
+        breakpoints: Array.isArray(options.breakpoints)
+          ? options.breakpoints
+              .map((breakpoint) => ({
+                kind:
+                  breakpoint && breakpoint.kind === 'instruction'
+                    ? 'instruction'
+                    : 'event',
+                phase:
+                  breakpoint && typeof breakpoint.phase === 'string'
+                    ? breakpoint.phase
+                    : 'after',
+                eventPath: this._normalizeEventTracePath(
+                  breakpoint && breakpoint.eventPath
+                ),
+                instructionKind:
+                  breakpoint && typeof breakpoint.instructionKind === 'string'
+                    ? breakpoint.instructionKind
+                    : null,
+                instructionPath: this._normalizeEventTracePath(
+                  breakpoint && breakpoint.instructionPath
+                ),
+              }))
+              .filter((breakpoint) => breakpoint.eventPath)
+          : [],
+        records: [],
+        filteredRecordCounts: {},
+        sequence: 0,
+        droppedRecords: 0,
+        frameIndex: 0,
+        firstSceneTimeMs: null,
+        lastSceneTimeMs: null,
+        stopReason: null,
+        lastBreakpointHit: null,
+      };
+      return this.getEventTraceState();
+    }
+
+    clearEventTrace(): any {
+      this._eventTraceState.records = [];
+      this._eventTraceState.filteredRecordCounts = {};
+      this._eventTraceState.sequence = 0;
+      this._eventTraceState.droppedRecords = 0;
+      this._eventTraceState.frameIndex = 0;
+      this._eventTraceState.firstSceneTimeMs = null;
+      this._eventTraceState.lastSceneTimeMs = null;
+      this._eventTraceState.stopReason = null;
+      this._eventTraceState.lastBreakpointHit = null;
+      return this.getEventTraceState();
+    }
+
+    getEventTraceState(): any {
+      const state = this._eventTraceState;
+      return {
+        enabled: state.enabled,
+        mode: state.mode,
+        maxRecords: state.maxRecords,
+        maxFrames: state.maxFrames,
+        maxSimulatedTimeMs: state.maxSimulatedTimeMs,
+        sceneName: state.sceneName,
+        filters: {
+          sourceNamespaces: state.sourceNamespaces,
+          objectNames: state.objectNames,
+          instanceIds: state.instanceIds,
+          eventPaths: state.eventPaths,
+          instructionPaths: state.instructionPaths,
+          instructionKinds: state.instructionKinds,
+        },
+        recordCount: state.records.length,
+        filteredRecordCounts: { ...state.filteredRecordCounts },
+        droppedRecords: state.droppedRecords,
+        frameIndex: state.frameIndex,
+        firstSceneTimeMs: state.firstSceneTimeMs,
+        lastSceneTimeMs: state.lastSceneTimeMs,
+        stopReason: state.stopReason,
+        lastBreakpointHit: state.lastBreakpointHit,
+        breakpointPrecision: 'pause-requested-next-frame-boundary',
+        projectPersistent: false,
+      };
+    }
+
+    readEventTrace(options: any = {}): any {
+      const offset =
+        Number.isInteger(options.offset) && options.offset >= 0
+          ? options.offset
+          : 0;
+      const limit =
+        Number.isInteger(options.limit) && options.limit > 0
+          ? Math.min(options.limit, 5000)
+          : Math.min(this._eventTraceState.maxRecords, 1000);
+      const records = this._eventTraceState.records;
+      return {
+        ...this.getEventTraceState(),
+        offset,
+        limit,
+        total: records.length,
+        truncated: offset + limit < records.length,
+        records: records.slice(offset, offset + limit),
+      };
+    }
+
+    private _eventTraceRecordMatchesFilters(record: any): boolean {
+      const state = this._eventTraceState;
+      const reject = (reason: string): false => {
+        state.filteredRecordCounts[reason] =
+          (state.filteredRecordCounts[reason] || 0) + 1;
+        return false;
+      };
+
+      if (state.sceneName && state.sceneName !== record.sceneName)
+        return reject('scene-mismatch');
+      if (
+        state.sourceNamespaces &&
+        state.sourceNamespaces.length > 0 &&
+        !state.sourceNamespaces.includes(record.sourceNamespace)
+      )
+        return reject('source-namespace-mismatch');
+      if (
+        state.eventPaths &&
+        state.eventPaths.length > 0 &&
+        !state.eventPaths.some((path) =>
+          this._eventTracePathMatches(path, record.eventPath)
+        )
+      )
+        return reject('event-path-mismatch');
+      if (
+        record.kind === 'instruction' &&
+        state.instructionKinds &&
+        state.instructionKinds.length > 0 &&
+        !state.instructionKinds.includes(record.instructionKind)
+      )
+        return reject('instruction-kind-mismatch');
+      if (
+        record.kind === 'instruction' &&
+        state.instructionPaths &&
+        state.instructionPaths.length > 0 &&
+        !state.instructionPaths.some(
+          (entry) =>
+            this._eventTracePathMatches(entry.eventPath, record.eventPath) &&
+            entry.instructionKind === record.instructionKind &&
+            this._eventTracePathMatches(
+              entry.instructionPath,
+              record.instructionPath
+            )
+        )
+      )
+        return reject('instruction-path-mismatch');
+
+      if (state.objectNames && state.objectNames.length > 0) {
+        const parameters = Array.isArray(record.parameters)
+          ? record.parameters.map(String)
+          : [];
+        if (!state.objectNames.some((name) => parameters.includes(name)))
+          return reject('object-filter-mismatch');
+      }
+
+      if (state.instanceIds && state.instanceIds.length > 0) {
+        const targetContext =
+          record.targetContext && typeof record.targetContext === 'object'
+            ? record.targetContext
+            : null;
+        const recordInstanceIds = targetContext
+          ? [
+              ...(Array.isArray(targetContext.instanceIds)
+                ? targetContext.instanceIds
+                : []),
+              ...(targetContext.instanceId != null
+                ? [targetContext.instanceId]
+                : []),
+            ].map(String)
+          : [];
+        if (recordInstanceIds.length === 0)
+          return reject('instance-context-unavailable');
+        if (
+          !state.instanceIds.some((instanceId) =>
+            recordInstanceIds.includes(String(instanceId))
+          )
+        )
+          return reject('instance-filter-mismatch');
+      }
+
+      return true;
+    }
+
+    private _eventTraceBreakpointMatches(
+      record: any,
+      breakpoint: any
+    ): boolean {
+      if (breakpoint.kind !== record.kind) return false;
+      if (breakpoint.phase !== record.phase) return false;
+      if (!this._eventTracePathMatches(breakpoint.eventPath, record.eventPath))
+        return false;
+      if (record.kind === 'instruction') {
+        if (
+          breakpoint.instructionKind &&
+          breakpoint.instructionKind !== record.instructionKind
+        )
+          return false;
+        if (
+          breakpoint.instructionPath &&
+          !this._eventTracePathMatches(
+            breakpoint.instructionPath,
+            record.instructionPath
+          )
+        )
+          return false;
+      }
+      return true;
+    }
+
+    recordEventTrace(runtimeScene: gdjs.RuntimeScene, trace: any): void {
+      const state = this._eventTraceState;
+      if (!state.enabled || !trace || !runtimeScene) return;
+
+      const timeManager = runtimeScene.getTimeManager();
+      const sceneTimeMs = timeManager ? timeManager.getTimeFromStart() : 0;
+      if (state.firstSceneTimeMs === null) {
+        state.firstSceneTimeMs = sceneTimeMs;
+        state.lastSceneTimeMs = sceneTimeMs;
+      } else if (sceneTimeMs !== state.lastSceneTimeMs) {
+        state.frameIndex++;
+        state.lastSceneTimeMs = sceneTimeMs;
+      }
+
+      const simulatedElapsedMs = sceneTimeMs - state.firstSceneTimeMs;
+      if (state.maxFrames !== null && state.frameIndex >= state.maxFrames) {
+        state.enabled = false;
+        state.stopReason = 'max-frames-reached';
+        return;
+      }
+      if (
+        state.maxSimulatedTimeMs !== null &&
+        simulatedElapsedMs >= state.maxSimulatedTimeMs
+      ) {
+        state.enabled = false;
+        state.stopReason = 'max-simulated-time-reached';
+        return;
+      }
+
+      const record = {
+        ...trace,
+        sequence: state.sequence++,
+        sceneName: runtimeScene.getName(),
+        frameIndex: state.frameIndex,
+        sceneTimeMs,
+        simulatedElapsedMs,
+      };
+      if (!this._eventTraceRecordMatchesFilters(record)) return;
+
+      // Summary mode omits before-phase instruction noise and raw parameters.
+      if (
+        state.mode === 'summary' &&
+        record.kind === 'instruction' &&
+        record.phase === 'before'
+      )
+        return;
+      if (state.mode !== 'detailed' && record.parameters) {
+        delete record.parameters;
+      }
+
+      if (state.records.length >= state.maxRecords) {
+        state.droppedRecords++;
+        state.enabled = false;
+        state.stopReason = 'max-records-reached';
+        return;
+      }
+
+      const breakpoint = state.breakpoints.find((candidate) =>
+        this._eventTraceBreakpointMatches(record, candidate)
+      );
+      if (breakpoint) {
+        record.breakpointHit = true;
+        record.breakpointPrecision = 'pause-requested-next-frame-boundary';
+        state.lastBreakpointHit = {
+          sequence: record.sequence,
+          kind: record.kind,
+          phase: record.phase,
+          eventPath: record.eventPath,
+          instructionKind: record.instructionKind || null,
+          instructionPath: record.instructionPath || null,
+        };
+        this.pause(true);
+      }
+
+      state.records.push(record);
     }
 
     /**

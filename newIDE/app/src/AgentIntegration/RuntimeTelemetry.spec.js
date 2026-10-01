@@ -17,12 +17,14 @@ const createDebuggerServer = ({
   dropFirstRefresh = false,
   previewDebuggerIds = ['preview-1'],
   onTimeControl,
+  onEventTrace,
 }: {|
   dump?: any,
   onRefresh?: number => any,
   dropFirstRefresh?: boolean,
   previewDebuggerIds?: Array<string>,
   onTimeControl?: any => any,
+  onEventTrace?: any => any,
 |} = {}) => {
   let callbacks = null;
   let refreshCount = 0;
@@ -81,6 +83,28 @@ const createDebuggerServer = ({
             id,
             parsedMessage: {
               command: 'timeControl.status',
+              payload,
+            },
+          });
+        } else if (
+          typeof message.command === 'string' &&
+          message.command.startsWith('eventTrace.')
+        ) {
+          const payload = onEventTrace
+            ? onEventTrace(message)
+            : {
+                ok: true,
+                operation: message.command.replace('eventTrace.', ''),
+                enabled: true,
+                mode: 'detailed',
+                recordCount: 0,
+                records: [],
+                projectPersistent: false,
+              };
+          callbacks.onHandleParsedMessage({
+            id,
+            parsedMessage: {
+              command: 'eventTrace.result',
               payload,
             },
           });
@@ -214,6 +238,92 @@ describe('AgentIntegration RuntimeTelemetry', () => {
     await expect(telemetry.resumeRuntime()).resolves.toMatchObject({
       runtimeState: 'running',
     });
+
+    telemetry.dispose();
+  });
+
+  it('configures, reads and clears ephemeral event tracing through the debugger protocol', async () => {
+    const seen = [];
+    const server = createDebuggerServer({
+      onEventTrace: message => {
+        seen.push(message);
+        if (message.command === 'eventTrace.read') {
+          return {
+            ok: true,
+            operation: 'read',
+            enabled: true,
+            mode: 'detailed',
+            total: 1,
+            recordCount: 1,
+            records: [
+              {
+                kind: 'instruction',
+                instructionKind: 'condition',
+                phase: 'after',
+                eventPath: [0],
+                instructionPath: [0],
+                result: true,
+              },
+            ],
+            projectPersistent: false,
+          };
+        }
+        return {
+          ok: true,
+          operation: message.command.replace('eventTrace.', ''),
+          enabled: message.command !== 'eventTrace.clear',
+          mode: 'detailed',
+          recordCount: 0,
+          records: [],
+          projectPersistent: false,
+        };
+      },
+    });
+    const telemetry = createRuntimeTelemetry(server);
+
+    await expect(
+      telemetry.configureEventTrace({
+        mode: 'detailed',
+        sceneName: 'New scene',
+        maxRecords: 25,
+        eventPaths: [[0]],
+        breakpoints: [{ kind: 'event', phase: 'branch', eventPath: [0] }],
+      })
+    ).resolves.toMatchObject({
+      operation: 'configure',
+      projectPersistent: false,
+    });
+    await expect(
+      telemetry.readEventTrace({ offset: 0, limit: 20 })
+    ).resolves.toMatchObject({
+      operation: 'read',
+      total: 1,
+      records: [
+        expect.objectContaining({
+          kind: 'instruction',
+          result: true,
+        }),
+      ],
+    });
+    await expect(telemetry.clearEventTrace()).resolves.toMatchObject({
+      operation: 'clear',
+      projectPersistent: false,
+    });
+
+    expect(seen[0]).toMatchObject({
+      command: 'eventTrace.configure',
+      options: {
+        mode: 'detailed',
+        sceneName: 'New scene',
+        maxRecords: 25,
+        eventPaths: [[0]],
+      },
+    });
+    expect(seen[1]).toMatchObject({
+      command: 'eventTrace.read',
+      options: { offset: 0, limit: 20 },
+    });
+    expect(seen[2]).toMatchObject({ command: 'eventTrace.clear' });
 
     telemetry.dispose();
   });

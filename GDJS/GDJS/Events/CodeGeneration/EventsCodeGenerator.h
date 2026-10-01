@@ -170,6 +170,28 @@ class EventsCodeGenerator : public gd::EventsCodeGenerator {
       gd::InstructionsList& conditions,
       gd::EventsCodeGenerationContext& context) override;
 
+  virtual gd::String GenerateActionsListCode(
+      gd::InstructionsList& actions,
+      gd::EventsCodeGenerationContext& context) override;
+
+  virtual gd::String GenerateConditionCodeAtTracePath(
+      gd::Instruction& condition,
+      gd::String returnBoolean,
+      gd::EventsCodeGenerationContext& context,
+      std::size_t instructionIndex) override;
+
+  virtual gd::String GenerateEventTraceCode(
+      const gd::String& phase,
+      const gd::String& resultExpression = "",
+      const gd::String& reason = "") override;
+
+  virtual gd::String GenerateInstructionTraceCode(
+      const gd::Instruction& instruction,
+      const gd::String& instructionKind,
+      const std::vector<std::size_t>& instructionPath,
+      const gd::String& phase,
+      const gd::String& resultExpression = "") override;
+
   /**
    * \brief Generate the full name for accessing to a boolean variable used for
    * conditions.
@@ -473,6 +495,7 @@ class EventsCodeGenerator : public gd::EventsCodeGenerator {
 
   gd::String codeNamespace;  ///< Optional namespace for the generated code,
                              ///< used when generating events function.
+  std::vector<std::size_t> currentInstructionTracePath;
 
  private:
   /**

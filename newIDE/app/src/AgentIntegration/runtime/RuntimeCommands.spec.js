@@ -141,6 +141,30 @@ describe('RuntimeCommands', () => {
       defaultTimeoutMs: 120000,
       modifiesProject: false,
     });
+
+    expect(
+      host.describeCommand('runtime.event-trace.configure').inputSchema
+    ).toMatchObject({
+      required: ['sceneName'],
+      properties: {
+        sourceNamespaces: expect.objectContaining({ type: 'array' }),
+        objectNames: expect.objectContaining({ type: 'array' }),
+        instanceIds: expect.objectContaining({ type: 'array' }),
+      },
+    });
+    expect(
+      host.describeCommand('runtime.event-trace.read').inputSchema
+    ).toMatchObject({
+      required: ['sceneName'],
+      properties: {
+        sourceNamespace: expect.objectContaining({ type: 'string' }),
+        sourceNamespaces: expect.objectContaining({ type: 'array' }),
+        objectName: expect.objectContaining({ type: 'string' }),
+        objectNames: expect.objectContaining({ type: 'array' }),
+        instanceId: expect.any(Object),
+        instanceIds: expect.objectContaining({ type: 'array' }),
+      },
+    });
   });
 
   test('returns a structured error when telemetry is unavailable', async () => {

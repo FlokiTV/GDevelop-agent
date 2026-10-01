@@ -163,6 +163,8 @@ CommonInstructionsExtension::CommonInstructionsExtension() {
         gd::String outputCode;
         outputCode += localVariablesInitializationCode;
         outputCode += conditionsCode;
+        outputCode += codeGenerator.GenerateEventTraceCode(
+            "branch", ifPredicate.empty() ? "true" : ifPredicate);
         if (!ifPredicate.empty())
           outputCode += "if (" + ifPredicate + ") ";
         outputCode += "{\n";
@@ -221,6 +223,7 @@ CommonInstructionsExtension::CommonInstructionsExtension() {
         outputCode += "if (!" + chainSatisfiedVariable + ") {\n";
         outputCode += localVariablesInitializationCode;
         outputCode += conditionsCode;
+        outputCode += codeGenerator.GenerateEventTraceCode("branch", ifPredicate);
         outputCode += "if (" + ifPredicate + ") {\n";
         outputCode += actionsDeclarationsCode;
         outputCode += actionsCode;
@@ -271,8 +274,9 @@ CommonInstructionsExtension::CommonInstructionsExtension() {
           context.ForbidReuse(); // TODO: This may not be necessary (to be
                                  // investigated/heavily tested).
 
-          gd::String conditionCode = codeGenerator.GenerateConditionCode(
-              conditions[cId], "isConditionTrue", context);
+          gd::String conditionCode =
+              codeGenerator.GenerateConditionCodeAtTracePath(
+                  conditions[cId], "isConditionTrue", context, cId);
 
           conditionsCode += "{\n";
 

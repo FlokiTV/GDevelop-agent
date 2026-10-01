@@ -10,6 +10,9 @@ namespace gdjs {
     'getStatus',
     'profiler.start',
     'profiler.stop',
+    'eventTrace.configure',
+    'eventTrace.read',
+    'eventTrace.clear',
     'gameplayTest.run',
     'gameplayTest.stop',
   ]);
@@ -338,6 +341,21 @@ namespace gdjs {
             data.frameDurationMs,
             data.maxFrames
           );
+        } else if (data.command === 'eventTrace.configure') {
+          that.sendRuntimeEventTraceResult({
+            operation: 'configure',
+            ...runtimeGame.configureEventTrace(data.options || {}),
+          });
+        } else if (data.command === 'eventTrace.read') {
+          that.sendRuntimeEventTraceResult({
+            operation: 'read',
+            ...runtimeGame.readEventTrace(data.options || {}),
+          });
+        } else if (data.command === 'eventTrace.clear') {
+          that.sendRuntimeEventTraceResult({
+            operation: 'clear',
+            ...runtimeGame.clearEventTrace(),
+          });
         } else if (data.command === 'set') {
           that.set(data.path, data.newValue);
         } else if (data.command === 'call') {
@@ -812,6 +830,19 @@ namespace gdjs {
         circularSafeStringify({
           command: 'timeControl.status',
           payload: this._getRuntimeTimeControlPayload(extra),
+        })
+      );
+    }
+
+    sendRuntimeEventTraceResult(payload: any): void {
+      this._sendMessage(
+        circularSafeStringify({
+          command: 'eventTrace.result',
+          payload: {
+            ok: true,
+            projectPersistent: false,
+            ...payload,
+          },
         })
       );
     }

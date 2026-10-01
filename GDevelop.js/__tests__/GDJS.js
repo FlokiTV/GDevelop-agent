@@ -339,6 +339,60 @@ describe('libGD.js - GDJS related tests', function () {
 
       expect(code).toMatch('elseEventsChainSatisfied');
     });
+    it('generates ephemeral event execution trace hooks with structural source paths', function () {
+      const project = gd.ProjectHelper.createNewGDJSProject();
+      const layout = project.insertNewLayout('Scene', 0);
+      const event = layout
+        .getEvents()
+        .insertNewEvent(project, 'BuiltinCommonInstructions::Standard', 0);
+
+      const condition = new gd.Instruction();
+      condition.setType('BuiltinCommonInstructions::Always');
+      gd.asStandardEvent(event).getConditions().insert(condition, 0);
+      condition.delete();
+
+      const action = new gd.Instruction();
+      action.setType('BuiltinCommonInstructions::SetNumberVariable');
+      action.setParametersCount(3);
+      action.setParameter(0, 'Counter');
+      action.setParameter(1, '=');
+      action.setParameter(2, '1');
+      gd.asStandardEvent(event).getActions().insert(action, 0);
+      action.delete();
+
+      const child = gd
+        .asStandardEvent(event)
+        .getSubEvents()
+        .insertNewEvent(project, 'BuiltinCommonInstructions::Standard', 0);
+      const childAction = new gd.Instruction();
+      childAction.setType('BuiltinCommonInstructions::SetNumberVariable');
+      childAction.setParametersCount(3);
+      childAction.setParameter(0, 'Counter');
+      childAction.setParameter(1, '+');
+      childAction.setParameter(2, '1');
+      gd.asStandardEvent(child).getActions().insert(childAction, 0);
+      childAction.delete();
+
+      const layoutCodeGenerator = new gd.LayoutCodeGenerator(project);
+      const diagnosticReport = new gd.DiagnosticReport();
+      const code = layoutCodeGenerator.generateLayoutCompleteCode(
+        layout,
+        new gd.SetString(),
+        diagnosticReport,
+        true
+      );
+      diagnosticReport.delete();
+      layoutCodeGenerator.delete();
+      project.delete();
+
+      expect(code).toContain('recordEventTrace(runtimeScene,{kind:"event",phase:"before",eventPath:[0]');
+      expect(code).toContain('phase:"branch",eventPath:[0]');
+      expect(code).toContain('instructionKind:"condition",phase:"after",eventPath:[0],instructionPath:[0]');
+      expect(code).toContain('instructionKind:"action",phase:"before",eventPath:[0],instructionPath:[0]');
+      expect(code).toContain('kind:"event",phase:"before",eventPath:[0,0]');
+      expect(code).toContain('instructionKind:"action",phase:"after",eventPath:[0,0],instructionPath:[0]');
+    });
+
     it('does not generate code for improperly set up actions/conditions', function () {
       const project = gd.ProjectHelper.createNewGDJSProject();
       const layout = project.insertNewLayout('Scene', 0);

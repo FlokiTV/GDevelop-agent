@@ -409,6 +409,7 @@ export const createRendererIntegration = ({
     eventTools,
     editorFunctionService,
     runtimeTelemetry,
+    metadataDiscoveryService,
   });
   const storeService = createStoreService({
     environment: assetStoreEnvironment,
