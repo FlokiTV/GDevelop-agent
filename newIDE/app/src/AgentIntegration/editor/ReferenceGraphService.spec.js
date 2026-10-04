@@ -381,6 +381,25 @@ describe('ReferenceGraphService', () => {
     project.delete();
   });
 
+  test('does not treat structural ownership or transitive containment as rename blockers', () => {
+    const { project, service } = makeFixture();
+    const impact = service.impact({
+      selector: 'object-definition:obj-player',
+      operation: 'rename',
+      maxDepth: 2,
+    });
+
+    expect(impact.blockerCount).toBe(0);
+    expect(impact.blockers).toHaveLength(0);
+    expect(impact.safelyRewritableCount).toBeGreaterThanOrEqual(3);
+    expect(impact.unresolvedWarnings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: 'reference_graph_dynamic_reference' }),
+      ])
+    );
+    project.delete();
+  });
+
   test('supports bounded transitive traversal, deterministic pagination and name ambiguity diagnostics', () => {
     const { project, service } = makeFixture();
     const first = service.query({

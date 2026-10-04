@@ -1623,10 +1623,19 @@ export const createReferenceGraphService = ({
     const safelyRewritable = hardReferences.filter(
       edge => edge.autoRefactorable
     );
+    const isStructuralOwnershipEdge = edge =>
+      typeof edge.referenceKind === 'string' &&
+      (edge.referenceKind.startsWith('declares-') ||
+        edge.referenceKind.startsWith('contains-'));
     const blockers =
       operation === 'delete'
         ? hardReferences.filter(edge => edge.blockerOnDelete)
-        : hardReferences.filter(edge => !edge.autoRefactorable);
+        : hardReferences.filter(
+            edge =>
+              edge.traversalDepth === 1 &&
+              !edge.autoRefactorable &&
+              !isStructuralOwnershipEdge(edge)
+          );
     const unresolvedWarnings = [
       ...dynamicReferences.map(edge => ({
         code: 'reference_graph_dynamic_reference',

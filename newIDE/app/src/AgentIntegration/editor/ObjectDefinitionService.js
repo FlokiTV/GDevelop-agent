@@ -995,6 +995,51 @@ export const createObjectDefinitionService = ({
       });
     }
     const before = collectUsages(resolved);
+    const plan = {
+      operation: 'rename-object-definition',
+      target: {
+        objectId: resolved.object.getPersistentUuid(),
+        objectName: resolved.objectName,
+        objectScope: resolved.scope,
+        ...(resolved.sceneName ? { sceneName: resolved.sceneName } : {}),
+      },
+      before: {
+        objectId: resolved.object.getPersistentUuid(),
+        objectName: resolved.objectName,
+        objectScope: resolved.scope,
+        ...(resolved.sceneName ? { sceneName: resolved.sceneName } : {}),
+      },
+      after: {
+        objectId: resolved.object.getPersistentUuid(),
+        objectName: newObjectName,
+        objectScope: resolved.scope,
+        ...(resolved.sceneName ? { sceneName: resolved.sceneName } : {}),
+      },
+      rewrittenReferences: {
+        instances: before.counts.instances,
+        groups: before.counts.groups,
+        eventInstructions: before.counts.authoritativeEventReferences,
+      },
+      usages: before,
+      blockers: [],
+      warnings:
+        before.counts.potentialEventReferences > 0
+          ? [
+              {
+                code: 'object_definition_has_potential_dynamic_references',
+                count: before.counts.potentialEventReferences,
+              },
+            ]
+          : [],
+    };
+    if (input && input.dryRun === true) {
+      return {
+        renamed: false,
+        dryRun: true,
+        plan,
+        object: serializeObject(resolved),
+      };
+    }
     if (resolved.scope === 'global') {
       gd.WholeProjectRefactorer.globalObjectOrGroupRenamed(
         project,
@@ -1020,11 +1065,8 @@ export const createObjectDefinitionService = ({
       oldObjectName,
       newObjectName,
       objectId: resolved.object.getPersistentUuid(),
-      rewrittenReferences: {
-        instances: before.counts.instances,
-        groups: before.counts.groups,
-        eventInstructions: before.counts.authoritativeEventReferences,
-      },
+      rewrittenReferences: plan.rewrittenReferences,
+      plan,
       nativeRefactor: true,
       object: serializeObject(resolved),
     };

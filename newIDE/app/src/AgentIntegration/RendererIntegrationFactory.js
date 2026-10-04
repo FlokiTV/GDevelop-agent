@@ -32,6 +32,7 @@ import { createSceneInstanceService } from './editor/SceneInstanceService';
 import { createTargetIdentityService } from './editor/TargetIdentityService';
 import { createValidationService } from './editor/ValidationService';
 import { createReferenceGraphService } from './editor/ReferenceGraphService';
+import { createMutationPlanningService } from './editor/MutationPlanningService';
 import { createPreviewService } from './runtime/PreviewService';
 import { createRuntimeDiagnosticsService } from './runtime/RuntimeDiagnosticsService';
 import { createSafetyService } from './safety/SafetyService';
@@ -44,6 +45,7 @@ const semanticConcurrencyByProject: WeakMap<
   SemanticConcurrency
 > = new WeakMap();
 const idempotencyStoreByProject: WeakMap<any, IdempotencyStore> = new WeakMap();
+const mutationPlanningStateByProject: WeakMap<any, any> = new WeakMap();
 
 const gd: libGDevelop = global.gd;
 
@@ -166,6 +168,9 @@ export const createRendererIntegration = ({
   let idempotencyStore = project
     ? idempotencyStoreByProject.get(project)
     : undefined;
+  let mutationPlanningState = project
+    ? mutationPlanningStateByProject.get(project)
+    : undefined;
   if (!semanticConcurrency) {
     semanticConcurrency = new SemanticConcurrency();
     if (project) semanticConcurrencyByProject.set(project, semanticConcurrency);
@@ -173,6 +178,10 @@ export const createRendererIntegration = ({
   if (!idempotencyStore && project) {
     idempotencyStore = new IdempotencyStore();
     idempotencyStoreByProject.set(project, idempotencyStore);
+  }
+  if (!mutationPlanningState && project) {
+    mutationPlanningState = { plans: new Map(), sequence: 0 };
+    mutationPlanningStateByProject.set(project, mutationPlanningState);
   }
   const assetTools = project
     ? createAssetTools({
@@ -425,6 +434,16 @@ export const createRendererIntegration = ({
           externalProjectItemsService,
         })
       : null;
+  const mutationPlanningService =
+    project && referenceGraphService && objectDefinitionService && assetTools
+      ? createMutationPlanningService({
+          getProjectRevision: () => projectRevisionTracker.synchronize(),
+          referenceGraphService,
+          objectDefinitionService,
+          assetTools,
+          planState: mutationPlanningState,
+        })
+      : null;
   const runtimeDiagnosticsService = createRuntimeDiagnosticsService({
     project,
     eventTools,
@@ -571,6 +590,7 @@ export const createRendererIntegration = ({
       safetyService,
       validationService,
       referenceGraphService,
+      mutationPlanningService,
     }),
   };
 };

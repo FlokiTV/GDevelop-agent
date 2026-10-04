@@ -175,12 +175,14 @@ export const createObjectDefinitionCommandDescriptors = ({
       properties: {
         ...OBJECT_SELECTOR,
         newObjectName: { type: 'string', minLength: 1 },
+        dryRun: { type: 'boolean', default: false },
       },
       allOf: [
         { anyOf: [{ required: ['objectId'] }, { required: ['objectName'] }] },
       ],
     },
     metadata: MUTATION_METADATA,
+    modifiesProjectWhen: input => input.dryRun !== true,
     execute: ({ input }) => objectDefinitionService.rename(input),
   },
   {

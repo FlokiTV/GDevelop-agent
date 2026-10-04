@@ -31,6 +31,7 @@ import { createBuildCommandDescriptors } from './editor/BuildCommands';
 import { createPublicationCommandDescriptors } from './editor/PublicationCommands';
 import { createValidationCommandDescriptors } from './editor/ValidationCommands';
 import { createReferenceGraphCommandDescriptors } from './editor/ReferenceGraphCommands';
+import { createMutationPlanningCommandDescriptors } from './editor/MutationPlanningCommands';
 import { createPreviewCommandDescriptors } from './runtime/PreviewCommands';
 import { createRuntimeCommandDescriptors } from './runtime/RuntimeCommands';
 import { createSafetyCommandDescriptors } from './safety/SafetyCommands';
@@ -71,6 +72,7 @@ type Options = {|
   safetyService: any,
   validationService: any,
   referenceGraphService: any,
+  mutationPlanningService: any,
 |};
 
 export const createRendererAgentHost = ({
@@ -109,6 +111,7 @@ export const createRendererAgentHost = ({
   safetyService,
   validationService,
   referenceGraphService,
+  mutationPlanningService,
 }: Options): AgentHost =>
   new AgentHost({
     environment,
@@ -162,6 +165,7 @@ export const createRendererAgentHost = ({
       ...createEditorVisualCommandDescriptors({ editorVisualService }),
       ...createValidationCommandDescriptors({ validationService }),
       ...createReferenceGraphCommandDescriptors({ referenceGraphService }),
+      ...createMutationPlanningCommandDescriptors({ mutationPlanningService }),
       ...createExportCommandDescriptors({ exportService }),
       ...createPreviewCommandDescriptors({ previewService }),
       ...createRuntimeCommandDescriptors({
