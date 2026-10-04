@@ -31,6 +31,7 @@ import { createLayerOrderService } from './editor/LayerOrderService';
 import { createSceneInstanceService } from './editor/SceneInstanceService';
 import { createTargetIdentityService } from './editor/TargetIdentityService';
 import { createValidationService } from './editor/ValidationService';
+import { createStaticDiagnosticsService } from './editor/StaticDiagnosticsService';
 import { createReferenceGraphService } from './editor/ReferenceGraphService';
 import { createMutationPlanningService } from './editor/MutationPlanningService';
 import { createPreviewService } from './runtime/PreviewService';
@@ -520,6 +521,17 @@ export const createRendererIntegration = ({
     editorTabs,
     previewService,
   });
+  const staticDiagnosticsService = project
+    ? createStaticDiagnosticsService({
+        project,
+        diagnosticsTools,
+        eventTools,
+        metadataDiscoveryService,
+        referenceGraphService,
+        targetIdentityService,
+        getProjectRevision: () => projectRevisionTracker.synchronize(),
+      })
+    : null;
   const validationService = createValidationService({
     project,
     diagnosticsTools,
@@ -559,6 +571,7 @@ export const createRendererIntegration = ({
       },
       assetTools,
       diagnosticsTools,
+      staticDiagnosticsService,
       editorFunctionService,
       editorVisualService,
       eventTools,

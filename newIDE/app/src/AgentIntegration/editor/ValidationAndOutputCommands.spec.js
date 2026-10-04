@@ -6,17 +6,30 @@ import { createValidationCommandDescriptors } from './ValidationCommands';
 
 const makeHost = () => {
   const diagnosticsTools = { inspect: jest.fn(() => ({ ok: true })) };
+  const staticDiagnosticsService = {
+    capabilities: jest.fn(() => ({ domain: 'static-editor-project' })),
+    query: jest.fn(() => ({ summary: { errors: 0, warnings: 0 } })),
+  };
   const exportService = { exportHtml5: jest.fn(async () => ({ built: true })) };
   const validationService = { run: jest.fn(async () => ({ ok: true })) };
   const host = new AgentHost({
     environment: { project: {} },
     descriptors: [
-      ...createDiagnosticsCommandDescriptors({ diagnosticsTools }),
+      ...createDiagnosticsCommandDescriptors({
+        diagnosticsTools,
+        staticDiagnosticsService,
+      }),
       ...createValidationCommandDescriptors({ validationService }),
       ...createExportCommandDescriptors({ exportService }),
     ],
   });
-  return { host, diagnosticsTools, exportService, validationService };
+  return {
+    host,
+    diagnosticsTools,
+    staticDiagnosticsService,
+    exportService,
+    validationService,
+  };
 };
 
 describe('validation and output commands', () => {
@@ -28,6 +41,27 @@ describe('validation and output commands', () => {
     expect(result.data).toEqual({ ok: true });
     expect(diagnosticsTools.inspect).toHaveBeenCalledWith({
       includeAssets: false,
+    });
+  });
+
+  test('dispatches unified static diagnostics with project-revision caching metadata', async () => {
+    const { host, staticDiagnosticsService } = makeHost();
+    const capabilities = await host.execute('diagnostics.capabilities', {});
+    const query = await host.execute('diagnostics.query', {
+      severities: ['error'],
+      sceneName: 'Main',
+    });
+
+    expect(capabilities.data).toEqual({ domain: 'static-editor-project' });
+    expect(query.data).toEqual({ summary: { errors: 0, warnings: 0 } });
+    expect(staticDiagnosticsService.query).toHaveBeenCalledWith({
+      severities: ['error'],
+      sceneName: 'Main',
+    });
+    expect(host.describeCommand('diagnostics.query').metadata).toMatchObject({
+      readOnly: true,
+      requiresProject: true,
+      cacheScope: 'project-revision',
     });
   });
 
@@ -52,6 +86,8 @@ describe('validation and output commands', () => {
     expect(validationService.run).toHaveBeenCalledWith({
       includeRuntimeLogs: true,
     });
-    expect(exportService.exportHtml5).toHaveBeenCalledWith({ outputDir: 'out' });
+    expect(exportService.exportHtml5).toHaveBeenCalledWith({
+      outputDir: 'out',
+    });
   });
 });

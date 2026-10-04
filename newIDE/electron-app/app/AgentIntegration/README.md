@@ -206,6 +206,14 @@ Use `objects.groups.create/rename/delete` and `objects.groups.members.add/remove
 
 A valid plan can return a short-lived single-use `planToken` and deterministic `planHash`. `mutations.commit` rechecks the current project revision and regenerates the plan before applying; any intervening mutation, changed graph/diff or token expiry is rejected as a structured stale/expired-plan error before the underlying operation runs. Blocked or dynamically uncertain plans cannot be committed. When preconditions remain unchanged, the response returns both the reviewed `plannedChangeSet` and the applied `committedDiff`, with `committedDiffMatchesPlan=true`. DX-19 transactions/ownership/leases and DX-21 envelopes remain enforced by the normal AgentHost mutation wrapper around the commit command; callers should still use the common revision/ownership envelope at commit time.
 
+### Unified static diagnostics and source mapping
+
+`diagnostics.capabilities/query` provide the machine-readable static/editor/project diagnostics surface. `diagnostics.inspect` remains available as the compatibility aggregate, while `validation.run` remains the broader long-running validation workflow that can also execute gameplay tests, runtime assertions/log collection and export checks. `diagnostics.query` deliberately excludes those runtime signals so callers can distinguish authoring defects from DX-36 runtime traces/logs.
+
+Each returned diagnostic has a stable `diagnosticId`, `severity`, `category`, `code`, message and a `primaryLocation`. Scene and External Events scopes use persistent selectors where available; extension functions use canonical extension/owner/function selectors. Event Sheet validation errors resolve the scanner's `eventPath` against the same DX-3/DX-20 canonical event index used by `events.read`, so a uniquely resolvable problem carries the exact event handle, action/condition handle, `parameterIndex`, `parameters[n]` field path and `eventsRevision`. Ambiguous instruction matches are returned as candidates rather than reported with fabricated precision. Object/resource references are correlated with DX-37 reference-graph identities when available; unresolved typed targets are returned explicitly as related unresolved entities.
+
+The query supports severity/code/scope/scene/entity-kind filters, stable pagination and an incremental `sinceProjectRevision` short-circuit. Every snapshot includes the current project revision plus mapped Event Sheet revisions; a clean project returns an explicit zero-error/zero-warning summary and an empty `diagnostics` array rather than an ambiguous envelope. `suggestedAction` metadata identifies a safe inspection/edit target such as `events.patch`, `objects.definitions.get` or `resources.visual.inspect`, but always marks automatic fixing as unsafe by default. Textual/JSON source ranges are preserved when the underlying validator provides meaningful line/column data.
+
 ### Visual resources: import, metadata, usages and safe replacement
 
 Visual image/font resources use `resources.visual.*` rather than requiring callers to create files manually and then register paths. `resources.visual.import` accepts base64 bytes (or a base64 data URL), sniffs the actual content before trusting the filename, writes a project-local file atomically and registers the native GDevelop resource in the same operation. The default target is `assets/<resource-name>.<detected-extension>`, while an explicit `relativePath` remains project-root constrained. Supported image metadata is PNG/JPEG/WebP plus SVG; fonts use the native project font kinds TTF/OTF. Sprite-sheet image assets remain ordinary image resources and compose with `resources.image.slice-spritesheet` when slicing is needed.
@@ -224,7 +232,7 @@ The registry currently exposes command families for:
 - deterministic events: `events.read`, granular `events.patch`, localized `events.insert/update/style.update/move/delete`, and bulk `events.apply`;
 - resources/assets: `resources.*`, including project-aware UTF-8/JSON authoring (`resources.text.create/read/update`, `resources.packaging.inspect`), bounded remote URL import/replace with persisted provenance, and deterministic local image/WAV processing (`resources.processing.capabilities`, `resources.image.transform`, `resources.image.slice-spritesheet`, `resources.audio.transform`);
 - checkpoints and transactions: `safety.*`;
-- diagnostics and aggregate validation: `diagnostics.inspect`, `validation.run`;
+- static/editor/project diagnostics: `diagnostics.capabilities`, `diagnostics.query`, plus compatibility aggregate `diagnostics.inspect`; broader aggregate validation remains `validation.run`;
 - preview lifecycle: `preview.status`, `preview.start`, `preview.hot-reload`, `preview.control`, `preview.close-all`;
 - runtime observation/time control: `runtime.status`, `runtime.snapshot`, targeted `runtime.inspect`, `runtime.logs`, `runtime.assert`, `runtime.wait-for`, plus `runtime.time.status/pause/resume/set-scale/step/advance/wait-until`;
 - desktop windows/capture: `desktop.windows.list`, `desktop.window.capture`; preview content viewport: `preview.viewport.status`, `preview.viewport.set`;
@@ -298,7 +306,7 @@ A safe agent workflow is:
 6. `preview.start` once, then prefer `preview.hot-reload` during iteration;
 7. use `preview.input.*` and `runtime.*` to exercise and observe the actual game;
 8. correct the project while keeping the editor/project open;
-9. run `diagnostics.inspect` / `validation.run` and review checkpoint diff when appropriate;
+9. query `diagnostics.query` for static/editor/project defects; use `diagnostics.inspect` / `validation.run` when the broader aggregate/native/runtime/export checks are appropriate, and review checkpoint diff when requested;
 10. call `project.save` or `project.save-as` only when saving is explicitly intended;
 11. call `build.targets.list` before choosing a delivery target; use `export.html5` for local HTML5 or `build.start` + `build.status` + `build.result` for an available authenticated remote build target;
 12. when public gd.games publication is explicitly intended, call `publication.integrations.list`, create/resolve a completed `web-online` build separately, review `publication.prepare`, then call `publication.publish` only after the user confirms the external publication effect.
