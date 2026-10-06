@@ -1355,6 +1355,36 @@
       timeManager && typeof timeManager._timeScale === 'number'
         ? timeManager._timeScale
         : null;
+    const runtimeLayerItems =
+      currentScene &&
+      currentScene._layers &&
+      currentScene._layers.items &&
+      typeof currentScene._layers.items === 'object'
+        ? currentScene._layers.items
+        : {};
+    const layers = Object.keys(runtimeLayerItems)
+      .sort((left, right) => left.localeCompare(right))
+      .map(name => {
+        const layer = runtimeLayerItems[name];
+        return {
+          name,
+          authority: 'runtime-preview',
+          visible: readMethod(layer, 'isVisible', null),
+          renderingType: readMethod(layer, 'getRenderingType', null),
+          cameraType: readMethod(layer, 'getCameraType', null),
+          timeScale: readMethod(layer, 'getTimeScale', null),
+          camera: {
+            x: readMethod(layer, 'getCameraX', null),
+            y: readMethod(layer, 'getCameraY', null),
+            width: readMethod(layer, 'getCameraWidth', null),
+            height: readMethod(layer, 'getCameraHeight', null),
+            zoom: readMethod(layer, 'getCameraZoom', null),
+            rotation: readMethod(layer, 'getCameraRotation', null),
+            rotationX: readMethod(layer, 'getCameraRotationX', null),
+            rotationY: readMethod(layer, 'getCameraRotationY', null),
+          },
+        };
+      });
     return {
       snapshotSource: 'bounded-preview-runtime',
       viewport: {
@@ -1391,6 +1421,7 @@
                 ? (1000 * timeScale) / elapsedTimeMs
                 : null,
             variables: transformVariablesContainer(currentScene._variables),
+            layers,
           }
         : null,
       globalVariables: transformVariablesContainer(runtimeGame._variables),

@@ -28,6 +28,7 @@ import { createExportService } from './editor/ExportService';
 import { createProjectLifecycleService } from './editor/ProjectLifecycleService';
 import { createSceneLifecycleService } from './editor/SceneLifecycleService';
 import { createLayerOrderService } from './editor/LayerOrderService';
+import { createLayerVisualService } from './editor/LayerVisualService';
 import { createSceneInstanceService } from './editor/SceneInstanceService';
 import { createTargetIdentityService } from './editor/TargetIdentityService';
 import { createValidationService } from './editor/ValidationService';
@@ -343,6 +344,16 @@ export const createRendererIntegration = ({
         onInstancesModifiedOutsideEditor: safeOnInstancesModifiedOutsideEditor,
       })
     : null;
+  const layerVisualService =
+    project && layerOrderService && metadataDiscoveryService
+      ? createLayerVisualService({
+          project,
+          layerOrderService,
+          metadataDiscoveryService,
+          triggerUnsavedChanges,
+          forceUpdate,
+        })
+      : null;
   const objectPropertyService = project
     ? createObjectPropertyService({
         project,
@@ -578,6 +589,7 @@ export const createRendererIntegration = ({
       externalProjectItemsService,
       sceneLifecycleService,
       layerOrderService,
+      layerVisualService,
       sceneInstanceService,
       extensionAuthoringService,
       extensionLifecycleService,

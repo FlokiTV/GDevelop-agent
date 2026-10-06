@@ -243,6 +243,38 @@ test('captures a bounded structured runtime snapshot without serializing Runtime
       _timeFromStart: 1200,
       _timeScale: 1,
     },
+    _layers: {
+      items: {
+        '': {
+          isVisible: () => true,
+          getRenderingType: () => '2d+3d',
+          getCameraType: () => 'perspective',
+          getTimeScale: () => 1,
+          getCameraX: () => 120,
+          getCameraY: () => 80,
+          getCameraWidth: () => 640,
+          getCameraHeight: () => 360,
+          getCameraZoom: () => 1.5,
+          getCameraRotation: () => 10,
+          getCameraRotationX: () => 5,
+          getCameraRotationY: () => -3,
+        },
+        UI: {
+          isVisible: () => true,
+          getRenderingType: () => '2d',
+          getCameraType: () => 'orthographic',
+          getTimeScale: () => 1,
+          getCameraX: () => 320,
+          getCameraY: () => 180,
+          getCameraWidth: () => 640,
+          getCameraHeight: () => 360,
+          getCameraZoom: () => 1,
+          getCameraRotation: () => 0,
+          getCameraRotationX: () => 0,
+          getCameraRotationY: () => 0,
+        },
+      },
+    },
     _variables: {
       _variables: {
         items: {
@@ -319,6 +351,44 @@ test('captures a bounded structured runtime snapshot without serializing Runtime
     devicePixelRatio: 1.25,
   });
   assert.equal(snapshot.scene.name, 'Snapshot scene');
+  assert.deepEqual(JSON.parse(JSON.stringify(snapshot.scene.layers)), [
+    {
+      name: '',
+      authority: 'runtime-preview',
+      visible: true,
+      renderingType: '2d+3d',
+      cameraType: 'perspective',
+      timeScale: 1,
+      camera: {
+        x: 120,
+        y: 80,
+        width: 640,
+        height: 360,
+        zoom: 1.5,
+        rotation: 10,
+        rotationX: 5,
+        rotationY: -3,
+      },
+    },
+    {
+      name: 'UI',
+      authority: 'runtime-preview',
+      visible: true,
+      renderingType: '2d',
+      cameraType: 'orthographic',
+      timeScale: 1,
+      camera: {
+        x: 320,
+        y: 180,
+        width: 640,
+        height: 360,
+        zoom: 1,
+        rotation: 0,
+        rotationX: 0,
+        rotationY: 0,
+      },
+    },
+  ]);
   assert.equal(snapshot.scene.variables.Score.value, 7);
   assert.equal(snapshot.globalVariables.GlobalScore.value, 11);
   assert.equal(snapshot.objects.Player.count, 1);
