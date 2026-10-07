@@ -17,12 +17,26 @@ const ALLOWED_NATIVE_MODEL_HOOKS = new Set([
   'Core/GDCore/Project/Layout.h',
   'Core/GDCore/Project/ExternalEvents.cpp',
   'Core/GDCore/Project/ExternalEvents.h',
+  'Core/GDCore/Project/Layer.cpp',
+  'Core/GDCore/Project/Layer.h',
   'GDevelop.js/Bindings/Bindings.idl',
   'GDevelop.js/types.d.ts',
   'GDevelop.js/types/gdlayout.js',
   'GDevelop.js/types/gdexternalevents.js',
+  'GDevelop.js/types/gdlayer.js',
   'GDevelop.js/__tests__/PersistentProjectStructureIdentity.js',
   'newIDE/app/src/Utils/Layout.js',
+]);
+
+const ALLOWED_NATIVE_RUNTIME_HOOKS = new Set([
+  'Core/GDCore/Events/CodeGeneration/EventsCodeGenerator.cpp',
+  'Core/GDCore/Events/CodeGeneration/EventsCodeGenerator.h',
+  'GDJS/GDJS/Events/CodeGeneration/EventsCodeGenerator.cpp',
+  'GDJS/GDJS/Events/CodeGeneration/EventsCodeGenerator.h',
+  'GDJS/GDJS/Extensions/Builtin/CommonInstructionsExtension.cpp',
+  'GDJS/Runtime/debugger-client/abstract-debugger-client.ts',
+  'GDJS/Runtime/runtimegame.ts',
+  'GDevelop.js/__tests__/GDJS.js',
 ]);
 
 const ALLOWED_DEPENDENCY_MANIFESTS = new Set([
@@ -34,6 +48,7 @@ const ALLOWED_REPOSITORY_METADATA = new Set([
   '.github/workflows/agent-integration.yml',
   '.github/workflows/build-storybook.yml',
   '.github/workflows/extract-translations.yml',
+  '.github/workflows/update-extension-translations.yml',
   '.github/workflows/update-translations.yml',
 ]);
 
@@ -45,6 +60,7 @@ const isAllowedAgentChange = filePath => {
   return (
     ALLOWED_UPSTREAM_HOOKS.has(normalized) ||
     ALLOWED_NATIVE_MODEL_HOOKS.has(normalized) ||
+    ALLOWED_NATIVE_RUNTIME_HOOKS.has(normalized) ||
     ALLOWED_DEPENDENCY_MANIFESTS.has(normalized) ||
     ALLOWED_REPOSITORY_METADATA.has(normalized) ||
     ALLOWED_PREFIXES.some(prefix => normalized.startsWith(prefix))
@@ -110,6 +126,7 @@ const runArchitectureGuard = ({ repoRoot, baseRef = 'upstream/master' }) => {
     disallowedFiles,
     allowedUpstreamHooks: Array.from(ALLOWED_UPSTREAM_HOOKS),
     allowedNativeModelHooks: Array.from(ALLOWED_NATIVE_MODEL_HOOKS),
+    allowedNativeRuntimeHooks: Array.from(ALLOWED_NATIVE_RUNTIME_HOOKS),
     allowedPrefixes: [...ALLOWED_PREFIXES],
   };
 };
@@ -154,6 +171,7 @@ module.exports = {
   ALLOWED_PREFIXES,
   ALLOWED_UPSTREAM_HOOKS,
   ALLOWED_NATIVE_MODEL_HOOKS,
+  ALLOWED_NATIVE_RUNTIME_HOOKS,
   ALLOWED_DEPENDENCY_MANIFESTS,
   ALLOWED_REPOSITORY_METADATA,
   normalizeRepositoryPath,

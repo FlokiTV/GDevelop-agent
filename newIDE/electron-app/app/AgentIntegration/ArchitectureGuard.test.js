@@ -33,11 +33,27 @@ test('allows agent-owned files, repository metadata and only the explicit upstre
     true
   );
   assert.equal(isAllowedAgentChange('Core/GDCore/Project/Layout.cpp'), true);
+  assert.equal(isAllowedAgentChange('Core/GDCore/Project/Layer.cpp'), true);
   assert.equal(
     isAllowedAgentChange('Core/GDCore/Project/ExternalEvents.h'),
     true
   );
   assert.equal(isAllowedAgentChange('GDevelop.js/Bindings/Bindings.idl'), true);
+  assert.equal(isAllowedAgentChange('GDevelop.js/types/gdlayer.js'), true);
+  assert.equal(
+    isAllowedAgentChange(
+      'Core/GDCore/Events/CodeGeneration/EventsCodeGenerator.cpp'
+    ),
+    true
+  );
+  assert.equal(
+    isAllowedAgentChange(
+      'GDJS/Runtime/debugger-client/abstract-debugger-client.ts'
+    ),
+    true
+  );
+  assert.equal(isAllowedAgentChange('GDJS/Runtime/runtimegame.ts'), true);
+  assert.equal(isAllowedAgentChange('GDevelop.js/__tests__/GDJS.js'), true);
   assert.equal(
     isAllowedAgentChange(
       'GDevelop.js/__tests__/PersistentProjectStructureIdentity.js'
@@ -63,6 +79,10 @@ test('allows agent-owned files, repository metadata and only the explicit upstre
   );
   assert.equal(
     isAllowedAgentChange('.github/workflows/extract-translations.yml'),
+    true
+  );
+  assert.equal(
+    isAllowedAgentChange('.github/workflows/update-extension-translations.yml'),
     true
   );
   assert.equal(

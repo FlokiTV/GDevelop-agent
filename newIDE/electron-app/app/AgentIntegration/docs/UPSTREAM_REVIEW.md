@@ -8,13 +8,15 @@ The renderer owns GDevelop project semantics through `AgentHost`, `CommandRegist
 
 ## Upstream integration boundary
 
-`ArchitectureGuard` permits product-code changes outside AgentIntegration-owned trees only at three existing integration hooks:
+`ArchitectureGuard` permits product-code changes outside AgentIntegration-owned trees only at explicit, file-level integration hooks. The three desktop/editor lifecycle hooks remain:
 
 1. `newIDE/app/src/MainFrame/index.js` — supplies renderer/editor callbacks.
 2. `newIDE/electron-app/app/main.js` — installs the desktop AgentIntegration lifecycle.
 3. `newIDE/electron-app/app/PreviewWindow.js` — exposes preview identity to isolated desktop/runtime services.
 
-The guard separately allows the Electron MCP dependency manifests and a small explicit set of repository CI metadata files. Those files are not product integration hooks and do not expand the GDevelop runtime/editor modification boundary.
+The guard separately allows a narrow set of native model/binding hooks required for stable project identities and layer semantics, plus native runtime/code-generation hooks required for deterministic runtime time control and runtime event tracing. These are enumerated file by file in `ArchitectureGuard.js`; there is no broad Core/GDJS/GDevelop.js prefix exemption.
+
+The guard also allows the Electron MCP dependency manifests and a small explicit set of repository CI metadata files. Those files are not product integration hooks and do not expand the GDevelop runtime/editor modification boundary.
 
 Normal authoring never reloads the full serialized project to synchronize state. Full replacement is reserved for explicit checkpoint/transaction restore.
 
