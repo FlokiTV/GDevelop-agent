@@ -1,6 +1,9 @@
 // @flow
 import { type I18n as I18nType } from '@lingui/core';
-import { fakeAssetShortHeader1 } from '../fixtures/GDevelopServicesTestData';
+import {
+  fakeAssetShortHeader1,
+  fakeSkyboxAssetShortHeader,
+} from '../fixtures/GDevelopServicesTestData';
 import { PixiResourcesLoaderMock } from '../fixtures/TestPixiResourcesLoader';
 import {
   reloadProjectEventsFunctionsExtensionMetadata,
@@ -33,6 +36,7 @@ export const makeFakeLaunchFunctionOptionsWithoutProject = (): LaunchFunctionOpt
   i18n: makeFakeI18n(),
   editorCallbacks: {
     onOpenLayout: jest.fn(),
+    onOpenExternalLayout: jest.fn(),
     onCreateProject: jest.fn(),
     onOpenEventsFunctionsExtension: jest.fn(),
     onOpenCustomObjectEditor: jest.fn(),
@@ -52,6 +56,7 @@ export const makeFakeLaunchFunctionOptionsWithoutProject = (): LaunchFunctionOpt
   },
   ensureExtensionInstalled: jest.fn(),
   searchAndInstallAsset: jest.fn(),
+  searchAndInstallEffectAsset: jest.fn(),
   searchAndInstallResources: async () => {
     return Promise.resolve({
       results: [
@@ -63,7 +68,12 @@ export const makeFakeLaunchFunctionOptionsWithoutProject = (): LaunchFunctionOpt
       ],
     });
   },
+  attachmentsForResources: {
+    getFiles: async () => ({}),
+    storeResourceFiles: async () => 'stored',
+  },
   onObjectsModifiedOutsideEditor: jest.fn(),
+  onEffectsModifiedOutsideEditor: jest.fn(),
   onWillDeleteScene: jest.fn(),
   onWillDeleteGameplayTest: jest.fn(),
   onWillDeleteObject: jest.fn(),
@@ -117,6 +127,27 @@ export const makeFakeLaunchFunctionOptionsWithProject = (
       createdObjects: [object],
       assetShortHeader: fakeAssetShortHeader1,
       isTheFirstOfItsTypeInProject,
+    });
+  },
+  searchAndInstallEffectAsset: async ({
+    effectsContainer,
+    effectName,
+    effectType,
+  }) => {
+    const effect = effectsContainer.hasEffectNamed(effectName)
+      ? effectsContainer.getEffect(effectName)
+      : effectsContainer.insertNewEffect(
+          effectName,
+          effectsContainer.getEffectsCount()
+        );
+    effect.setEffectType(effectType || 'Scene3D::Skybox');
+    effect.setStringParameter('frontFaceResourceName', 'FakeSky_Front.png');
+
+    return Promise.resolve({
+      status: 'asset-installed',
+      message: 'Skybox installed',
+      effect,
+      assetShortHeader: fakeSkyboxAssetShortHeader,
     });
   },
 });

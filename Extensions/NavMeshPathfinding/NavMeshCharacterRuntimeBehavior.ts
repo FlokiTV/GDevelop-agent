@@ -7,11 +7,13 @@ namespace gdjs {
         throw new Error('No default export found in Recast.');
       }
 
-      const Recast = await initializeRecast();
-
-      await RecastNav.init();
-      //@ts-ignore
-      window.Recast = Recast;
+      // Without it, RecastNav would instantiate a second WebAssembly module:
+      // the "compat" build embedded in `A_recast-navigation-generators.js`.
+      // The vendored `init` expects a function returning the module, but the
+      // typings of `@recast-navigation/core` declare the module itself.
+      await RecastNav.init(
+        initializeRecast as unknown as Parameters<typeof RecastNav.init>[0]
+      );
     } catch (err) {
       console.error('Unable to load Recast navigation mesh library.', err);
       throw err;

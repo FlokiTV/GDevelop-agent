@@ -24,7 +24,6 @@
 #include "GDCore/Project/ObjectGroup.h"
 #include "GDCore/Project/ObjectGroupsContainer.h"
 #include "GDCore/Project/Project.h"
-#include "GDCore/Project/QuickCustomization.h"
 #include "GDCore/Serialization/SerializerElement.h"
 #include "GDCore/String.h"
 #include "GDCore/Tools/Log.h"
@@ -260,6 +259,7 @@ void Layout::SerializeTo(SerializerElement& element) const {
     element.SetAttribute("resourcesUnloading", resourcesUnloading);
   element.SetAttribute("disableInputWhenNotFocused",
                        disableInputWhenNotFocused);
+  element.SetAttribute("renderer3DWorldScale", renderer3DWorldScale);
 
   editorSettings.SerializeTo(element.AddChild("uiSettings"));
 
@@ -290,22 +290,11 @@ void Layout::SerializeTo(SerializerElement& element) const {
     dataElement.SetAttribute("type", sharedData.GetTypeName());
     dataElement.SetAttribute("name", sharedData.GetName());
 
-    // Handle Quick Customization info.
+    // Compatibility with projects saved with the removed Quick Customization:
+    // the content can contain its former visibilities, remove them.
     dataElement.RemoveChild("propertiesQuickCustomizationVisibilities");
-    const QuickCustomizationVisibilitiesContainer&
-        propertiesQuickCustomizationVisibilities =
-            sharedData.GetPropertiesQuickCustomizationVisibilities();
-    if (!propertiesQuickCustomizationVisibilities.IsEmpty()) {
-      propertiesQuickCustomizationVisibilities.SerializeTo(
-          dataElement.AddChild("propertiesQuickCustomizationVisibilities"));
-    }
-    const QuickCustomization::Visibility visibility =
-        sharedData.GetQuickCustomizationVisibility();
-    if (visibility != QuickCustomization::Visibility::Default) {
-      dataElement.SetAttribute(
-          "quickCustomizationVisibility",
-          QuickCustomization::VisibilityAsString(visibility));
-    }
+    dataElement.RemoveAttribute("quickCustomizationVisibility");
+    // end of compatibility code
   }
 }
 
@@ -326,6 +315,8 @@ void Layout::UnserializeFrom(gd::Project& project,
       element.GetStringAttribute("resourcesUnloading", "inherit");
   disableInputWhenNotFocused =
       element.GetBoolAttribute("disableInputWhenNotFocused");
+  renderer3DWorldScale =
+      element.GetDoubleAttribute("renderer3DWorldScale", 100);
 
   editorSettings.UnserializeFrom(
       element.GetChild("uiSettings", 0, "UISettings"));
@@ -384,20 +375,6 @@ void Layout::UnserializeFrom(gd::Project& project,
         sharedData->UnserializeFrom(sharedDataElement);
       }
 
-      // Handle Quick Customization info.
-      if (sharedDataElement.HasChild(
-              "propertiesQuickCustomizationVisibilities")) {
-        sharedData->GetPropertiesQuickCustomizationVisibilities()
-            .UnserializeFrom(sharedDataElement.GetChild(
-                "propertiesQuickCustomizationVisibilities"));
-      }
-      if (sharedDataElement.HasChild("quickCustomizationVisibility")) {
-        sharedData->SetQuickCustomizationVisibility(
-            QuickCustomization::StringAsVisibility(
-                sharedDataElement.GetStringAttribute(
-                    "quickCustomizationVisibility")));
-      }
-
       behaviorsSharedData[name] = std::move(sharedData);
     }
   }
@@ -415,6 +392,7 @@ void Layout::Init(const Layout& other) {
   resourcesPreloading = other.resourcesPreloading;
   resourcesUnloading = other.resourcesUnloading;
   disableInputWhenNotFocused = other.disableInputWhenNotFocused;
+  renderer3DWorldScale = other.renderer3DWorldScale;
   initialInstances = other.initialInstances;
   layers = other.layers;
   variables = other.GetVariables();

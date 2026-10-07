@@ -116,6 +116,9 @@ namespace gdjs {
         if (
           // Don't reload Box2d as it would confuse and crash the asm.js library.
           endsWith(srcFilename, 'box2d.js') ||
+          // Don't reload the Recast navigation library as it would lose
+          // its initialized WebAssembly module.
+          endsWith(srcFilename, 'recast-navigation-generators.js') ||
           // Don't reload sha256.js library.
           endsWith(srcFilename, 'sha256.js') ||
           // Don't reload shopify-buy library.
@@ -830,6 +833,7 @@ namespace gdjs {
         newLayoutData.v,
         newLayoutData.b
       );
+      runtimeScene.setRenderer3DWorldScale(newLayoutData.renderer3DWorldScale);
       if (oldLayoutData.title !== newLayoutData.title) {
         runtimeScene
           .getGame()
@@ -1628,6 +1632,9 @@ namespace gdjs {
           }
         }
       });
+      runtimeLayer.setEffectsOrder(
+        newEffectsData.map((effectData) => effectData.name)
+      );
     }
 
     _hotReloadRuntimeLayerEffect(
@@ -1990,6 +1997,9 @@ namespace gdjs {
       );
       if (numberPropertiesChanged || stringPropertiesChanged || sizeChanged) {
         runtimeObject.extraInitializationFromInitialInstance(newInstance);
+        if (this._runtimeGame.isInGameEdition()) {
+          gdjs.RuntimeObject.applyInGameEditorMinimumOpacity(runtimeObject);
+        }
         somethingChanged = true;
       }
       if (somethingChanged) {

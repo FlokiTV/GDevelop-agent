@@ -234,6 +234,7 @@ const PoppedOutEditorContainerWindow = (props: Props): React.Node => {
                           });
                         },
                         onOpenLayout: props.openLayout,
+                        onOpenExternalLayout: props.openExternalLayout,
                         onOpenTemplateFromTutorial:
                           props.openTemplateFromTutorial,
                         onOpenTemplateFromCourseChapter:
@@ -381,6 +382,7 @@ const PoppedOutEditorContainerWindow = (props: Props): React.Node => {
                         onCreateNewExtensionWithBehavior:
                           props.onCreateNewExtensionWithBehavior,
                         onEffectAdded: props.onEffectAdded,
+                        onLayerRenamedOrRemoved: props.onLayerRenamedOrRemoved,
                         onObjectListsModified: props.onObjectListsModified,
                         onExternalLayoutAssociationChanged:
                           props.onExternalLayoutAssociationChanged,

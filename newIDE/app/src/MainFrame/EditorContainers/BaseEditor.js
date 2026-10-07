@@ -101,6 +101,7 @@ export type RenderEditorContainerProps = {|
     |}
   ) => void,
   onOpenEvents: (sceneName: string) => void,
+  onOpenExternalLayout: (externalLayoutName: string) => void,
   openInstructionOrExpression: (type: string) => void,
   onOpenCustomObjectEditor: (
     gdEventsFunctionsExtension,
@@ -303,6 +304,7 @@ export type RenderEditorContainerProps = {|
     variant: gdEventsBasedObjectVariant
   ) => void,
   onEffectAdded: () => void,
+  onLayerRenamedOrRemoved: () => void,
   onObjectListsModified: ({ isNewObjectTypeUsed: boolean }) => void,
   onExternalLayoutAssociationChanged: () => void,
 |};

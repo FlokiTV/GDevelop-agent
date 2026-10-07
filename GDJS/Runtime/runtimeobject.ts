@@ -357,8 +357,21 @@ namespace gdjs {
         }
       }
 
+      const game = this._runtimeScene.getGame();
       for (let i = 0; i < this._behaviors.length; ++i) {
-        this._behaviors[i].onCreated();
+        const behavior = this._behaviors[i];
+        if (game.isInGameEdition()) {
+          try {
+            behavior.onCreated();
+          } catch (error) {
+            game.reportInGameEditorExtensionError(error, {
+              phase: 'onCreated',
+              type: behavior.type,
+            });
+          }
+        } else {
+          behavior.onCreated();
+        }
       }
     }
 
@@ -452,6 +465,22 @@ namespace gdjs {
     }
 
     static supportsReinitialization = false;
+
+    /**
+     * Like in the 2D editor, transparent instances stay partially visible in
+     * the in-game editor so they can't be lost or misplaced.
+     */
+    static applyInGameEditorMinimumOpacity(object: gdjs.RuntimeObject): void {
+      const objectWithOpacity = object as gdjs.RuntimeObject &
+        Partial<gdjs.OpacityHandler>;
+      if (!objectWithOpacity.getOpacity || !objectWithOpacity.setOpacity) {
+        return;
+      }
+      const minimumOpacity = 255 / 2;
+      if (objectWithOpacity.getOpacity() < minimumOpacity) {
+        objectWithOpacity.setOpacity(minimumOpacity);
+      }
+    }
 
     /**
      * Return the time elapsed since the last frame,
@@ -736,8 +765,21 @@ namespace gdjs {
       if (rendererObject3D) {
         theLayer.getRenderer().remove3DRendererObject(rendererObject3D);
       }
+      const game = this._runtimeScene.getGame();
       for (let j = 0, lenj = this._behaviors.length; j < lenj; ++j) {
-        this._behaviors[j].onDestroy();
+        const behavior = this._behaviors[j];
+        if (game.isInGameEdition()) {
+          try {
+            behavior.onDestroy();
+          } catch (error) {
+            game.reportInGameEditorExtensionError(error, {
+              phase: 'onDestroy',
+              type: behavior.type,
+            });
+          }
+        } else {
+          behavior.onDestroy();
+        }
       }
       this.destroyCallbacks.forEach((c) => c());
       this.clearEffects();

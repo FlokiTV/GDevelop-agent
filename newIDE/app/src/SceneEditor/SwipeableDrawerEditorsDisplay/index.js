@@ -427,6 +427,7 @@ const SwipeableDrawerEditorsDisplay: React.ComponentType<{
                           )
                         }
                         onObjectCreated={props.onObjectCreated}
+                        onEffectAdded={props.onEffectAdded}
                         onObjectEdited={props.onObjectEdited}
                         onObjectFolderOrObjectsWithContextSelected={
                           props.onObjectFolderOrObjectsWithContextSelected
@@ -524,6 +525,9 @@ const SwipeableDrawerEditorsDisplay: React.ComponentType<{
                         }
                         onBackgroundColorChanged={
                           props.onBackgroundColorChanged
+                        }
+                        onRenderer3DWorldScaleFieldChanged={
+                          props.onRenderer3DWorldScaleFieldChanged
                         }
                         openSceneVariables={props.openSceneVariables}
                       />

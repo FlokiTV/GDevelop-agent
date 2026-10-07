@@ -262,8 +262,7 @@ module.exports = {
           .setValue(
             sharedContent.getChild('cellSize').getDoubleValue().toString(10)
           )
-          .setAdvanced(true)
-          .setQuickCustomizationVisibility(gd.QuickCustomization.Hidden);
+          .setAdvanced(true);
 
         sharedProperties
           .getOrCreate('cellDepth')
@@ -274,8 +273,7 @@ module.exports = {
           .setValue(
             sharedContent.getChild('cellDepth').getDoubleValue().toString(10)
           )
-          .setAdvanced(true)
-          .setQuickCustomizationVisibility(gd.QuickCustomization.Hidden);
+          .setAdvanced(true);
 
         sharedProperties
           .getOrCreate('slopeMaxAngle')
@@ -289,8 +287,7 @@ module.exports = {
               .getDoubleValue()
               .toString(10)
           )
-          .setAdvanced(true)
-          .setQuickCustomizationVisibility(gd.QuickCustomization.Hidden);
+          .setAdvanced(true);
 
         sharedProperties
           .getOrCreate('stairHeightMax')
@@ -304,8 +301,7 @@ module.exports = {
               .getDoubleValue()
               .toString(10)
           )
-          .setAdvanced(true)
-          .setQuickCustomizationVisibility(gd.QuickCustomization.Hidden);
+          .setAdvanced(true);
 
         sharedProperties
           .getOrCreate('walkableRadius')
@@ -323,8 +319,7 @@ module.exports = {
               .getDoubleValue()
               .toString(10)
           )
-          .setAdvanced(true)
-          .setQuickCustomizationVisibility(gd.QuickCustomization.Hidden);
+          .setAdvanced(true);
 
         sharedProperties
           .getOrCreate('walkableDepth')
@@ -343,8 +338,7 @@ module.exports = {
               .getDoubleValue()
               .toString(10)
           )
-          .setAdvanced(true)
-          .setQuickCustomizationVisibility(gd.QuickCustomization.Hidden);
+          .setAdvanced(true);
 
         sharedProperties
           .getOrCreate('speedScaleY')
@@ -359,8 +353,7 @@ module.exports = {
           .setValue(
             sharedContent.getChild('speedScaleY').getDoubleValue().toString(10)
           )
-          .setAdvanced(true)
-          .setQuickCustomizationVisibility(gd.QuickCustomization.Hidden);
+          .setAdvanced(true);
 
         return sharedProperties;
       };
@@ -396,14 +389,14 @@ module.exports = {
         .addIncludeFile(
           'Extensions/NavMeshPathfinding/NavMeshObstacleRuntimeBehavior.js'
         )
-        .addIncludeFile(
+        .addRequiredFile(
           'Extensions/NavMeshPathfinding/recast-navigation.wasm.js'
         )
         .addRequiredFile(
           'Extensions/NavMeshPathfinding/recast-navigation.wasm.wasm'
         )
         .addIncludeFile(
-          'Extensions/NavMeshPathfinding/recast-navigation-generators.js'
+          'Extensions/NavMeshPathfinding/A_recast-navigation-generators.js'
         );
 
       aut
@@ -812,7 +805,6 @@ module.exports = {
           .setValue(behaviorContent.getChild('shape').getStringValue())
           .setType('Choice')
           .setLabel('Shape')
-          .setQuickCustomizationVisibility(gd.QuickCustomization.Hidden)
           .addChoice('Box', _('Box'))
           .addChoice('Mesh', _('Mesh'));
         behaviorProperties
@@ -866,14 +858,14 @@ module.exports = {
         .addIncludeFile(
           'Extensions/NavMeshPathfinding/NavMeshObstacleRuntimeBehavior.js'
         )
-        .addIncludeFile(
+        .addRequiredFile(
           'Extensions/NavMeshPathfinding/recast-navigation.wasm.js'
         )
         .addRequiredFile(
           'Extensions/NavMeshPathfinding/recast-navigation.wasm.wasm'
         )
         .addIncludeFile(
-          'Extensions/NavMeshPathfinding/recast-navigation-generators.js'
+          'Extensions/NavMeshPathfinding/A_recast-navigation-generators.js'
         );
     }
 
@@ -894,9 +886,11 @@ module.exports = {
       .addIncludeFile(
         'Extensions/NavMeshPathfinding/NavMeshObstacleRuntimeBehavior.js'
       )
-      .addIncludeFile('Extensions/NavMeshPathfinding/recast-navigation.wasm.js')
+      // `recast-navigation.wasm.js` is an ES module loaded with `import()` by
+      // NavMeshCharacterRuntimeBehavior.js: it's a required file of the
+      // behaviors and must not be included as a classic script.
       .addIncludeFile(
-        'Extensions/NavMeshPathfinding/recast-navigation-generators.js'
+        'Extensions/NavMeshPathfinding/A_recast-navigation-generators.js'
       )
       .addIncludeFile(
         'Extensions/NavMeshPathfinding/NavMeshDebugPixiRenderer.js'

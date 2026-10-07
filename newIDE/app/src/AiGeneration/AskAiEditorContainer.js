@@ -23,6 +23,10 @@ import { AiRequestChat, type AiRequestChatInterface } from './AiRequestChat';
 import { canPayForAiRequest } from './AiRequestChat/Utils';
 import { registerAskAiPrefillListener } from './AskAiPrefill';
 import {
+  getLatestInGameEditorExtensionErrors,
+  addInGameEditorExtensionErrorsToFunctionCallOutputs,
+} from '../InGameEditorExtensionErrors';
+import {
   addMessageToAiRequest,
   createAiRequest,
   sendAiRequestFeedback,
@@ -156,6 +160,7 @@ type Props = {|
         | 'none',
     |}
   ) => void,
+  onOpenExternalLayout: (externalLayoutName: string) => void,
   onSceneEventsModifiedOutsideEditor: (
     changes: SceneEventsOutsideEditorChanges
   ) => void,
@@ -165,6 +170,7 @@ type Props = {|
   onObjectsModifiedOutsideEditor: (
     changes: ObjectsOutsideEditorChanges
   ) => void,
+  onEffectsModifiedOutsideEditor: () => void,
   onObjectGroupsModifiedOutsideEditor: (
     changes: ObjectGroupsOutsideEditorChanges
   ) => void,
@@ -244,6 +250,7 @@ export type AskAiEditorInterface = {|
   onObjectsModifiedOutsideEditor: (
     changes: ObjectsOutsideEditorChanges
   ) => void,
+  onEffectsModifiedOutsideEditor: () => void,
   onObjectGroupsModifiedOutsideEditor: (
     changes: ObjectGroupsOutsideEditorChanges
   ) => void,
@@ -292,9 +299,11 @@ export const AskAiEditor: React.ComponentType<Props> = React.memo<Props>(
         onCreateProjectFromExample,
         onCreateEmptyProject,
         onOpenLayout,
+        onOpenExternalLayout,
         onSceneEventsModifiedOutsideEditor,
         onInstancesModifiedOutsideEditor,
         onObjectsModifiedOutsideEditor,
+        onEffectsModifiedOutsideEditor,
         onObjectGroupsModifiedOutsideEditor,
         onProjectItemRenamedOutsideEditor,
         onWillDeleteScene,
@@ -322,15 +331,18 @@ export const AskAiEditor: React.ComponentType<Props> = React.memo<Props>(
         async ({
           name,
           exampleSlug,
+          projectFileUrl,
         }: {|
           name: string,
           exampleSlug: string | null,
+          projectFileUrl?: string | null,
         |}) => {
           const newProjectSetup: NewProjectSetup = {
             projectName: name,
             storageProvider: UrlStorageProvider,
             saveAsLocation: null,
             creationSource: 'ai-agent-request',
+            projectFileUrl,
           };
 
           if (exampleSlug) {
@@ -387,12 +399,14 @@ export const AskAiEditor: React.ComponentType<Props> = React.memo<Props>(
       const editorCallbacks: EditorCallbacks = React.useMemo(
         () => ({
           onOpenLayout,
+          onOpenExternalLayout,
           onCreateProject,
           onOpenEventsFunctionsExtension: onOpenEventsFunctionsExtensionItem,
           onOpenCustomObjectEditor,
         }),
         [
           onOpenLayout,
+          onOpenExternalLayout,
           onCreateProject,
           onOpenEventsFunctionsExtensionItem,
           onOpenCustomObjectEditor,
@@ -400,6 +414,9 @@ export const AskAiEditor: React.ComponentType<Props> = React.memo<Props>(
       );
 
       const { triggerUnsavedChanges } = React.useContext(UnsavedChangesContext);
+      const givenInGameEditorExtensionErrorIds = React.useRef<Set<number>>(
+        new Set()
+      );
       const eventsFunctionsExtensionsState = React.useContext(
         EventsFunctionsExtensionsContext
       );
@@ -618,6 +635,7 @@ export const AskAiEditor: React.ComponentType<Props> = React.memo<Props>(
             const {
               mode,
               userRequest,
+              attachmentIds,
               aiConfigurationPresetId,
             } = newAiRequestOptions;
             startNewAiRequest(null);
@@ -670,6 +688,7 @@ export const AskAiEditor: React.ComponentType<Props> = React.memo<Props>(
 
               const aiRequest = await createAiRequest(getAuthorizationHeader, {
                 userRequest: userRequest,
+                attachmentIds,
                 userId: profile.id,
                 gameProjectJsonUserRelativeKey:
                   preparedAiUserContent.gameProjectJsonUserRelativeKey,
@@ -761,17 +780,24 @@ export const AskAiEditor: React.ComponentType<Props> = React.memo<Props>(
         async ({
           aiRequestId,
           userMessage,
+          attachmentIds,
           createdSceneNames,
+          createdExternalLayoutNames,
           createdProject,
           editorFunctionCallResults,
         }: {|
           aiRequestId: string,
           userMessage: string,
+          attachmentIds?: Array<string>,
           createdSceneNames?: Array<string>,
+          createdExternalLayoutNames?: Array<string>,
           createdProject?: ?gdProject,
           editorFunctionCallResults: Array<EditorFunctionCallResult>,
         |}) => {
           if (!profile) return;
+          // Files can be sent without any text.
+          const hasUserMessage =
+            !!userMessage || !!(attachmentIds && attachmentIds.length);
 
           const aiRequestForMessage = aiRequests[aiRequestId];
           if (!aiRequestForMessage) return;
@@ -814,12 +840,12 @@ export const AskAiEditor: React.ComponentType<Props> = React.memo<Props>(
           }
 
           // If nothing to send, stop there.
-          if (functionCallOutputs.length === 0 && !userMessage) return;
+          if (functionCallOutputs.length === 0 && !hasUserMessage) return;
 
           // Paying with credits is only when a user message is sent (and quota is exhausted).
           let payWithCredits = false;
           if (
-            userMessage &&
+            hasUserMessage &&
             quota &&
             quota.limitReached &&
             aiRequestPriceInCredits
@@ -845,7 +871,7 @@ export const AskAiEditor: React.ComponentType<Props> = React.memo<Props>(
             // suggestions fetch so its "working" state can't keep the input
             // enabled while the real request runs.
             setIsFetchingSuggestions(false);
-            if (userMessage) setIsSendingUserMessage(true);
+            if (hasUserMessage) setIsSendingUserMessage(true);
 
             const upToDateProject = createdProject || project;
 
@@ -884,11 +910,27 @@ export const AskAiEditor: React.ComponentType<Props> = React.memo<Props>(
               triggerUnsavedChanges();
             }
 
+            // The errors of the code of extensions in the in-game editor are
+            // given to the orchestrator, which changes the project with the
+            // user.
+            const {
+              functionCallOutputs: functionCallOutputsToSend,
+              newlyGivenErrorIds,
+            } =
+              aiRequestForMessage.mode === 'orchestrator'
+                ? addInGameEditorExtensionErrorsToFunctionCallOutputs({
+                    functionCallOutputs,
+                    errors: getLatestInGameEditorExtensionErrors(),
+                    givenErrorIds: givenInGameEditorExtensionErrorIds.current,
+                    project: upToDateProject,
+                  })
+                : { functionCallOutputs, newlyGivenErrorIds: [] };
+
             const aiRequest: AiRequest = await retryIfFailed({ times: 2 }, () =>
               addMessageToAiRequest(getAuthorizationHeader, {
                 userId: profile.id,
                 aiRequestId,
-                functionCallOutputs,
+                functionCallOutputs: functionCallOutputsToSend,
                 gameProjectJsonUserRelativeKey:
                   preparedAiUserContent.gameProjectJsonUserRelativeKey,
                 gameProjectJson: preparedAiUserContent.gameProjectJson,
@@ -901,23 +943,27 @@ export const AskAiEditor: React.ComponentType<Props> = React.memo<Props>(
                   : undefined,
                 payWithCredits,
                 userMessage,
+                attachmentIds,
                 // All requests made by the user are in orchestrator mode: set
                 // it (and the tools version) when a user message is sent, in
                 // case an older request made with another mode is being
                 // continued. Don't set it otherwise, as this can be a message
                 // sent to a sub-agent request (explorer or edit agent).
-                mode: userMessage ? 'orchestrator' : undefined,
-                toolsVersion: userMessage
+                mode: hasUserMessage ? 'orchestrator' : undefined,
+                toolsVersion: hasUserMessage
                   ? AI_ORCHESTRATOR_TOOLS_VERSION
                   : undefined,
               })
             );
             updateAiRequest(aiRequest.id, () => aiRequest);
+            newlyGivenErrorIds.forEach(errorId =>
+              givenInGameEditorExtensionErrorIds.current.add(errorId)
+            );
             setSendingAiRequest(aiRequest.id, false);
             setIsSendingUserMessage(false);
             clearEditorFunctionCallResults(aiRequest.id);
 
-            if (userMessage) {
+            if (hasUserMessage) {
               sendAiRequestMessageSent({
                 simplifiedProjectJsonLength: simplifiedProjectJson
                   ? simplifiedProjectJson.length
@@ -931,19 +977,21 @@ export const AskAiEditor: React.ComponentType<Props> = React.memo<Props>(
                 outputLength: aiRequest.output ? aiRequest.output.length : 0,
               });
             }
+
+            // Only once sent: the text and the files stay to send them again
+            // after an error.
+            if (hasUserMessage && aiRequestId === selectedAiRequestId) {
+              const aiRequestChatRefCurrent = aiRequestChatRef.current;
+              if (aiRequestChatRefCurrent) {
+                aiRequestChatRefCurrent.resetUserInput('');
+                aiRequestChatRefCurrent.resetUserInput(aiRequestId);
+              }
+            }
           } catch (error) {
             console.error('Error while sending AI request message:', error);
             // TODO: update the label of the button to send again.
             setLastSendError(aiRequestId, error);
             setIsSendingUserMessage(false);
-          }
-
-          if (userMessage && aiRequestId === selectedAiRequestId) {
-            const aiRequestChatRefCurrent = aiRequestChatRef.current;
-            if (aiRequestChatRefCurrent) {
-              aiRequestChatRefCurrent.resetUserInput('');
-              aiRequestChatRefCurrent.resetUserInput(aiRequestId);
-            }
           }
 
           // Refresh the user limits, to ensure quota and credits information
@@ -958,6 +1006,14 @@ export const AskAiEditor: React.ComponentType<Props> = React.memo<Props>(
                 openSceneEditor: true,
                 focusWhenOpened: 'scene',
               });
+            });
+          }
+          if (
+            createdExternalLayoutNames &&
+            createdExternalLayoutNames.length > 0
+          ) {
+            createdExternalLayoutNames.forEach(externalLayoutName => {
+              onOpenExternalLayout(externalLayoutName);
             });
           }
         },
@@ -980,6 +1036,7 @@ export const AskAiEditor: React.ComponentType<Props> = React.memo<Props>(
           refreshLimits,
           project,
           onOpenLayout,
+          onOpenExternalLayout,
           automaticallyUseCreditsForAiRequests,
           triggerUnsavedChanges,
         ]
@@ -1020,6 +1077,7 @@ export const AskAiEditor: React.ComponentType<Props> = React.memo<Props>(
           editorFunctionCallResults: Array<EditorFunctionCallResult>,
           options: {|
             createdSceneNames?: Array<string>,
+            createdExternalLayoutNames?: Array<string>,
             createdProject?: ?gdProject,
           |}
         ) => {
@@ -1028,6 +1086,7 @@ export const AskAiEditor: React.ComponentType<Props> = React.memo<Props>(
             userMessage: '',
             createdProject: options.createdProject,
             createdSceneNames: options.createdSceneNames,
+            createdExternalLayoutNames: options.createdExternalLayoutNames,
             editorFunctionCallResults,
           });
         },
@@ -1060,6 +1119,7 @@ export const AskAiEditor: React.ComponentType<Props> = React.memo<Props>(
         clearApprovedEditBatches,
       } = useProcessFunctionCalls({
         project,
+        fileMetadata,
         resourceManagementProps,
         editorCallbacks,
         aiRequestsToProcess,
@@ -1069,6 +1129,7 @@ export const AskAiEditor: React.ComponentType<Props> = React.memo<Props>(
         onSceneEventsModifiedOutsideEditor,
         onInstancesModifiedOutsideEditor,
         onObjectsModifiedOutsideEditor,
+        onEffectsModifiedOutsideEditor,
         onObjectGroupsModifiedOutsideEditor,
         onProjectItemRenamedOutsideEditor,
         onWillDeleteScene,
@@ -1084,6 +1145,7 @@ export const AskAiEditor: React.ComponentType<Props> = React.memo<Props>(
         getIsAutoEditEnabled,
         suspendAiRequest,
         requestEditApproval,
+        onSaveProjectAsWithStorageProvider,
       });
 
       // Wrap onProcessFunctionCalls to bind the selected AI request for the chat UI.
@@ -1135,13 +1197,18 @@ export const AskAiEditor: React.ComponentType<Props> = React.memo<Props>(
       // elsewhere in the editor ("Edit with AI" buttons...).
       React.useEffect(
         () =>
-          registerAskAiPrefillListener((userRequestText: string) => {
-            onStartOrOpenChat({ aiRequestId: null });
+          registerAskAiPrefillListener(({ userRequestText, inCurrentChat }) => {
+            const aiRequestId =
+              inCurrentChat && selectedAiRequest ? selectedAiRequest.id : null;
+            if (!aiRequestId) onStartOrOpenChat({ aiRequestId: null });
             if (aiRequestChatRef.current) {
-              aiRequestChatRef.current.setUserInput(null, userRequestText);
+              aiRequestChatRef.current.setUserInput(
+                aiRequestId,
+                userRequestText
+              );
             }
           }),
-        [onStartOrOpenChat]
+        [onStartOrOpenChat, selectedAiRequest]
       );
 
       const onStartNewChat = React.useCallback(
@@ -1193,6 +1260,7 @@ export const AskAiEditor: React.ComponentType<Props> = React.memo<Props>(
         onSceneEventsModifiedOutsideEditor: noop,
         onInstancesModifiedOutsideEditor: noop,
         onObjectsModifiedOutsideEditor: noop,
+        onEffectsModifiedOutsideEditor: noop,
         onObjectGroupsModifiedOutsideEditor: noop,
         onWillDeleteObject: noop,
         onExtensionsModifiedOutsideEditor: noop,
@@ -1697,13 +1765,16 @@ export const AskAiEditor: React.ComponentType<Props> = React.memo<Props>(
                 onStartNewAiRequest={startNewAiRequest}
                 onSendUserMessage={async ({
                   userMessage,
+                  attachmentIds,
                 }: {|
                   userMessage: string,
+                  attachmentIds: Array<string>,
                 |}) => {
                   if (!selectedAiRequestId) return;
                   await onSendMessage({
                     aiRequestId: selectedAiRequestId,
                     userMessage,
+                    attachmentIds,
                     editorFunctionCallResults: selectedAiRequest
                       ? getEditorFunctionCallResults(selectedAiRequest.id) || []
                       : [],
@@ -1780,6 +1851,7 @@ export const renderAskAiEditorContainer = (
         onCreateProjectFromExample={props.onCreateProjectFromExample}
         onCreateEmptyProject={props.onCreateEmptyProject}
         onOpenLayout={props.onOpenLayout}
+        onOpenExternalLayout={props.onOpenExternalLayout}
         onSceneEventsModifiedOutsideEditor={
           props.onSceneEventsModifiedOutsideEditor
         }
@@ -1787,6 +1859,7 @@ export const renderAskAiEditorContainer = (
           props.onInstancesModifiedOutsideEditor
         }
         onObjectsModifiedOutsideEditor={props.onObjectsModifiedOutsideEditor}
+        onEffectsModifiedOutsideEditor={props.onEffectAdded}
         onObjectGroupsModifiedOutsideEditor={
           props.onObjectGroupsModifiedOutsideEditor
         }

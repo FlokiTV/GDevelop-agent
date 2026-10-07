@@ -118,9 +118,11 @@ export const AskAiStandAloneForm = ({
     async ({
       name,
       exampleSlug,
+      projectFileUrl,
     }: {|
       name: string,
       exampleSlug: string | null,
+      projectFileUrl?: string | null,
     |}) => {
       const newProjectSetup: NewProjectSetup = {
         projectName: name,
@@ -130,6 +132,7 @@ export const AskAiStandAloneForm = ({
         // ensure the Ask AI editor is opened once the project is created.
         forceOpenAskAiEditor: true,
         creationSource: 'ai-agent-request',
+        projectFileUrl,
       };
 
       if (exampleSlug) {
@@ -160,7 +163,8 @@ export const AskAiStandAloneForm = ({
     () => ({
       onOpenLayout,
       onCreateProject,
-      // The stand-alone form has no extension editors to open.
+      // The stand-alone form has no external layout or extension editors to open.
+      onOpenExternalLayout: () => {},
       onOpenEventsFunctionsExtension: () => {},
       onOpenCustomObjectEditor: () => {},
     }),
@@ -265,7 +269,11 @@ export const AskAiStandAloneForm = ({
         // Read the options and reset them immediately to prevent the effect from firing
         // again if dependencies change during the async operations below (e.g. when
         // closeProject causes project to become null).
-        const { userRequest, aiConfigurationPresetId } = newAiRequestOptions;
+        const {
+          userRequest,
+          attachmentIds,
+          aiConfigurationPresetId,
+        } = newAiRequestOptions;
         startNewAiRequest(null);
 
         // Ensure the Ask AI pane is closed, to avoid multiple requests being sent
@@ -315,6 +323,7 @@ export const AskAiStandAloneForm = ({
 
           const aiRequest = await createAiRequest(getAuthorizationHeader, {
             userRequest: userRequest,
+            attachmentIds,
             userId: profile.id,
             gameProjectJsonUserRelativeKey:
               preparedAiUserContent.gameProjectJsonUserRelativeKey,
@@ -566,6 +575,8 @@ export const AskAiStandAloneForm = ({
       editorFunctionCallResults: Array<EditorFunctionCallResult>,
       options: {|
         createdSceneNames?: Array<string>,
+        // Not opened by the stand-alone form (no editor to open them in).
+        createdExternalLayoutNames?: Array<string>,
         createdProject?: ?gdProject,
       |}
     ) => {
@@ -591,6 +602,7 @@ export const AskAiStandAloneForm = ({
 
   const { onProcessFunctionCalls } = useProcessFunctionCalls({
     project,
+    fileMetadata,
     resourceManagementProps,
     editorCallbacks,
     aiRequestsToProcess,
@@ -601,6 +613,7 @@ export const AskAiStandAloneForm = ({
     onSceneEventsModifiedOutsideEditor: () => {},
     onInstancesModifiedOutsideEditor: () => {},
     onObjectsModifiedOutsideEditor: () => {},
+    onEffectsModifiedOutsideEditor: () => {},
     onObjectGroupsModifiedOutsideEditor: () => {},
     onProjectItemRenamedOutsideEditor: () => {},
     onWillDeleteScene: () => Promise.resolve(),
@@ -689,6 +702,7 @@ export const AskAiStandAloneForm = ({
           userMessage,
         }: {|
           userMessage: string,
+          attachmentIds: Array<string>,
         |}) => {
           if (!aiRequestIdForForm) return;
           await onSendMessage({

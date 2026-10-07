@@ -50,6 +50,12 @@ module.exports = function (config) {
     basePath: '../..',
     proxies: {
       '/base/tests-utils/': '/base/GDJS/tests/tests-utils/',
+      // Jolt is loaded with a dynamic `import('./jolt-physics.wasm.js')`,
+      // which is resolved relatively to the page, not to the script.
+      '/jolt-physics.wasm.js':
+        '/base/newIDE/app/resources/GDJS/Runtime/Extensions/Physics3DBehavior/jolt-physics.wasm.js',
+      '/jolt-physics.wasm.wasm':
+        '/base/newIDE/app/resources/GDJS/Runtime/Extensions/Physics3DBehavior/jolt-physics.wasm.wasm',
     },
     files: [
       './GDJS/tests/node_modules/expect.js/index.js',
@@ -145,7 +151,7 @@ module.exports = function (config) {
       './newIDE/app/resources/GDJS/Runtime/Extensions/PathfindingBehavior/PathTools.js',
       './newIDE/app/resources/GDJS/Runtime/Extensions/PathfindingBehavior/pathfindingobstacleruntimebehavior.js',
       './newIDE/app/resources/GDJS/Runtime/Extensions/PathfindingBehavior/pathfindingruntimebehavior.js',
-      './newIDE/app/resources/GDJS/Runtime/Extensions/NavMeshPathfinding/recast-navigation-generators.js',
+      './newIDE/app/resources/GDJS/Runtime/Extensions/NavMeshPathfinding/A_recast-navigation-generators.js',
       {
         pattern:
           './newIDE/app/resources/GDJS/Runtime/Extensions/NavMeshPathfinding/recast-navigation.wasm.js',
@@ -176,6 +182,30 @@ module.exports = function (config) {
       './newIDE/app/resources/GDJS/Runtime/Extensions/3D/Cube3DRuntimeObjectPixiRenderer.js',
       './newIDE/app/resources/GDJS/Runtime/Extensions/3D/CustomRuntimeObject3D.js',
       './newIDE/app/resources/GDJS/Runtime/Extensions/3D/CustomRuntimeObject3DRenderer.js',
+      './newIDE/app/resources/GDJS/Runtime/Extensions/3D/BloomEffect.js',
+      './newIDE/app/resources/GDJS/Runtime/Extensions/3D/BrightnessAndContrastEffect.js',
+      './newIDE/app/resources/GDJS/Runtime/Extensions/3D/DepthOfFieldEffect.js',
+      './newIDE/app/resources/GDJS/Runtime/Extensions/3D/N8AOEffect.js',
+      './newIDE/app/resources/GDJS/Runtime/Extensions/3D/DirectionalLight.js',
+      {
+        pattern:
+          './newIDE/app/resources/GDJS/Runtime/Extensions/Physics3DBehavior/jolt-physics.wasm.js',
+        watched: true,
+        included: false,
+        served: true,
+        nocache: false,
+      },
+      {
+        pattern:
+          './newIDE/app/resources/GDJS/Runtime/Extensions/Physics3DBehavior/jolt-physics.wasm.wasm',
+        watched: true,
+        included: false,
+        served: true,
+        nocache: false,
+      },
+      './newIDE/app/resources/GDJS/Runtime/Extensions/Physics3DBehavior/Physics3DRuntimeBehavior.js',
+      './newIDE/app/resources/GDJS/Runtime/Extensions/Physics3DBehavior/Physics3DTools.js',
+      './newIDE/app/resources/GDJS/Runtime/Extensions/Physics3DBehavior/PhysicsCharacter3DRuntimeBehavior.js',
       './newIDE/app/resources/GDJS/Runtime/Extensions/TopDownMovementBehavior/topdownmovementruntimebehavior.js',
       './newIDE/app/resources/GDJS/Runtime/Extensions/TweenBehavior/TweenManager.js',
       './newIDE/app/resources/GDJS/Runtime/Extensions/TweenBehavior/tweentools.js',
@@ -184,6 +214,7 @@ module.exports = function (config) {
       './newIDE/app/resources/GDJS/Runtime/Extensions/Firebase/B_firebasetools/*.js',
       './newIDE/app/resources/GDJS/Runtime/Extensions/Effects/outline-pixi-filter.js',
       './newIDE/app/resources/GDJS/Runtime/Extensions/Effects/pixi-filters/filter-outline.js',
+      './newIDE/app/resources/GDJS/Runtime/Extensions/Effects/blur-pixi-filter.js',
       './newIDE/app/resources/GDJS/Runtime/Extensions/Effects/kawase-blur-pixi-filter.js',
       './newIDE/app/resources/GDJS/Runtime/Extensions/Effects/pixi-filters/filter-kawase-blur.js',
       './newIDE/app/resources/GDJS/Runtime/Extensions/TileMap/tilemapcollisionmaskruntimeobject.js',
@@ -229,6 +260,13 @@ module.exports = function (config) {
       // Assets
       {
         pattern: './GDJS/tests/tests-utils/assets/*.jpg',
+        watched: false,
+        included: false,
+        served: true,
+        nocache: false,
+      },
+      {
+        pattern: './GDJS/tests/tests-utils/assets/*.glb',
         watched: false,
         included: false,
         served: true,
