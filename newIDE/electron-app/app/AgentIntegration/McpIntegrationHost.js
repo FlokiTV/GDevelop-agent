@@ -1,4 +1,6 @@
 const { startMcpHttpServer } = require('./protocols/mcp/McpHttpServer');
+const { createMcpActivityStore } = require('./McpActivityStore');
+const { observeMcpMetrics } = require('./McpMetricsActivityObserver');
 const {
   createMcpRuntimeConfig,
   publishMcpDiscovery,
@@ -13,7 +15,9 @@ const createMcpIntegrationHost = ({
   startServer = startMcpHttpServer,
 }) => {
   const runtimeConfig = createMcpRuntimeConfig(app);
+  const activity = createMcpActivityStore();
   let serverInfo = null;
+  let stopObservingMetrics = null;
   let startPromise = null;
   let disposed = false;
 
@@ -36,18 +40,26 @@ const createMcpIntegrationHost = ({
           await startedServer.stop();
           throw new Error('mcp_integration_host_disposed');
         }
+        stopObservingMetrics = observeMcpMetrics({
+          metrics: startedServer.metrics,
+          activity,
+        });
         const discovery = publishMcpDiscovery({
           runtimeConfig,
           serverInfo: startedServer,
         });
         serverInfo = { ...startedServer, discovery };
+        activity.setServerOnline(true);
         if (log) {
           log.info(
-            `[AgentIntegration:MCP] Listening on ${startedServer.url}; discovery=${runtimeConfig.discoveryPath}`
+            `[AgentIntegration:MCP] Listening on ${
+              startedServer.url
+            }; discovery=${runtimeConfig.discoveryPath}`
           );
         }
         return serverInfo;
       } catch (error) {
+        activity.setServerOnline(false);
         removeMcpDiscovery(runtimeConfig);
         throw error;
       } finally {
@@ -61,6 +73,7 @@ const createMcpIntegrationHost = ({
   const dispose = async () => {
     if (disposed) return;
     disposed = true;
+    activity.setServerOnline(false);
     removeMcpDiscovery(runtimeConfig);
     const pendingStart = startPromise;
     if (pendingStart) {
@@ -82,6 +95,7 @@ const createMcpIntegrationHost = ({
     start,
     dispose,
     runtimeConfig,
+    activity,
     get serverInfo() {
       return serverInfo;
     },

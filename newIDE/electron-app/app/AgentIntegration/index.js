@@ -1,5 +1,6 @@
 const { createDesktopIntegrationHost } = require('./DesktopIntegrationHost');
 const { createMcpIntegrationHost } = require('./McpIntegrationHost');
+const { registerMcpActivityIpc } = require('./McpActivityIpc');
 
 let desktopIntegrationHost = null;
 let mcpIntegrationHost = null;
@@ -93,7 +94,12 @@ const stopAgentIntegration = async () => {
 };
 
 const installAgentIntegration = dependencies => {
-  const { app, log } = dependencies;
+  const { app, log, ipcMain } = dependencies;
+  const unregisterActivityIpc = registerMcpActivityIpc({
+    ipcMain,
+    getSnapshot: () =>
+      mcpIntegrationHost ? mcpIntegrationHost.activity.snapshot() : null,
+  });
   let disposed = false;
 
   const start = () => {
@@ -117,6 +123,7 @@ const installAgentIntegration = dependencies => {
     disposed = true;
     app.removeListener('ready', start);
     app.removeListener('before-quit', stop);
+    unregisterActivityIpc();
     return stopAgentIntegration();
   };
 };

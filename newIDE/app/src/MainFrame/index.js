@@ -180,6 +180,7 @@ import useStateWithCallback from '../Utils/UseSetStateWithCallback';
 import { useKeyboardShortcuts, useShortcutMap } from '../KeyboardShortcuts';
 import useMainFrameCommands from './MainFrameCommands';
 import useAgentIntegration from '../AgentIntegration/useAgentIntegration';
+import AgentActivityPanel from '../AgentIntegration/AgentActivityPanel';
 import {
   installCliInPath,
   isCliInPathInstallSupported,
@@ -6657,6 +6658,7 @@ const MainFrame = (props: Props): React.MixedElement => {
           onClose={() => setMemoryTrackedRegistryDialogOpen(false)}
         />
       )}
+      <AgentActivityPanel />
       <CustomDragLayer />
     </div>
   );
