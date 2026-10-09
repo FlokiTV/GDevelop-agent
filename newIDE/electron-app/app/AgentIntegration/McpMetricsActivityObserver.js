@@ -12,7 +12,7 @@ const observeMcpMetrics = ({ metrics, activity }) => {
     try {
       const id = activity.start({
         command: entry && entry.command,
-        identity: { agentId: 'cliente-mcp', clientId: 'nao-identificado' },
+        identity: { agentId: 'mcp-client', clientId: 'unidentified' },
       });
       activity.finish(id, {
         status: entry && entry.ok ? 'success' : 'error',

@@ -45,7 +45,7 @@ const formatTime = (timestamp: any): string => {
 };
 
 const formatDuration = (durationMs: any): string =>
-  Number.isFinite(durationMs) ? `${durationMs} ms` : 'em andamento';
+  Number.isFinite(durationMs) ? `${durationMs} ms` : 'in progress';
 
 const getStatusColor = (status: string): string => {
   if (status === 'running') return '#79b5ff';
@@ -55,13 +55,13 @@ const getStatusColor = (status: string): string => {
 };
 
 const getStatusLabel = (status: string, saved: boolean): string => {
-  if (saved) return 'Salvo';
-  if (status === 'running') return 'Executando';
-  if (status === 'success') return 'Respondido';
-  if (status === 'cancelled') return 'Cancelado';
-  if (status === 'attention') return 'Aguardando confirmação';
-  if (status === 'interrupted') return 'Interrompido';
-  return 'Erro';
+  if (saved) return 'Saved';
+  if (status === 'running') return 'Running';
+  if (status === 'success') return 'Responded';
+  if (status === 'cancelled') return 'Cancelled';
+  if (status === 'attention') return 'Awaiting confirmation';
+  if (status === 'interrupted') return 'Interrupted';
+  return 'Error';
 };
 
 export default function AgentActivityPanel(): React.Node {
@@ -111,21 +111,17 @@ export default function AgentActivityPanel(): React.Node {
       : [];
   const dotColor = online ? (activeCalls ? '#80b5ff' : '#65cea2') : '#a7aebb';
   const statusText = !online
-    ? 'Servidor MCP indisponível'
+    ? 'MCP server unavailable'
     : activeCalls
-    ? `Agente trabalhando · ${activeCalls}`
+    ? `${activeCalls} MCP request(s) running`
     : clients.length
-    ? `MCP ativo · ${clients.length} cliente(s) recente(s)`
-    : 'MCP disponível · sem atividade recente';
+    ? `MCP online · ${clients.length} recent client(s)`
+    : 'MCP available · no recent activity';
 
   return (
     <div style={containerStyle}>
       {open && (
-        <div
-          style={panelStyle}
-          role="region"
-          aria-label="Atividade dos agentes MCP"
-        >
+        <div style={panelStyle} role="region" aria-label="MCP agent activity">
           <div
             style={{ padding: '13px 14px', borderBottom: '1px solid #424d5c' }}
           >
@@ -136,14 +132,14 @@ export default function AgentActivityPanel(): React.Node {
                 justifyContent: 'space-between',
               }}
             >
-              <strong style={{ fontSize: 14 }}>Agentes / Atividade MCP</strong>
+              <strong style={{ fontSize: 14 }}>Agents / MCP Activity</strong>
               <button
                 type="button"
                 style={smallButtonStyle}
                 onClick={() => setOpen(false)}
-                aria-label="Fechar painel MCP"
+                aria-label="Close MCP activity panel"
               >
-                Fechar
+                Close
               </button>
             </div>
             <div style={{ marginTop: 10 }}>
@@ -157,14 +153,15 @@ export default function AgentActivityPanel(): React.Node {
             </div>
             {unavailable && (
               <div style={{ color: '#fc9393', marginTop: 6 }}>
-                Não foi possível consultar a integração MCP.
+                Unable to retrieve MCP activity.
               </div>
             )}
             {clients.length > 0 && (
               <div style={{ marginTop: 8, color: '#b6c2d1' }}>
                 {clients.map(client => (
                   <div key={`${client.agentId}:${client.clientId}`}>
-                    {client.agentId} · visto às {formatTime(client.lastSeenAt)}
+                    {client.agentId} · last seen at{' '}
+                    {formatTime(client.lastSeenAt)}
                   </div>
                 ))}
               </div>
@@ -179,7 +176,7 @@ export default function AgentActivityPanel(): React.Node {
               borderBottom: '1px solid #424d5c',
             }}
           >
-            <strong>Últimas operações ({events.length})</strong>
+            <strong>Recent operations ({events.length})</strong>
             <label style={{ cursor: 'pointer' }}>
               <input
                 type="checkbox"
@@ -187,13 +184,13 @@ export default function AgentActivityPanel(): React.Node {
                 onChange={event => setErrorsOnly(event.target.checked)}
                 style={{ verticalAlign: 'middle', marginRight: 5 }}
               />
-              Só erros
+              Errors only
             </label>
           </div>
           <div style={{ overflowY: 'auto', minHeight: 100, maxHeight: 315 }}>
             {events.length === 0 ? (
               <div style={{ padding: 16, color: '#b6c2d1' }}>
-                Nenhuma operação registrada nesta sessão.
+                No operations recorded in this session.
               </div>
             ) : (
               events.map(entry => (
@@ -232,22 +229,12 @@ export default function AgentActivityPanel(): React.Node {
                   >
                     {entry.agentId} · {formatTime(entry.startedAt)} ·{' '}
                     {formatDuration(entry.durationMs)}
-                    {entry.modifiesProject ? ' · modifica o projeto' : ''}
+                    {entry.modifiesProject ? ' · modifies project' : ''}
                     {entry.errorCode ? ` · ${entry.errorCode}` : ''}
                   </div>
                 </div>
               ))
             )}
-          </div>
-          <div
-            style={{
-              padding: '8px 14px',
-              color: '#b6c2d1',
-              borderTop: '1px solid #424d5c',
-            }}
-          >
-            Mostra comandos respondidos nesta execução. A API de métricas atual
-            não expõe agente individual nem solicitações em andamento.
           </div>
         </div>
       )}
@@ -263,18 +250,18 @@ export default function AgentActivityPanel(): React.Node {
           boxShadow: '0 4px 12px rgba(0,0,0,.28)',
         }}
         onClick={() => setOpen(!open)}
-        title="Mostrar conexões recentes e histórico de operações dos agentes MCP"
+        title="Show recent MCP connections and operations"
         aria-expanded={open}
-        aria-label="Abrir painel de atividade MCP"
+        aria-label="Open MCP activity panel"
       >
         <span aria-hidden="true" style={{ color: dotColor }}>
           ●
         </span>
         MCP{' '}
         {activeCalls
-          ? `· ${activeCalls} em execução`
+          ? `· ${activeCalls} running`
           : online
-          ? '· ativo'
+          ? '· online'
           : '· offline'}
       </button>
     </div>

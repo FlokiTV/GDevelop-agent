@@ -70,6 +70,8 @@ test('metrics observer preserves aggregation and records only completed commands
   assert.equal(calls.length, 2);
   const snapshot = activity.snapshot();
   assert.equal(snapshot.entries[0].command, 'events.patch');
+  assert.equal(snapshot.entries[0].agentId, 'mcp-client');
+  assert.equal(snapshot.entries[0].clientId, 'unidentified');
   assert.equal(snapshot.entries[0].status, 'error');
   assert.equal(snapshot.entries[1].durationMs, 123);
   assert.equal(snapshot.entries[1].saved, false); // A successful response is not proof of save.

@@ -1,5 +1,9 @@
 # MCP Activity Panel (DX UX-01)
 
+## UI language and compact layout
+
+The user requested an **English-only** activity panel, including headings, state labels, buttons, placeholders, tooltips and accessibility labels. Remove the explanatory disclaimer/footer under the operations list to reduce visual clutter. Keep protocol commands unchanged. The generic metrics client alias should display as `mcp-client`, not the former Portuguese `cliente-mcp`. This is a frontend/AgentIntegration-only change and must not touch `MainFrame`, gameplay, or MCP command dispatch.
+
 ## Goal and boundaries
 
 Offer a read-only, in-editor summary of whether the **local MCP server is available** and which MCP tool calls completed recently. This feature is owned by `AgentIntegration`; GDevelop's underlying project/editor business logic must not be modified.
@@ -13,7 +17,7 @@ Offer a read-only, in-editor summary of whether the **local MCP server is availa
 - `newIDE/electron-app/app/AgentIntegration/McpMetricsActivityObserver.js`: subscribes to the existing `metrics.record` after MCP server initialization. No new MCP tools, endpoint, HTTP parser, request or dispatcher changes.
 - `newIDE/electron-app/app/AgentIntegration/McpActivityStore.js`: bounded (default 100) in-memory timeline, recent-activity TTL, only validated identifiers and command names, response duration, and a generic failure code. Never persist request/response bodies.
 
-The UI distinguishes server availability from observed activity. Metrics represent **completed calls only**, and do not prove continuous connection. Because the current `McpObservability` metric contract has no client/agent identity and no tool start events, the first version labels the observer `cliente-mcp` (unidentified) and cannot show in-progress calls or claim that a particular save persisted. Commands with `ok=true` are labelled `Respondido`, not `Salvo`.
+The UI distinguishes server availability from observed activity. Metrics represent **completed calls only**, and do not prove continuous connection. Because the current `McpObservability` metric contract has no client/agent identity and no tool start events, the first version labels the observer `mcp-client` (unidentified) and cannot show in-progress calls or claim that a particular save persisted. Commands with `ok=true` are labelled `Responded`, not `Saved`.
 
 ## Security
 
