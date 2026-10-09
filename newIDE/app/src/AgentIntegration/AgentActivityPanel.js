@@ -1,58 +1,17 @@
 // @flow
 import * as React from 'react';
 import optionalRequire from '../Utils/OptionalRequire';
+import './AgentActivityPanel.css';
 
 const electron = optionalRequire('electron');
 const ipcRenderer = electron ? electron.ipcRenderer : null;
 const CHANNEL = 'gdevelop-agent-activity:snapshot';
 
-const containerStyle = {
-  position: 'fixed',
-  right: 18,
-  bottom: 18,
-  zIndex: 1400,
-  fontFamily: 'system-ui, sans-serif',
-  fontSize: 12,
-  color: '#e9edf5',
-};
-
-const panelStyle = {
-  width: 380,
-  maxWidth: 'calc(100vw - 36px)',
-  maxHeight: 'min(480px, 75vh)',
-  display: 'flex',
-  flexDirection: 'column',
-  overflow: 'hidden',
-  marginBottom: 8,
-  borderRadius: 10,
-  background: '#1d2430',
-  border: '1px solid #424d5c',
-  boxShadow: '0 8px 28px rgba(0,0,0,.45)',
-};
-
-const smallButtonStyle = {
-  cursor: 'pointer',
-  borderRadius: 6,
-  border: '1px solid #59697c',
-  padding: '5px 9px',
-  color: '#f5f7fc',
-  background: '#293646',
-};
-
-const formatTime = (timestamp: any): string => {
-  if (!Number.isFinite(timestamp)) return '—';
-  return new Date(timestamp).toLocaleTimeString();
-};
+const formatTime = (timestamp: any): string =>
+  Number.isFinite(timestamp) ? new Date(timestamp).toLocaleTimeString() : '—';
 
 const formatDuration = (durationMs: any): string =>
   Number.isFinite(durationMs) ? `${durationMs} ms` : 'in progress';
-
-const getStatusColor = (status: string): string => {
-  if (status === 'running') return '#79b5ff';
-  if (status === 'success') return '#7bd8a4';
-  if (status === 'attention' || status === 'cancelled') return '#e8bc69';
-  return '#fc9393';
-};
 
 const getStatusLabel = (status: string, saved: boolean): string => {
   if (saved) return 'Saved';
@@ -63,6 +22,29 @@ const getStatusLabel = (status: string, saved: boolean): string => {
   if (status === 'interrupted') return 'Interrupted';
   return 'Error';
 };
+
+const getStatusTone = (status: string): string => {
+  if (status === 'success') return 'success';
+  if (status === 'running') return 'running';
+  if (status === 'error' || status === 'interrupted') return 'error';
+  return 'attention';
+};
+
+const ActivityIcon = (): React.Node => (
+  <svg
+    aria-hidden="true"
+    width="16"
+    height="16"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M3 12h4l3-7 4 14 3-7h4" />
+  </svg>
+);
 
 export default function AgentActivityPanel(): React.Node {
   const [open, setOpen] = React.useState(false);
@@ -95,174 +77,199 @@ export default function AgentActivityPanel(): React.Node {
     };
   }, []);
 
-  // No UI in web builds or detached browser/preview surfaces.
+  // The MCP overlay is an Electron-only inspector, not part of the web editor.
   if (!ipcRenderer || typeof ipcRenderer.invoke !== 'function') return null;
 
   const online = !!(snapshot && snapshot.serverOnline && !unavailable);
   const activeCalls = online ? snapshot.activeCalls || 0 : 0;
   const clients =
     online && Array.isArray(snapshot.clients) ? snapshot.clients : [];
-  const events =
-    snapshot && Array.isArray(snapshot.entries)
-      ? snapshot.entries.filter(
-          entry =>
-            !errorsOnly || ['error', 'interrupted'].includes(entry.status)
-        )
-      : [];
-  const dotColor = online ? (activeCalls ? '#80b5ff' : '#65cea2') : '#a7aebb';
-  const statusText = !online
-    ? 'MCP server unavailable'
+  const allEvents =
+    snapshot && Array.isArray(snapshot.entries) ? snapshot.entries : [];
+  const errorCount = allEvents.filter(entry =>
+    ['error', 'interrupted'].includes(entry.status)
+  ).length;
+  const events = errorsOnly
+    ? allEvents.filter(entry => ['error', 'interrupted'].includes(entry.status))
+    : allEvents;
+
+  const statusDetail = !online
+    ? 'Not responding'
     : activeCalls
-    ? `${activeCalls} MCP request(s) running`
+    ? `${activeCalls} request(s) running`
     : clients.length
-    ? `MCP online · ${clients.length} recent client(s)`
-    : 'MCP available · no recent activity';
+    ? 'Activity observed recently'
+    : 'No recent activity';
+  const indicatorClass = activeCalls
+    ? 'gdmcp-dot gdmcp-dot--busy'
+    : online
+    ? 'gdmcp-dot gdmcp-dot--online'
+    : 'gdmcp-dot';
 
   return (
-    <div style={containerStyle}>
+    <div className="gdmcp-root">
       {open && (
-        <div style={panelStyle} role="region" aria-label="MCP agent activity">
-          <div
-            style={{ padding: '13px 14px', borderBottom: '1px solid #424d5c' }}
-          >
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-              }}
-            >
-              <strong style={{ fontSize: 14 }}>Agents / MCP Activity</strong>
+        <section
+          id="gdmcp-activity-panel"
+          className="gdmcp-panel"
+          role="region"
+          aria-label="MCP agent activity"
+        >
+          <header className="gdmcp-header">
+            <div className="gdmcp-header-main">
+              <span className="gdmcp-logo">
+                <ActivityIcon />
+              </span>
+              <div className="gdmcp-heading">
+                <h2 className="gdmcp-title">MCP Activity</h2>
+                <span className="gdmcp-subtitle">Local activity monitor</span>
+              </div>
               <button
+                className="gdmcp-close"
                 type="button"
-                style={smallButtonStyle}
                 onClick={() => setOpen(false)}
+                title="Close panel"
                 aria-label="Close MCP activity panel"
               >
-                Close
+                <svg
+                  aria-hidden="true"
+                  width="15"
+                  height="15"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.9"
+                  strokeLinecap="round"
+                >
+                  <path d="M18 6 6 18M6 6l12 12" />
+                </svg>
               </button>
             </div>
-            <div style={{ marginTop: 10 }}>
-              <span
-                aria-hidden="true"
-                style={{ color: dotColor, marginRight: 7 }}
-              >
-                ●
+            <div className="gdmcp-health" role="status">
+              <span className={indicatorClass} aria-hidden="true" />
+              <span className="gdmcp-health-label">
+                {online ? 'Server available' : 'Server offline'}
               </span>
-              {statusText}
+              <span className="gdmcp-health-detail">{statusDetail}</span>
             </div>
             {unavailable && (
-              <div style={{ color: '#fc9393', marginTop: 6 }}>
+              <div className="gdmcp-health-error">
                 Unable to retrieve MCP activity.
               </div>
             )}
-            {clients.length > 0 && (
-              <div style={{ marginTop: 8, color: '#b6c2d1' }}>
-                {clients.map(client => (
-                  <div key={`${client.agentId}:${client.clientId}`}>
-                    {client.agentId} · last seen at{' '}
-                    {formatTime(client.lastSeenAt)}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-          <div
-            style={{
-              padding: '9px 14px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              borderBottom: '1px solid #424d5c',
-            }}
-          >
-            <strong>Recent operations ({events.length})</strong>
-            <label style={{ cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                checked={errorsOnly}
-                onChange={event => setErrorsOnly(event.target.checked)}
-                style={{ verticalAlign: 'middle', marginRight: 5 }}
-              />
+          </header>
+
+          <div className="gdmcp-toolbar">
+            <div className="gdmcp-section-heading">
+              <span className="gdmcp-section-title">Recent activity</span>
+              <span
+                className="gdmcp-count"
+                aria-label={`${allEvents.length} operations`}
+              >
+                {allEvents.length}
+              </span>
+            </div>
+            <button
+              className="gdmcp-filter"
+              type="button"
+              aria-label="Filter errors only"
+              aria-pressed={errorsOnly}
+              onClick={() => setErrorsOnly(!errorsOnly)}
+            >
+              <svg
+                aria-hidden="true"
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.7"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M4 7h16M7 12h10m-7 5h4" />
+              </svg>
               Errors only
-            </label>
+              {errorCount > 0 && (
+                <span className="gdmcp-filter-count">{errorCount}</span>
+              )}
+            </button>
           </div>
-          <div style={{ overflowY: 'auto', minHeight: 100, maxHeight: 315 }}>
+
+          <div className="gdmcp-list">
             {events.length === 0 ? (
-              <div style={{ padding: 16, color: '#b6c2d1' }}>
-                No operations recorded in this session.
+              <div className="gdmcp-empty">
+                {errorsOnly
+                  ? 'No errors in this session.'
+                  : 'No activity recorded yet.'}
               </div>
             ) : (
               events.map(entry => (
-                <div
-                  key={entry.id}
-                  style={{
-                    padding: '10px 14px',
-                    borderBottom: '1px solid #333d4b',
-                  }}
-                >
-                  <div
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      gap: 6,
-                    }}
-                  >
-                    <strong style={{ overflowWrap: 'anywhere' }}>
-                      {entry.command}
-                    </strong>
+                <article className="gdmcp-item" key={entry.id}>
+                  <div className="gdmcp-item-top">
+                    <code className="gdmcp-command">{entry.command}</code>
                     <span
-                      style={{
-                        color: getStatusColor(entry.status),
-                        whiteSpace: 'nowrap',
-                      }}
+                      className={`gdmcp-result gdmcp-result--${getStatusTone(
+                        entry.status
+                      )}`}
                     >
                       {getStatusLabel(entry.status, entry.saved)}
                     </span>
                   </div>
-                  <div
-                    style={{
-                      marginTop: 5,
-                      color: '#b6c2d1',
-                      overflowWrap: 'anywhere',
-                    }}
-                  >
-                    {entry.agentId} · {formatTime(entry.startedAt)} ·{' '}
-                    {formatDuration(entry.durationMs)}
-                    {entry.modifiesProject ? ' · modifies project' : ''}
-                    {entry.errorCode ? ` · ${entry.errorCode}` : ''}
+                  <div className="gdmcp-meta">
+                    <span>{entry.agentId}</span>
+                    <span className="gdmcp-meta-separator" aria-hidden="true">
+                      ·
+                    </span>
+                    <span>{formatTime(entry.startedAt)}</span>
+                    <span className="gdmcp-meta-separator" aria-hidden="true">
+                      ·
+                    </span>
+                    <span>{formatDuration(entry.durationMs)}</span>
+                    {entry.modifiesProject && <span>· modifies project</span>}
+                    {entry.errorCode && <span>· {entry.errorCode}</span>}
                   </div>
-                </div>
+                </article>
               ))
             )}
           </div>
-        </div>
+        </section>
       )}
       <button
+        className="gdmcp-launcher"
         type="button"
-        style={{
-          ...smallButtonStyle,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 7,
-          padding: '8px 12px',
-          marginLeft: 'auto',
-          boxShadow: '0 4px 12px rgba(0,0,0,.28)',
-        }}
         onClick={() => setOpen(!open)}
-        title="Show recent MCP connections and operations"
+        title="Show recent MCP operations"
+        aria-label={
+          open ? 'Hide MCP activity panel' : 'Open MCP activity panel'
+        }
         aria-expanded={open}
-        aria-label="Open MCP activity panel"
+        aria-controls="gdmcp-activity-panel"
       >
-        <span aria-hidden="true" style={{ color: dotColor }}>
-          ●
+        <span className={indicatorClass} aria-hidden="true" />
+        <span>MCP</span>
+        <span className="gdmcp-launcher-divider" aria-hidden="true" />
+        <span className="gdmcp-launcher-status">
+          {activeCalls
+            ? `${activeCalls} running`
+            : online
+            ? 'Online'
+            : 'Offline'}
         </span>
-        MCP{' '}
-        {activeCalls
-          ? `· ${activeCalls} running`
-          : online
-          ? '· online'
-          : '· offline'}
+        <svg
+          className="gdmcp-chevron"
+          aria-hidden="true"
+          width="12"
+          height="12"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="m7 14 5-5 5 5" />
+        </svg>
       </button>
     </div>
   );

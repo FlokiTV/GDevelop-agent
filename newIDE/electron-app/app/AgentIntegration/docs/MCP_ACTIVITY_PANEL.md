@@ -4,6 +4,18 @@
 
 The user requested an **English-only** activity panel, including headings, state labels, buttons, placeholders, tooltips and accessibility labels. Remove the explanatory disclaimer/footer under the operations list to reduce visual clutter. Keep protocol commands unchanged. The generic metrics client alias should display as `mcp-client`, not the former Portuguese `cliente-mcp`. This is a frontend/AgentIntegration-only change and must not touch `MainFrame`, gameplay, or MCP command dispatch.
 
+## Visual design refresh — MCP-UX-003 (2026-10-09)
+
+The screenshot of the English MVP revealed heavy panel borders, a generic form checkbox, unstructured result labels, an oversized empty region below one operation, and a disconnected floating launcher. Redesign the **presentation only** in `newIDE/app/src/AgentIntegration/AgentActivityPanel.js` and a prefixed, self-contained stylesheet `AgentActivityPanel.css` with the following requirements:
+
+- Compact, lower-contrast dark panel with coherent typography, spacing and responsive width; no GDevelop-global stylesheet or theme mutation.
+- Quiet heading, explicit **server** availability instead of claiming an agent is permanently connected, compact status line, icon-only dismiss action.
+- Counted `Recent activity` section with accessible, stateful `Errors only` chip (`aria-pressed`), and compact per-command rows with a subtle status pill and secondary metadata. Keep the honest label `Responded` rather than implying project mutation success.
+- Remove the list `minHeight: 100` that caused an unnatural blank area after a single entry. Preserve scrolling for longer histories and display a useful empty state.
+- A restrained, visually related MCP launcher attached to the same lower-right anchor. Visible keyboard focus rings, sufficient contrast, reduced-motion support and tight-viewport fallback.
+- Preserve existing 1500ms IPC polling, error filtering, bounded snapshot, read-only behavior, privacy and accessibility. Absolutely no MCP transport/dispatcher, core MainFrame or CoinIdle changes.
+- Validate parser, Node regression tests, production React build and a separate packaged fork. Inspect the actual renderer DOM and panel dimensions before marking done.
+
 ## Goal and boundaries
 
 Offer a read-only, in-editor summary of whether the **local MCP server is available** and which MCP tool calls completed recently. This feature is owned by `AgentIntegration`; GDevelop's underlying project/editor business logic must not be modified.
