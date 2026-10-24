@@ -17,6 +17,19 @@ namespace gdjs {
     'gameplayTest.stop',
   ]);
 
+  /**
+   * The identifier of the frame "load" the game is running in, as put in the URL by
+   * the editor. Sent along the status so that the editor can tell a status coming from
+   * the load it is waiting for from a leftover one sent by a previous load.
+   */
+  const getGameFrameLoadId = (): string | null => {
+    try {
+      return new URLSearchParams(window.location.search).get('gameFrameLoadId');
+    } catch (error) {
+      return null;
+    }
+  };
+
   const originalConsole = {
     log: console.log,
     info: console.info,
@@ -615,6 +628,13 @@ namespace gdjs {
           if (inGameEditor) {
             this.sendSelectionAABB(data.messageId);
           }
+        } else if (data.command === 'raycast') {
+          if (inGameEditor) {
+            // Rays must hit the instances as the editor last sent them.
+            this._hotReloader.onceIdle(() =>
+              this.sendRaycastResult(data.messageId, data.payload)
+            );
+          }
         } else if (data.command === 'gameplayTest.run') {
           if (gdjs.gameplayTests) {
             gdjs.gameplayTests
@@ -902,7 +922,8 @@ namespace gdjs {
     }
 
     _getRuntimeTimeControlPayload(extra: any = {}): any {
-      const currentScene = this._runtimegame.getSceneStack().getCurrentScene();
+      const sceneStack = this._runtimegame.getSceneStack();
+      const currentScene = sceneStack ? sceneStack.getCurrentScene() : null;
       const timeManager = currentScene ? currentScene.getTimeManager() : null;
       const isPaused = this._runtimegame.isPaused();
       const isInGameEdition = this._runtimegame.isInGameEdition();
@@ -1187,10 +1208,18 @@ namespace gdjs {
     }
 
     sendRuntimeGameStatus(): void {
+      const gameRenderer = this._runtimegame.getRenderer();
       this._sendMessage(
         circularSafeStringify({
           command: 'status',
-          payload: this._getRuntimeTimeControlPayload(),
+          payload: {
+            ...this._getRuntimeTimeControlPayload(),
+            gameFrameLoadId: getGameFrameLoadId(),
+            // Unknown (null) until the renderers are initialized.
+            is3DRenderingAvailable: gameRenderer.getPIXIRenderer()
+              ? !!gameRenderer.getThreeRenderer()
+              : null,
+          },
         })
       );
     }
@@ -1489,6 +1518,27 @@ namespace gdjs {
           command: 'gameplayTest.result',
           messageId,
           payload: result,
+        })
+      );
+    }
+
+    /**
+     * Send the instances hit by rays in the scene shown by the in-game editor.
+     */
+    sendRaycastResult(
+      messageId: number,
+      request: gdjs.InGameEditorRaycastRequest
+    ): void {
+      const inGameEditor = this._runtimegame.getInGameEditor();
+      if (!inGameEditor) {
+        return;
+      }
+      this._sendMessage(
+        circularSafeStringify({
+          command: 'raycastResult',
+          editorId: inGameEditor.getEditorId(),
+          messageId,
+          payload: inGameEditor.raycast(request),
         })
       );
     }
