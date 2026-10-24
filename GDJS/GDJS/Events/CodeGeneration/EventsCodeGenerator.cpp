@@ -1331,7 +1331,10 @@ gd::String EventsCodeGenerator::GenerateEventTraceCode(
   if (!reason.empty())
     payload += ",reason:" + ConvertToStringExplicit(reason);
   payload += "}";
-  return "runtimeScene.getGame().recordEventTrace(runtimeScene," + payload +
+  // An async callback may run without the runtimeScene argument in scope.
+  // Tracing must never alter normal event execution in that case.
+  return "if (typeof runtimeScene !== \"undefined\" && runtimeScene) "
+         "runtimeScene.getGame().recordEventTrace(runtimeScene," + payload +
          ");\n";
 }
 
@@ -1354,7 +1357,10 @@ gd::String EventsCodeGenerator::GenerateInstructionTraceCode(
   if (!resultExpression.empty())
     payload += ",result:!!(" + resultExpression + ")";
   payload += "}";
-  return "runtimeScene.getGame().recordEventTrace(runtimeScene," + payload +
+  // An async callback may run without the runtimeScene argument in scope.
+  // Tracing must never alter normal event execution in that case.
+  return "if (typeof runtimeScene !== \"undefined\" && runtimeScene) "
+         "runtimeScene.getGame().recordEventTrace(runtimeScene," + payload +
          ");\n";
 }
 

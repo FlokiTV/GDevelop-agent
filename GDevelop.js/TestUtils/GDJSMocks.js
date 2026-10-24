@@ -780,6 +780,10 @@ const pickAllObjects = (objectsContext, objectsLists) => {
 };
 
 class RuntimeGame {
+  // Generated events call this hook. The minimal test game intentionally does
+  // not collect traces; production gdjs.RuntimeGame handles them normally.
+  recordEventTrace(_runtimeScene, _trace) {}
+
   constructor(gameData) {
     this._variablesContainer = new VariablesContainer(
       gameData && gameData.variables
